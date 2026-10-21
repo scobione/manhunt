@@ -1,0 +1,341 @@
+import { randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
+import { area, booleanPointInPolygon, distance, featureCollection, intersect, lineString, point, pointToLineDistance, polygon, transformScale } from '@turf/turf';
+import type { Feature, Polygon } from 'geojson';
+import { DEFAULT_SETTINGS, type CaptureRequest, type Command, type GameEvent, type Lobby, type LobbyView, type LocationSample, type Player, type Profile, type Settings } from '../shared/types.js';
+import { validateCommand, validateSettings, validateZone } from './validation.js';
+
+export class GameError extends Error {
+  constructor(public code:string,message:string,public stateChanged=false,public lobbyId?:string){super(message);this.name='GameError';}
+}
+interface PlayerState {
+  outsideAccumulatedMs:number; lastOutsideAt?:number; outsideFixes:number; lastReliableOutside:boolean;
+  captureAttempts:number[]; missedPin:boolean; infectionAcknowledged:boolean; unreliableLocation?:boolean; lastLocationAt?:number;
+}
+interface PrivateState {players:Record<string,PlayerState>; phase:number; hunterReleaseAt?:number; lastTick:number; leftIds:string[];}
+type EngineLobby=Lobby & {_engine:PrivateState};
+const clone=<T>(x:T):T=>structuredClone(x);
+const activeStatuses=new Set(['active','preparing','paused']);
+const playing=(p:Player)=>!p.eliminated&&p.role!=='spectator';
+const hunting=(p:Player)=>!p.eliminated&&(p.role==='hunter'||p.role==='zombie');
+const metadata=():PlayerState=>({outsideAccumulatedMs:0,outsideFixes:0,lastReliableOutside:false,captureAttempts:[],missedPin:false,infectionAcknowledged:false});
+function fail(code:string,message:string):never{throw new GameError(code,message);}
+const shuffled=<T>(values:T[]):T[]=>{const out=[...values];for(let i=out.length-1;i>0;i--){const j=randomInt(i+1);[out[i],out[j]]=[out[j],out[i]];}return out;};
+
+/** Authoritative single-process game state. All methods must be serialized by the transport.
+ * `snapshot` contains private coordinates and capture codes: store service-role-only.
+ * Only `view` is safe to emit to a specific authenticated participant.
+ */
+export class GameEngine {
+  public lobbies=new Map<string,Lobby>();
+  private now:()=>number;
+  constructor(options:{now?:()=>number;initial?:Lobby[]}={}){this.now=options.now??Date.now;if(options.initial)this.restore(options.initial);}
+  snapshot():Lobby[]{return clone([...this.lobbies.values()]);}
+  restore(lobbies:Lobby[]):void{
+    this.lobbies.clear();
+    for(const record of clone(lobbies)){
+      const lobby=record as EngineLobby;
+      lobby._engine??={players:{},phase:0,lastTick:this.now(),leftIds:[]};
+      lobby._engine.leftIds??=[];
+      for(const p of lobby.players)lobby._engine.players[p.id]??=metadata();
+      this.lobbies.set(lobby.id,lobby);
+    }
+  }
+  lobbyFor(userId:string):Lobby|undefined{return [...this.lobbies.values()].find(l=>l.status!=='closed'&&l.status!=='finished'&&l.players.some(p=>p.id===userId)&&!(l as EngineLobby)._engine.leftIds.includes(userId));}
+  private get(id:string):EngineLobby {return this.lobbies.get(id) as EngineLobby??fail('LOBBY_NOT_FOUND','Lobby nicht gefunden.');}
+  private member(lobby:Lobby,id:string):Player{return lobby.players.find(p=>p.id===id)??fail('FORBIDDEN','Du bist nicht Mitglied dieser Lobby.');}
+  private host(lobby:Lobby,id:string){if(lobby.hostId!==id)fail('HOST_ONLY','Nur der Host darf diese Aktion ausführen.');}
+  private waiting(lobby:Lobby){if(lobby.status!=='waiting')fail('MATCH_STARTED','Diese Einstellung ist nur im Warteraum verfügbar.');}
+  private event(lobby:EngineLobby,type:string,message:string,actorId?:string,targetId?:string):void{
+    lobby.events.push({id:randomUUID(),type,at:this.now(),message,actorId,targetId});
+    if(lobby.events.length>200)lobby.events.splice(0,lobby.events.length-200);
+  }
+  private changed(lobby:EngineLobby):EngineLobby{lobby.revision++;return lobby;}
+  /** Rejections may contain durable anti-cheat/safety evidence. The transport must
+   * persist this lobby before returning the error, or fail closed on save failure. */
+  private reject(lobby:EngineLobby,code:string,message:string):never{
+    this.changed(lobby);throw new GameError(code,message,true,lobby.id);
+  }
+  private player(profile:Profile,lobby:EngineLobby):Player {
+    lobby._engine.players[profile.id]=metadata();
+    return {id:profile.id,username:profile.username,avatar_url:profile.avatar_url,ready:false,role:'hider',team:lobby.players.length%2?'B':'A',connected:true,eliminated:false,lastSeen:this.now()};
+  }
+  create(profile:Profile,settings:Partial<Settings>={}):Lobby{
+    if(this.lobbyFor(profile.id))fail('ALREADY_IN_LOBBY','Verlasse zuerst deine aktuelle Lobby.');
+    let code='';const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    do{code=Array.from({length:6},()=>alphabet[randomInt(alphabet.length)]).join('');}while([...this.lobbies.values()].some(l=>l.code===code&&l.status!=='closed'));
+    const normalized=validateSettings({...clone(DEFAULT_SETTINGS),...settings});
+    const lobby:EngineLobby={id:randomUUID(),code,hostId:profile.id,status:'waiting',players:[],settings:normalized,zone:null,createdAt:this.now(),pins:[],events:[],captures:[],revision:1,_engine:{players:{},phase:0,lastTick:this.now(),leftIds:[]}};
+    lobby.players.push(this.player(profile,lobby));this.event(lobby,'lobby_created','Lobby erstellt.',profile.id);this.lobbies.set(lobby.id,lobby);return lobby;
+  }
+  join(code:string,profile:Profile):Lobby{
+    if(typeof code!=='string'||!/^[A-Z2-9]{6}$/.test(code.trim().toUpperCase()))fail('INVALID_CODE','Gib einen sechsstelligen Lobbycode ein.');
+    const lobby=[...this.lobbies.values()].find(l=>l.code===code.trim().toUpperCase()&&l.status!=='closed') as EngineLobby|undefined;
+    if(!lobby)fail('LOBBY_NOT_FOUND','Lobby nicht gefunden.');
+    if(lobby._engine.leftIds.includes(profile.id))fail('MATCH_LEFT','Du hast dieses Match verlassen. Starte ein neues Match.');
+    const existing=lobby.players.find(p=>p.id===profile.id);
+    if(existing){existing.connected=true;existing.lastSeen=this.now();return this.changed(lobby);}
+    if(this.lobbyFor(profile.id))fail('ALREADY_IN_LOBBY','Verlasse zuerst deine aktuelle Lobby.');
+    if(lobby.status==='finished')fail('MATCH_FINISHED','Dieses Match ist beendet.');
+    if(lobby.players.length>=lobby.settings.maxPlayers)fail('LOBBY_FULL','Die Lobby ist voll.');
+    if(lobby.status!=='waiting'&&!lobby.settings.spectatorsAllowed)fail('MATCH_STARTED','Das Match läuft bereits.');
+    const player=this.player(profile,lobby);if(lobby.status!=='waiting')player.role='spectator';
+    lobby.players.push(player);this.event(lobby,'player_joined',`${profile.username} ist beigetreten.`,profile.id);return this.changed(lobby);
+  }
+  setConnected(userId:string,connected:boolean):Lobby|undefined{
+    const lobby=this.lobbyFor(userId) as EngineLobby|undefined;if(!lobby)return;
+    const p=this.member(lobby,userId);if(p.connected===connected)return lobby;
+    p.connected=connected;p.lastSeen=this.now();
+    if(!connected){const meta=lobby._engine.players[userId];meta.lastReliableOutside=false;meta.lastOutsideAt=undefined;meta.outsideFixes=0;delete p.outsideSince;}
+    this.event(lobby,connected?'reconnected':'disconnected',`${p.username}: ${connected?'Verbindung wiederhergestellt':'Verbindung unterbrochen'}.`,userId);return this.changed(lobby);
+  }
+  view(id:string,userId:string):LobbyView{
+    const l=this.get(id);if(l._engine.leftIds.includes(userId))fail('FORBIDDEN','Du hast dieses Match verlassen.');const self=this.member(l,userId);const now=this.now();
+    const canSeePin=(pin:Lobby['pins'][number])=>{
+      if(pin.expiresAt<=now)return false;
+      if(pin.playerId===userId)return true;
+      if(l.status==='finished'||l.status==='closed')return false;
+      if(self.role==='spectator'||self.eliminated)return false;
+      if(l.status==='preparing'||(l._engine.hunterReleaseAt??0)>now)return false;
+      if(pin.role==='hider'){
+        if(!hunting(self))return false;
+        if(l.settings.mode==='team_hunt'&&this.member(l,pin.playerId).team===self.team)return false;
+        if(l.settings.mode==='hide_seek'&&now-pin.createdAt>l.settings.pinVisibilitySeconds*1000)return false;
+        return true;
+      }
+      return pin.role==='zombie'&&l.settings.zombieVisible;
+    };
+    const pins=l.pins.filter(canSeePin);
+    return clone({id:l.id,code:l.code,hostId:l.hostId,status:l.status,
+      players:l.players.map(p=>({id:p.id,username:p.username,avatar_url:p.avatar_url,ready:p.ready,role:p.role,team:p.team,connected:p.connected,eliminated:p.eliminated,infectedAt:p.infectedAt,lastSeen:p.lastSeen})),
+      settings:l.settings,zone:l.zone,activeZone:l.activeZone,createdAt:l.createdAt,startedAt:l.startedAt,endsAt:l.endsAt,pausedAt:l.pausedAt,previousStatus:l.previousStatus,
+      pins,events:l.events,captures:l.captures.filter(c=>c.targetId===userId||c.hunterId===userId),result:l.result,revision:l.revision,
+      self:{...self},serverTime:now});
+  }
+  command(id:string,userId:string,input:Command):Lobby{
+    let command:Command;try{command=validateCommand(input);}catch{fail('INVALID_INPUT','Die Eingabe entspricht nicht den Spielregeln.');}
+    const l=this.get(id),p=this.member(l,userId),now=this.now();
+    if(l._engine.leftIds.includes(userId))fail('FORBIDDEN','Du hast dieses Match verlassen.');
+    if(l.status==='closed')fail('LOBBY_CLOSED','Diese Lobby ist geschlossen.');
+    // A late socket packet must never win a race against the once-per-second tick.
+    if(l.status==='active'&&now>=(l.endsAt??Infinity)){
+      this.evaluate(l);this.reject(l,'MATCH_FINISHED','Das Zeitlimit ist erreicht. Das Ergebnis wurde gespeichert.');
+    }
+    if(l.status==='finished'&&!['leave','close'].includes(command.type))fail('MATCH_FINISHED','Dieses Match ist beendet.');
+    switch(command.type){
+      case 'ready':this.waiting(l);p.ready=command.ready;break;
+      case 'settings':this.host(l,userId);this.waiting(l);if(command.settings.maxPlayers<l.players.length)fail('INVALID_SETTINGS','Das Spielerlimit ist kleiner als die aktuelle Spielerzahl.');l.settings=clone(command.settings);l.players.forEach(p=>p.ready=false);break;
+      case 'zone':this.host(l,userId);this.waiting(l);try{l.zone=validateZone(command.zone);}catch(e){fail('INVALID_ZONE',e instanceof Error?e.message:'Ungültige Zone.');}l.players.forEach(p=>p.ready=false);break;
+      case 'assign':{this.host(l,userId);this.waiting(l);if(command.role==='zombie')fail('INVALID_ROLE','Zombies entstehen erst durch Infektion.');if(command.role==='spectator'&&!l.settings.spectatorsAllowed)fail('INVALID_ROLE','Zuschauer sind deaktiviert.');const target=this.member(l,command.playerId);target.role=command.role;target.team=command.team;target.ready=false;break;}
+      case 'kick':{this.host(l,userId);this.waiting(l);if(command.playerId===userId)fail('INVALID_TARGET','Du kannst dich nicht selbst entfernen.');const target=this.member(l,command.playerId);l.players=l.players.filter(p=>p.id!==target.id);delete l._engine.players[target.id];this.event(l,'player_removed',`${target.username} wurde entfernt.`,userId,target.id);break;}
+      case 'transfer':this.host(l,userId);if(!this.member(l,command.playerId).connected)fail('DISCONNECTED','Der neue Host muss verbunden sein.');l.hostId=command.playerId;this.event(l,'host_changed','Host übertragen.',userId,command.playerId);break;
+      case 'start':this.start(l,userId);break;
+      case 'pause':if(!activeStatuses.has(l.status))fail('NOT_ACTIVE','Das Match läuft nicht.');if(l.status!=='paused'){l.previousStatus=l.status as 'active'|'preparing';l.status='paused';l.pausedAt=now;this.event(l,'emergency_pause',`Notfall-Pause durch ${p.username}. Sicherheit hat Vorrang.`,userId);}break;
+      case 'resume':this.host(l,userId);this.resume(l);break;
+      case 'close':this.host(l,userId);l.status='closed';this.purge(l);this.event(l,'lobby_closed','Lobby geschlossen.',userId);break;
+      case 'leave':this.leave(l,p);break;
+      case 'location':this.location(l,p,command.location,command.publish??false);break;
+      case 'capture':this.capture(l,p,command.targetId,command.code);break;
+      case 'confirm_capture':this.confirmCapture(l,p,command.captureId,command.accept);break;
+      case 'infection_ack':if(p.role!=='zombie'||p.infectedAt===undefined)fail('NOT_INFECTED','Du bist nicht infiziert.');l._engine.players[p.id].infectionAcknowledged=true;this.event(l,'infection_ack','Infektion bestätigt.',userId);break;
+      case 'heal':{this.host(l,userId);if(l.status!=='active'||!l.settings.allowHealing||!this.infectionMode(l))fail('HEALING_DISABLED','Heilung ist nicht verfügbar.');const target=this.member(l,command.playerId);if(target.role!=='zombie'||target.eliminated)fail('INVALID_TARGET','Nur aktive Zombies können geheilt werden.');target.role='hider';delete target.infectedAt;target.captureCode=this.code();target.nextPinAt=now+l.settings.pinIntervalSeconds*1000;l.pins=l.pins.filter(pin=>pin.playerId!==target.id);this.event(l,'healed',`${target.username} wurde geheilt.`,userId,target.id);break;}
+    }
+    if(l.status==='active')this.evaluate(l);
+    return this.changed(l);
+  }
+  private code():string{return String(randomInt(0,1_000_000)).padStart(6,'0');}
+  private start(l:EngineLobby,userId:string):void{
+    this.host(l,userId);this.waiting(l);
+    const participants=l.players.filter(p=>p.role!=='spectator');
+    if(participants.length<2)fail('NOT_ENOUGH_PLAYERS','Mindestens zwei aktive Spieler werden benötigt.');
+    if(participants.some(p=>!p.ready||!p.connected))fail('NOT_READY','Alle aktiven Spieler müssen verbunden und bereit sein.');
+    if(!l.zone?.confirmed)fail('ZONE_REQUIRED','Bestätige zuerst ein sicheres Spielgebiet.');
+    if(l.settings.hunterCount>=participants.length)fail('INVALID_ROLES','Mindestens ein Hider muss übrig bleiben.');
+    if(l.settings.mode==='team_hunt'){
+      if(participants.length<4||l.settings.hunterCount<2)fail('TEAM_REQUIREMENTS','Team Hunt benötigt mindestens vier Spieler und zwei Hunter.');
+      if(l.settings.randomRoles){
+        const randomized=shuffled(participants);randomized.forEach((p,i)=>{p.team=i%2?'B':'A';p.role='hider';});
+        const teams=['A','B'] as const;
+        for(const team of teams){const members=shuffled(participants.filter(p=>p.team===team));members[0].role='hunter';}
+        const extra=shuffled(participants.filter(p=>p.role==='hider'));let remaining=l.settings.hunterCount-2;
+        for(const player of extra)if(remaining>0&&participants.filter(p=>p.team===player.team&&p.role==='hider').length>1){player.role='hunter';remaining--;}
+        if(remaining)fail('INVALID_ROLES','Jedes Team benötigt mindestens einen Hider.');
+      }
+      for(const team of ['A','B'])if(!participants.some(p=>p.team===team&&p.role==='hider')||!participants.some(p=>p.team===team&&p.role==='hunter'))fail('TEAM_REQUIREMENTS','Jedes Team benötigt mindestens einen Hunter und einen Hider.');
+    }else if(l.settings.randomRoles){
+      const hunters=new Set(shuffled(participants).slice(0,l.settings.hunterCount).map(p=>p.id));participants.forEach(p=>p.role=hunters.has(p.id)?'hunter':'hider');
+    }
+    const hunters=participants.filter(p=>p.role==='hunter');
+    if(hunters.length!==l.settings.hunterCount||!participants.some(p=>p.role==='hider'))fail('INVALID_ROLES','Die Rollenverteilung entspricht nicht der Hunter-Anzahl.');
+    if((l.settings.mode==='last_survivor'||l.settings.winCondition==='last_hider')&&participants.filter(p=>p.role==='hider').length<2)fail('NOT_ENOUGH_HIDERS','Last Survivor benötigt mindestens zwei Hider.');
+    if(l.settings.mode==='infection_rush'){l.settings.pinIntervalSeconds=Math.min(l.settings.pinIntervalSeconds,60);l.settings.infectionDelaySeconds=Math.min(l.settings.infectionDelaySeconds,5);}
+    const now=this.now();l.startedAt=now+l.settings.preparationSeconds*1000;l.endsAt=l.startedAt+l.settings.durationSeconds*1000;
+    l._engine.hunterReleaseAt=l.startedAt+l.settings.headStartSeconds*1000;
+    l.status=l.settings.preparationSeconds?'preparing':'active';l.activeZone=clone(l.zone.feature);l.pins=[];l.captures=[];l._engine.phase=0;
+    for(const p of participants){p.eliminated=false;p.captureCode=this.code();p.nextPinAt=l._engine.hunterReleaseAt+l.settings.pinIntervalSeconds*1000;delete p.location;delete p.outsideSince;delete p.infectedAt;l._engine.players[p.id]=metadata();}
+    this.event(l,'match_started','Rollen verteilt. Achte auf deine Umgebung.',userId);
+  }
+  private resume(l:EngineLobby):void{
+    if(l.status!=='paused')fail('NOT_PAUSED','Das Match ist nicht pausiert.');
+    if(l.players.some(p=>playing(p)&&!p.connected))fail('DISCONNECTED','Alle aktiven Spieler müssen wieder verbunden sein.');
+    const now=this.now(),delta=now-(l.pausedAt??now);
+    if(l.startedAt!==undefined)l.startedAt+=delta;if(l.endsAt!==undefined)l.endsAt+=delta;if(l._engine.hunterReleaseAt!==undefined)l._engine.hunterReleaseAt+=delta;
+    for(const p of l.players){if(p.nextPinAt!==undefined)p.nextPinAt+=delta;if(p.infectedAt!==undefined)p.infectedAt+=delta;delete p.outsideSince;const meta=l._engine.players[p.id];meta.lastOutsideAt=undefined;meta.lastReliableOutside=false;meta.outsideFixes=0;}
+    l.pins=l.pins.filter(pin=>pin.expiresAt>now);
+    l.status=l.previousStatus??'active';delete l.pausedAt;delete l.previousStatus;l.captures=[];this.event(l,'match_resumed','Das Match wird fortgesetzt.');
+  }
+  private leave(l:EngineLobby,p:Player):void{
+    l.pins=l.pins.filter(pin=>pin.playerId!==p.id);l.captures=l.captures.filter(c=>c.targetId!==p.id&&c.hunterId!==p.id);
+    if(l.status==='waiting'||l.status==='finished'){l.players=l.players.filter(x=>x.id!==p.id);delete l._engine.players[p.id];}
+    else{p.eliminated=true;p.connected=false;delete p.location;delete p.captureCode;delete p.outsideSince;l._engine.leftIds.push(p.id);}
+    this.event(l,'player_left',`${p.username} hat die Lobby verlassen.`,p.id);
+    if(l.hostId===p.id){const next=l.players.find(x=>x.id!==p.id&&x.connected&&!x.eliminated)??l.players.find(x=>x.id!==p.id&&x.connected);if(next)l.hostId=next.id;else{l.status='closed';this.purge(l);}}
+    if(l.status==='paused'&&l.players.every(x=>!playing(x))) {l.status='closed';this.purge(l);}
+  }
+  private infectionMode(l:Lobby){return l.settings.mode==='zombie'||l.settings.mode==='infection_rush'||l.settings.mode==='custom'&&l.settings.winCondition==='infection';}
+  private location(l:EngineLobby,p:Player,loc:LocationSample,_publish:boolean):void{
+    if(!['preparing','active'].includes(l.status)||!playing(p))fail('LOCATION_DISABLED','Standortfreigabe ist nur im laufenden Match möglich.');
+    const now=this.now(),meta=l._engine.players[p.id],old=p.location;
+    if(Math.abs(now-loc.timestamp)>30_000)fail('STALE_LOCATION','Der GPS-Zeitstempel ist veraltet. Fordere einen neuen Standort an.');
+    if(old&&loc.timestamp<=old.timestamp)fail('REPLAYED_LOCATION','Dieser Standort wurde bereits verarbeitet.');
+    if(loc.accuracy>l.settings.maxAccuracyMeters){meta.unreliableLocation=true;meta.lastReliableOutside=false;meta.lastOutsideAt=undefined;meta.outsideFixes=0;delete p.outsideSince;this.reject(l,'GPS_UNCERTAIN','GPS zu ungenau. Keine Eliminierung oder Standortmeldung; gehe sicher ins Freie.');}
+    if(old&&now-old.timestamp<=60_000){const elapsed=Math.max(0,(now-(meta.lastLocationAt??old.timestamp))/1000);const meters=distance([old.longitude,old.latitude],[loc.longitude,loc.latitude],{units:'meters'});if(meters>Math.max(100,elapsed*15+old.accuracy+loc.accuracy)) {this.event(l,'gps_rejected','Auffälliger GPS-Sprung wurde verworfen.',p.id);meta.unreliableLocation=true;meta.lastReliableOutside=false;meta.lastOutsideAt=undefined;meta.outsideFixes=0;delete p.outsideSince;this.reject(l,'GPS_JUMP','Auffälliger GPS-Sprung. Bitte warte auf eine zuverlässige Ortung.');}}
+    // Trust the receipt clock for deadlines. The client timestamp is only freshness/replay evidence.
+    p.location={...loc};p.lastSeen=now;meta.unreliableLocation=false;meta.lastLocationAt=now;
+    if(l.status==='active')this.observeBoundary(l,p,loc);
+    const canPublish=p.role==='hider'||p.role==='zombie'&&l.settings.zombieGps;
+    if(l.status==='active'&&canPublish&&(p.nextPinAt??Infinity)<=now){
+      if(!l.settings.showOldPins)l.pins=l.pins.filter(pin=>pin.playerId!==p.id);
+      l.pins.push({id:randomUUID(),playerId:p.id,username:p.username,role:p.role,latitude:loc.latitude,longitude:loc.longitude,accuracy:loc.accuracy,createdAt:now,expiresAt:now+l.settings.pinLifetimeSeconds*1000});
+      p.nextPinAt=now+l.settings.pinIntervalSeconds*1000;meta.missedPin=false;this.event(l,'pin_published',`${p.username} hat einen GPS-Pin gemeldet.`,p.id);
+    }
+  }
+  private boundary(l:EngineLobby,loc:LocationSample):'inside'|'outside'|'uncertain'{
+    if(!l.activeZone)return 'uncertain';const pos=point([loc.longitude,loc.latitude]);
+    const polygons=[l.activeZone,...(l.zone?.excluded??[])];
+    const nearBoundary=polygons.some(poly=>poly.geometry.coordinates.some(ring=>pointToLineDistance(pos,lineString(ring),{units:'meters'})<=loc.accuracy+5));
+    if(nearBoundary)return 'uncertain';
+    if(!booleanPointInPolygon(pos,l.activeZone)||l.zone?.excluded.some(zone=>booleanPointInPolygon(pos,zone)))return 'outside';
+    return 'inside';
+  }
+  private observeBoundary(l:EngineLobby,p:Player,loc:LocationSample):void{
+    const now=this.now(),meta=l._engine.players[p.id],state=this.boundary(l,loc);
+    if(state==='outside'){
+      if(meta.lastReliableOutside&&meta.lastOutsideAt!==undefined&&now-meta.lastOutsideAt<=l.settings.gpsToleranceSeconds*1000)meta.outsideAccumulatedMs+=now-meta.lastOutsideAt;
+      meta.lastOutsideAt=now;meta.lastReliableOutside=true;meta.outsideFixes++;p.outsideSince=now-meta.outsideAccumulatedMs;p.outsideElapsed=meta.outsideAccumulatedMs;
+      if(meta.outsideFixes===1)this.event(l,'zone_warning',`${p.username}: außerhalb der Spielzone. Sicher zurückkehren.`,p.id);
+      if(meta.outsideFixes>=2&&meta.outsideAccumulatedMs>=l.settings.outsideGraceSeconds*1000)this.eliminate(l,p,'zone','Toleranzzeit außerhalb der Zone überschritten.');
+    }else{
+      if(state==='inside'&&l.settings.outsideReset)meta.outsideAccumulatedMs=0;
+      meta.lastReliableOutside=false;meta.lastOutsideAt=undefined;meta.outsideFixes=0;delete p.outsideSince;p.outsideElapsed=meta.outsideAccumulatedMs;
+    }
+  }
+  private canHunt(l:EngineLobby,p:Player):void{
+    if(l.status!=='active')fail('NOT_ACTIVE','Fangen ist nur im aktiven Match möglich.');
+    if((l._engine.hunterReleaseAt??0)>this.now())fail('HEAD_START','Der Vorsprung der Hider läuft noch.');
+    if(!hunting(p))fail('INVALID_ROLE','Nur aktive Hunter und Zombies dürfen fangen.');
+    if(!p.connected)fail('DISCONNECTED','Verbinde dich erneut, um zu fangen.');
+    if(p.role==='zombie'&&(p.infectedAt??this.now())+l.settings.infectionDelaySeconds*1000>this.now())fail('INFECTION_DELAY','Die Infektionszeit läuft noch.');
+  }
+  private capture(l:EngineLobby,actor:Player,targetId:string,code?:string):void{
+    this.canHunt(l,actor);const target=this.member(l,targetId);this.validTarget(l,actor,target);
+    const now=this.now(),meta=l._engine.players[actor.id];meta.captureAttempts=meta.captureAttempts.filter(t=>now-t<60_000);
+    if(meta.captureAttempts.length>=6)fail('RATE_LIMIT','Zu viele Fangversuche. Warte eine Minute.');meta.captureAttempts.push(now);
+    if(l.settings.captureMethod==='confirmation'){
+      if(l.captures.some(c=>c.targetId===targetId&&now-c.createdAt<30_000))this.reject(l,'CAPTURE_PENDING','Für diesen Spieler steht bereits eine Fangbestätigung aus.');
+      l.captures.push({id:randomUUID(),hunterId:actor.id,targetId,createdAt:now});this.event(l,'capture_requested',`${actor.username} bittet ${target.username} um Fangbestätigung.`,actor.id,targetId);return;
+    }
+    if(l.settings.captureMethod==='code'){
+      if(!code||!target.captureCode||code.length!==target.captureCode.length||!timingSafeEqual(Buffer.from(code),Buffer.from(target.captureCode)))this.reject(l,'INVALID_CAPTURE_CODE','Der Fangcode ist falsch.');
+    }else{
+      const a=actor.location,b=target.location;
+      if(!a||!b||now-(meta.lastLocationAt??0)>15_000||now-(l._engine.players[target.id].lastLocationAt??0)>15_000||meta.unreliableLocation||l._engine.players[target.id].unreliableLocation||now-a.timestamp>15_000||now-b.timestamp>15_000||a.accuracy>l.settings.maxAccuracyMeters||b.accuracy>l.settings.maxAccuracyMeters)this.reject(l,'GPS_REQUIRED','Beide Spieler benötigen eine aktuelle, genaue GPS-Ortung.');
+      const meters=distance([a.longitude,a.latitude],[b.longitude,b.latitude],{units:'meters'});
+      if(meters+a.accuracy+b.accuracy>l.settings.captureRadiusMeters)this.reject(l,'TOO_FAR','Die GPS-Nähe ist unter Berücksichtigung der Genauigkeit nicht bestätigt.');
+    }
+    this.finishCapture(l,actor,target);
+  }
+  private validTarget(l:Lobby,actor:Player,target:Player):void{
+    if(target.id===actor.id||target.role!=='hider'||target.eliminated)fail('INVALID_TARGET','Dieser Spieler kann nicht gefangen werden.');
+    if(l.settings.mode==='team_hunt'&&actor.team===target.team)fail('SAME_TEAM','Du kannst keine Hider aus deinem Team fangen.');
+  }
+  private confirmCapture(l:EngineLobby,p:Player,id:string,accept:boolean):void{
+    const index=l.captures.findIndex(c=>c.id===id);if(index<0)fail('CAPTURE_NOT_FOUND','Fangbestätigung nicht gefunden.');
+    const request=l.captures[index];if(request.targetId!==p.id)fail('FORBIDDEN','Nur der betroffene Hider kann den Fang bestätigen.');
+    if(this.now()-request.createdAt>30_000){l.captures.splice(index,1);this.reject(l,'CAPTURE_EXPIRED','Die Fangbestätigung ist abgelaufen.');}
+    if(!accept){l.captures.splice(index,1);this.event(l,'capture_rejected',`${p.username} hat den Fang abgelehnt.`,p.id);return;}
+    const hunter=this.member(l,request.hunterId);this.canHunt(l,hunter);this.validTarget(l,hunter,p);l.captures.splice(index,1);this.finishCapture(l,hunter,p);
+  }
+  private finishCapture(l:EngineLobby,actor:Player,target:Player):void{
+    l.captures=l.captures.filter(c=>c.targetId!==target.id);l.pins=l.pins.filter(pin=>pin.playerId!==target.id);delete target.captureCode;
+    this.event(l,'capture',`${actor.username} hat ${target.username} gefangen.`,actor.id,target.id);
+    if(this.infectionMode(l)){
+      target.role='zombie';target.infectedAt=this.now();target.nextPinAt=this.now()+l.settings.pinIntervalSeconds*1000;delete target.outsideSince;
+      l._engine.players[target.id]=metadata();this.event(l,'infection',`${target.username} wurde infiziert.`,actor.id,target.id);
+    }else this.eliminate(l,target,'captured','Gefangen.',actor.id);
+  }
+  private eliminate(l:EngineLobby,p:Player,reason:string,message:string,actorId?:string):void{
+    if(p.eliminated)return;p.eliminated=true;delete p.location;delete p.captureCode;delete p.outsideSince;delete p.nextPinAt;
+    l.pins=l.pins.filter(pin=>pin.playerId!==p.id);l.captures=l.captures.filter(c=>c.targetId!==p.id&&c.hunterId!==p.id);this.event(l,'elimination',`${p.username}: ${message}`,actorId??p.id,p.id);
+    // No coordinate or raw GPS evidence enters the public event log.
+    if(reason==='zone')this.event(l,'zone_elimination','Zone serverseitig mit mehreren genauen Ortungen geprüft.',undefined,p.id);
+  }
+  private purge(l:EngineLobby):void{l.pins=[];l.captures=[];for(const p of l.players){delete p.location;delete p.captureCode;delete p.outsideSince;delete p.nextPinAt;}}
+  private finish(l:EngineLobby,winner:string,reason:string):void{
+    l.result={winner,reason,endedAt:this.now(),survivors:l.players.filter(p=>playing(p)&&p.role==='hider').map(p=>p.id)};l.status='finished';this.purge(l);this.event(l,'match_finished',reason);
+  }
+  private evaluate(l:EngineLobby):void{
+    const hiders=l.players.filter(p=>playing(p)&&p.role==='hider'),hunters=l.players.filter(hunting),timeout=this.now()>=(l.endsAt??Infinity);
+    if(l.settings.mode==='team_hunt'){
+      const a=hiders.filter(p=>p.team==='A').length,b=hiders.filter(p=>p.team==='B').length;
+      if(a===0&&b===0)this.finish(l,'draw','Keine Hider mehr im Spiel. Unentschieden.');
+      else if(a===0)this.finish(l,'team_B','Team B hat alle gegnerischen Hider gefangen.');
+      else if(b===0)this.finish(l,'team_A','Team A hat alle gegnerischen Hider gefangen.');
+      else if(timeout)this.finish(l,a===b?'draw':a>b?'team_A':'team_B',a===b?'Zeitlimit: Gleichstand.':'Zeitlimit: Das Team mit mehr verbliebenen Hidern gewinnt.');
+      return;
+    }
+    if(!hiders.length){this.finish(l,this.infectionMode(l)?'infected':'hunters',this.infectionMode(l)?'Alle Hider wurden infiziert oder sind ausgeschieden.':'Alle Hider wurden gefangen oder sind ausgeschieden.');return;}
+    if((l.settings.mode==='last_survivor'||l.settings.mode==='custom'&&l.settings.winCondition==='last_hider')&&hiders.length===1){this.finish(l,hiders[0].id,`${hiders[0].username} ist der letzte Hider.`);return;}
+    if(!hunters.length){this.finish(l,'hiders','Keine aktiven Hunter mehr. Die Hider gewinnen.');return;}
+    if(timeout)this.finish(l,'hiders','Zeitlimit erreicht. Die verbliebenen Hider gewinnen.');
+  }
+  tick():Lobby[]{
+    const changes:Lobby[]=[],now=this.now();
+    for(const record of this.lobbies.values()){
+      const l=record as EngineLobby;
+      const lastActivity=Math.max(l.createdAt,l.events.at(-1)?.at??0,...l.players.map(p=>p.lastSeen));
+      if(['closed','finished'].includes(l.status)&&now-lastActivity>24*60*60*1000){this.lobbies.delete(l.id);continue;}
+      if(l.status==='paused'&&now-lastActivity>24*60*60*1000){l.status='closed';this.purge(l);this.event(l,'lobby_expired','Inaktives pausiertes Match nach 24 Stunden geschlossen.');changes.push(this.changed(l));continue;}
+      if(!['waiting','preparing','active','paused'].includes(l.status))continue;let changed=false;
+      if(now-l.createdAt>24*60*60*1000&&l.status==='waiting'){l.status='closed';this.purge(l);this.event(l,'lobby_expired','Inaktive Lobby nach 24 Stunden geschlossen.');changes.push(this.changed(l));continue;}
+      if(l.status==='preparing'&&now>=(l.startedAt??Infinity)){l.status='active';this.event(l,'match_active','Das Match läuft.');changed=true;}
+      if(l.status==='active'||l.status==='preparing'){
+        for(const p of l.players.filter(playing))if(!p.connected&&now-p.lastSeen>=l.settings.disconnectGraceSeconds*1000){
+          if(l.settings.disconnectBehavior==='pause'){l.previousStatus=l.status as 'active'|'preparing';l.status='paused';l.pausedAt=now;this.event(l,'disconnect_pause','Match pausiert: Ein Spieler ist nicht erreichbar.',p.id);changed=true;break;}
+          else{this.eliminate(l,p,'disconnect','Verbindung nach Ablauf der Wiederverbindungsfrist getrennt.');changed=true;}
+        }
+      }
+      if(l.status==='active'){
+        if(l.settings.mode==='apocalypse'||l.settings.mode==='custom'){
+          const elapsed=(now-(l.startedAt??now))/1000;let phase=0;l.settings.phases.forEach((p,i)=>{if(elapsed>=p.afterSeconds)phase=i;});
+          if(phase!==l._engine.phase){
+            const scaled=transformScale(clone(l.zone!.feature),l.settings.phases[phase].scale);
+            const clipped=intersect(featureCollection([scaled,l.zone!.feature]));
+            if(!clipped){l.previousStatus='active';l.status='paused';l.pausedAt=now;this.event(l,'unsafe_zone','Zone konnte nicht sicher verkleinert werden. Match pausiert.');}
+            else{l.activeZone=clipped.geometry.type==='Polygon'?clipped as Feature<Polygon>:clipped.geometry.coordinates.map(c=>polygon(c)).sort((a,b)=>area(b)-area(a))[0];l._engine.phase=phase;this.event(l,'zone_shrunk',`Zone verkleinert: Phase ${phase+1}.`);for(const p of l.players){delete p.outsideSince;const m=l._engine.players[p.id];m.outsideFixes=0;m.lastReliableOutside=false;m.lastOutsideAt=undefined;}}
+            changed=true;
+          }
+        }
+        for(const p of l.players.filter(playing)){
+          const meta=l._engine.players[p.id];
+          if(p.outsideSince!==undefined&&(!p.location||now-Math.min(p.location.timestamp,meta.lastLocationAt??0)>Math.min(15,l.settings.gpsToleranceSeconds)*1000)){delete p.outsideSince;meta.lastReliableOutside=false;meta.lastOutsideAt=undefined;meta.outsideFixes=0;changed=true;}
+          // Elimination requires a second/current accurate GPS sample in observeBoundary, never a blind timer tick.
+          if(p.role==='hider'&&p.nextPinAt!==undefined&&now>p.nextPinAt+l.settings.gpsToleranceSeconds*1000&&!meta.missedPin){meta.missedPin=true;this.event(l,'gps_due',`${p.username}: GPS-Pin überfällig. App im Vordergrund öffnen.`,p.id);changed=true;}
+        }
+        const pins=l.pins.filter(pin=>pin.expiresAt>now),captures=l.captures.filter(c=>now-c.createdAt<30_000);if(pins.length!==l.pins.length||captures.length!==l.captures.length){l.pins=pins;l.captures=captures;changed=true;}
+        const before=l.status;this.evaluate(l);if(l.status!==before)changed=true;
+      }
+      l._engine.lastTick=now;if(changed)changes.push(this.changed(l));
+    }
+    return changes;
+  }
+}

@@ -1,0 +1,37 @@
+name: Validate MANHUNT
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Run isolated browser multiplayer tests
+        run: |
+          export PLAYWRIGHT_CHROMIUM_PATH=$(node --input-type=module -e "import { chromium } from '@playwright/test'; console.log(chromium.executablePath())")
+          npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-test-report
+          path: playwright-report/
+          retention-days: 7
