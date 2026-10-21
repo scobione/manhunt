@@ -4,7 +4,7 @@ test('production landing, all modes and privacy pages render without browser err
  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
  await page.goto('/');await expect(page.getByRole('heading',{name:'Raus aus dem Alltag.',exact:true})).toBeVisible();
  await expect(page.getByText('Die Spielzentrale wird eingerichtet.')).toBeVisible();
- await page.screenshot({path:'test-results/public-desktop.png',fullPage:true});
+ await page.screenshot({path:'test-results-public/public-desktop.png',fullPage:true});
  await page.goto('/modes');await expect(page.locator('.all-modes article')).toHaveCount(8);
  await page.goto('/login');await expect(page.getByTestId('test-login')).toHaveCount(0);
  await page.getByRole('button',{name:'Mit Google fortfahren'}).click();await expect(page.getByRole('status')).toContainText('noch nicht eingerichtet');
@@ -28,7 +28,7 @@ test('public zone editor creates, edits, confirms and exports actual GeoJSON',as
  await page.getByRole('button',{name:'Lokal speichern',exact:true}).click();
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Zone als GeoJSON herunterladen'}).click();expect((await download).suggestedFilename()).toBe('manhunt-zone.geojson');
  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('manhunt:planned-zone')!).feature.geometry.type)).toBe('Polygon');
- await page.screenshot({path:'test-results/public-zone-editor.png',fullPage:true});expect(errors).toEqual([]);expect([...diagnostics].some(x=>x.includes('Worker failed to load'))).toBe(false);if([...diagnostics].some(x=>x.includes('ERR_CERT_AUTHORITY_INVALID')))console.log('External tile HTTPS remains unverified: environment CA is not trusted by Chromium.');
+ await page.screenshot({path:'test-results-public/public-zone-editor.png',fullPage:true});expect(errors).toEqual([]);expect([...diagnostics].some(x=>x.includes('Worker failed to load'))).toBe(false);if([...diagnostics].some(x=>x.includes('ERR_CERT_AUTHORITY_INVALID')))console.log('External tile HTTPS remains unverified: environment CA is not trusted by Chromium.');
 });
 test('mobile production layout and PWA metadata work without test login',async({page})=>{
  await page.setViewportSize({width:390,height:844});await page.goto('/');
@@ -39,5 +39,5 @@ test('mobile production layout and PWA metadata work without test login',async({
  await page.getByRole('checkbox',{name:/Animationen reduzieren/}).check();expect(await page.locator('html').getAttribute('data-reduced-motion')).toBe('true');
  const manifest=await page.request.get('/manifest.webmanifest');expect(manifest.ok()).toBe(true);expect((await manifest.json()).display).toBe('standalone');
  await page.goto('/login');await expect(page.getByTestId('test-login')).toHaveCount(0);
- await page.screenshot({path:'test-results/public-mobile.png',fullPage:true});
+ await page.screenshot({path:'test-results-public/public-mobile.png',fullPage:true});
 });

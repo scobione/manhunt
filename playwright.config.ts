@@ -41,10 +41,10 @@ export default defineConfig({
       },
     },
     {
-      command: 'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173 --strictPort --mode test',
+      command: 'node node_modules/vite/bin/vite.js build --mode test --outDir .test-dist && node node_modules/vite/bin/vite.js preview --mode test --outDir .test-dist --host 127.0.0.1 --port 5173 --strictPort',
       url: 'http://127.0.0.1:5173',
       reuseExistingServer: false,
-      timeout: 30_000,
+      timeout: 90_000,
       env: {
         VITE_TEST_AUTH: 'true',
         VITE_SUPABASE_URL: '',

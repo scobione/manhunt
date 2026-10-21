@@ -57,7 +57,7 @@ PLAYWRIGHT_CHROMIUM_PATH="$(node --input-type=module -e "import { chromium } fro
 npx playwright test -c playwright.public.config.ts
 ```
 
-Unter Linux wird standardmäßig `/usr/bin/chromium` genutzt; `PLAYWRIGHT_CHROMIUM_PATH` überschreibt den Pfad. Der erste Browser-Testlauf startet eine isolierte Test-API und Vite im Testmodus selbst. Kein produktiver Server darf dabei auf Port 3001/5173 laufen.
+Unter Linux wird standardmäßig `/usr/bin/chromium` genutzt; `PLAYWRIGHT_CHROMIUM_PATH` überschreibt den Pfad. Der erste Browser-Testlauf startet eine isolierte Test-API und einen gebauten Frontend-Teststand ohne Entwicklungs-HMR selbst. Kein produktiver Server darf dabei auf Port 3001/5173 laufen.
 
 **Testidentitäten und simulierte GPS-Koordinaten existieren ausschließlich in automatisierten Tests.** Der Backend-Bypass setzt gleichzeitig `NODE_ENV=test` und `TEST_AUTH=true` voraus. Im Frontend sind zusätzlich der Vite-Modus `test` und `VITE_TEST_AUTH=true` notwendig. Ein Produktionsserver verweigert den Start mit aktiviertem `TEST_AUTH`.
 

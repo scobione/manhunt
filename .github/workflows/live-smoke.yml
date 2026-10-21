@@ -31,5 +31,5 @@ jobs:
         if: always()
         with:
           name: published-frontend-screenshots
-          path: test-results/
+          path: test-results-public/
           retention-days: 7

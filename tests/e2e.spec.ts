@@ -87,8 +87,8 @@ async function prepareMatch(host: Actor, others: Actor[], mode: Mode = 'normal',
   await expect.poll(async () => (await view(host))?.code).toMatch(/^[A-Z0-9]{6}$/);
   const lobby = await view(host);
   for (const guest of others) {
-    await guest.page.goto('/join');
-    await guest.page.getByLabel('Lobby-Code', { exact: true }).fill(lobby.code);
+    await guest.page.goto(`/join?code=${lobby.code}`);
+    await expect(guest.page.getByLabel('Lobby-Code', { exact: true })).toHaveValue(lobby.code);
     await guest.page.getByRole('button', { name: 'Lobby beitreten', exact: true }).click();
     await expect.poll(async () => (await view(guest))?.code).toBe(lobby.code);
   }

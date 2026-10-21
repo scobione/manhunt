@@ -1,11 +1,13 @@
 node_modules/
 dist/
 dist-server/
+.test-dist/
 .env
 .env.*
 !.env.example
 playwright-report/
 test-results/
+test-results-public/
 coverage/
 *.log
 .DS_Store
