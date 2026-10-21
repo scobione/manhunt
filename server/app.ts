@@ -1,5 +1,6 @@
 import express, { type ErrorRequestHandler, type RequestHandler } from 'express';
 import { createServer } from 'node:http';
+import { isIP } from 'node:net';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
@@ -200,8 +201,14 @@ export async function createBackend(options:BackendOptions={}){
   io.use(async(socket,next)=>{
     try{
       requireReady();
-      limiter.take(`connect:${socket.handshake.address}`,60,60_000);
+      // A 40-person group can share one NAT and reconnect together. On Render,
+      // use the final forwarded hop only under the same explicit proxy trust as Express.
+      const forwarded=socket.handshake.headers['x-forwarded-for'];
+      const candidate=process.env.TRUST_PROXY==='1'&&typeof forwarded==='string'?forwarded.split(',').at(-1)!.trim():'';
+      const address=isIP(candidate)?candidate:socket.handshake.address;
+      limiter.take(`connect-ip:${address}`,240,60_000);
       const user=await authenticate(socket.handshake.auth?.token,supabase);
+      limiter.take(`connect-user:${user.id}`,20,60_000);
       if((socketsByUser.get(user.id)?.size??0)>=6)throw new HttpError(429,'Zu viele aktive Verbindungen für dieses Konto.');
       socket.data.identity=user;socket.data.profile=await repo().getProfile(user);next();
     }catch(error){next(new Error(safeMessage(error)));}

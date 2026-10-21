@@ -1,16 +1,17 @@
 # Verifikation — 21.10.2026
 
-Die folgenden Prüfungen wurden in der Entwicklungsumgebung tatsächlich ausgeführt. Kein echter Google-Login, kein reales Outdoor-GPS und keine Supabase-/Render-Bereitstellung werden daraus abgeleitet.
+Die folgenden Prüfungen wurden in der Entwicklungsumgebung und in GitHub Actions tatsächlich ausgeführt. Kein echter Google-Login, kein reales Outdoor-GPS und keine Supabase-/Render-Bereitstellung werden daraus abgeleitet.
 
 | Prüfung | Ergebnis |
 | --- | --- |
 | TypeScript `npm run typecheck` | erfolgreich |
 | Produktionsbuild `npm run build` | erfolgreich; React/Vite-Frontend und Node-Bundle erstellt |
 | Engine-Regressionsfälle | 54 bestanden |
-| Authentifizierte REST-/Socket-Integration | 16 bestanden |
+| Authentifizierte REST-/Socket-Integration | 18 bestanden |
 | Unveränderte SQL-Migration / PostgreSQL-RLS | 10 bestanden |
 | Chromium mit 2–3 getrennten Browser-Sitzungen | 8 Szenarien bestanden |
 | Chromium gegen Produktionsbundle ohne Testauthentifizierung | 3 Szenarien bestanden |
+| Chromium gegen die veröffentlichte HTTPS-Website | 3 Szenarien bestanden; Screenshots als GitHub-Artefakt gespeichert |
 | `npm audit` einschließlich Entwicklungsabhängigkeiten | 0 gemeldete Advisories |
 | Scan auf bekannte Secret-/Privatschlüssel-Muster | keine Treffer; nur `.env.example` eingecheckt |
 
@@ -26,6 +27,8 @@ Die folgenden Prüfungen wurden in der Entwicklungsumgebung tatsächlich ausgef�
 
 **Produktionsbundle:** Startseite, acht Modi, ehrlicher Hinweis auf fehlende Dienste, fehlende Testanmeldung, Datenschutz/Sicherheit, Mobilnavigation, PWA-Manifest, reduzierte Animationen und tatsächliches Zeichnen/Speichern/Exportieren von Zonen. Der MapLibre-Worker wird lokal gebündelt, damit kein fehlender Workerpfad nach dem Vite-Build entsteht. Der Karten-Code wird erst auf den benötigten Seiten geladen.
 
+**Öffentliche Website:** [MANHUNT](https://manhunt-fieldgame.scobione.chatgpt.site) wurde erfolgreich veröffentlicht. Der [Live-Browserlauf vom 21.10.2026](https://github.com/scobione/manhunt/actions/runs/39652392680) hat alle drei öffentlichen Szenarien mit Chromium auf GitHub ausgeführt: Desktop, Zonenzeichnen/Export und Mobilansicht. Der gespeicherte Screenshot des Zonen-Editors zeigt geladene OSM-Kacheln, die bestätigte Zone und die Attribution. Direkte HTTPS-Aufrufe einschließlich `/zone`, `/auth/callback`, `/lobby/settings` und `/join?code=…` liefern die App. Elf ausgelieferte JS-/CSS-/Worker-/PWA-Dateien wurden byteweise mit dem getesteten Build verglichen. Geprüfter GitHub-Quellstand: `aa9e979140325e4ba3326848ff3028902d0ae2a9`.
+
 ## Festgestellte und behobene Fehler
 
 - Private Supabase-Avatarablage war mit öffentlichen Objektadressen vermischt; nun eigene Objektpfade und signierte Leseadressen.
@@ -35,10 +38,13 @@ Die folgenden Prüfungen wurden in der Entwicklungsumgebung tatsächlich ausgef�
 - MapLibre 6 benötigt einen ausdrücklich gebündelten Worker; der Produktionsbuild enthält ihn jetzt.
 - Bekannte MapLibre-/Vitest-Abhängigkeitsadvisories wurden durch Updates beseitigt.
 - Veraltete pausierte Spielzustände werden vor Wiederherstellung bereinigt und auch aus dem Speicher entfernt.
+- Direktaufrufe auf dem Static Host lieferten zunächst 404. Der Build erzeugt nun für jede feste App-Route einen HTML-Einstieg; Einladungen nutzen einen Code-Queryparameter.
+- Der Entwicklungsserver störte einzelne Offline-Tests durch HMR-Neuladungen. Mehrspieler-E2E nutzt nun einen separat gebauten Teststand mit eigener API, ohne HMR. Produktionsprüfungen haben getrennte Artefaktverzeichnisse und keinen Test-API-Proxy.
+- Ein gezielter Regressionstest reproduzierte ein zu kleines IP-Verbindungsbudget für 40 Personen mit Wiederverbindung im selben Netzwerk. Der Transport kombiniert nun ein Gruppenbudget pro IP mit einem zusätzlichen Limit pro verifiziertem Konto. Die CI wiederholt fehlgeschlagene Browserfälle nicht automatisch.
 
 ## Verbleibende Verifikationsgrenzen
 
-- Chromium vertraut der Entwicklungsumgebungs-Proxy-CA derzeit nicht. Externe HTTPS-Kartenkacheln scheitern deshalb im Testbrowser an `ERR_CERT_AUTHORITY_INVALID`. Die lokale Karte/GeoJSON-Interaktion ist geprüft; der externe Tile-Download ist nicht erfolgreich verifiziert. Eine zusätzliche CA-Vertrauensänderung wurde von der automatischen Freigabeprüfung abgelehnt und nicht durchgeführt.
+- Das lokale Chromium vertraut der Entwicklungsumgebungs-Proxy-CA nicht und meldet bei externem HTTPS `ERR_CERT_AUTHORITY_INVALID`. Eine zusätzliche CA-Vertrauensänderung wurde von der automatischen Freigabeprüfung abgelehnt und nicht durchgeführt. Die öffentliche Website und das Laden von OSM-Kacheln wurden anschließend erfolgreich mit dem regulären Chromium-Runner von GitHub geprüft, ohne TLS-Prüfungen abzuschalten.
 - Direkte HTTPS-Terminalanfragen funktionieren mit der vorhandenen System-Vertrauenskette. Der OSM-Tile-Dienst kann Anfragen der gemeinsam genutzten Entwicklungsumgebung zusätzlich gemäß seiner Nutzungsrichtlinie blockieren. Es wird keine Tile-Sperre umgangen.
 - Supabase, Google Cloud und Render werden gemäß Projektinhaber später eingerichtet. Deshalb sind OAuth, reale Storage-Uploads, Produktions-RLS und Live-Multiplayer noch offen.
 - Kein Zugriff auf echte iPhones/Android-Geräte: Homescreen-Installation, Betriebssystem-Push, reale Positionsgenauigkeit und Verhalten bei gesperrtem Bildschirm sind nicht physisch getestet.

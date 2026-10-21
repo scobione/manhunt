@@ -31,6 +31,16 @@ const send=(socket:Socket,command:Command)=>ack(socket,'lobby:command',{command}
 async function match(){await profiles();const a=await connect(alice),b=await connect(bob);const lobby=await ack(a,'lobby:create',{settings:{...DEFAULT_SETTINGS,randomRoles:false,preparationSeconds:0,headStartSeconds:0,captureMethod:'code'}});await ack(b,'lobby:join',{code:lobby.code});await send(a,{type:'zone',zone:{feature:circle([13.4,52.5],.5),excluded:[],confirmed:true,name:'ISOLATED TEST ZONE'}});await send(a,{type:'assign',playerId:alice.id,role:'hunter',team:'A'});await send(a,{type:'ready',ready:true});await send(b,{type:'ready',ready:true});await send(a,{type:'start'});return{a,b,lobby};}
 
 describe('authenticated API and Socket.IO transport',()=>{
+ it('lets a full group on a shared network reconnect without exhausting the IP budget',async()=>{
+  const group=Array.from({length:40},(_,index)=>({id:randomUUID(),name:`Shared_Network_${index}`}));
+  for(const person of group)(await connect(person)).disconnect();
+  for(const person of group)(await connect(person)).disconnect();
+ });
+ it('limits connection bursts per verified identity without blocking another player',async()=>{
+  for(let i=0;i<20;i++)(await connect(alice)).disconnect();
+  await expect(connect(alice)).rejects.toThrow(/Zu viele/);
+  const other=await connect(bob);expect(other.connected).toBe(true);
+ });
  it('rejects missing or malformed credentials before returning a profile',async()=>{
   await request(backend.app).get('/api/profile').expect(401);
   await request(backend.app).get('/api/profile').set('Authorization','Bearer test:invalid:no').expect(401);
