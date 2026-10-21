@@ -1,0 +1,35 @@
+name: Published frontend smoke
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/live-smoke.yml]
+permissions:
+  contents: read
+concurrency:
+  group: live-frontend-smoke
+  cancel-in-progress: true
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Open the published frontend in Chromium
+        env:
+          PUBLIC_URL: https://manhunt-fieldgame.scobione.chatgpt.site
+        run: |
+          export PLAYWRIGHT_CHROMIUM_PATH=$(node --input-type=module -e "import { chromium } from '@playwright/test'; console.log(chromium.executablePath())")
+          npm run test:public
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: published-frontend-screenshots
+          path: test-results/
+          retention-days: 7

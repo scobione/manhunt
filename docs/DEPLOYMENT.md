@@ -56,4 +56,6 @@ OSM-Kacheln benötigen dauerhaft sichtbare Attribution. Kein Offline-Kachelpaket
 
 ## Sites-Veröffentlichung
 
-Eine zusätzlich veröffentlichte Static Site enthält dieselbe React-Oberfläche. Solange Supabase und das Node-Backend fehlen, sind Google-Anmeldung und Online-Spiele dort nicht verfügbar. Das ist kein Ersatz für das vollständige Render/Supabase-Deployment. Der Zonenplaner und die öffentlichen Informationsseiten funktionieren ohne Konto. Es werden keine Spieler, Statistiken oder GPS-Signale simuliert.
+Die Static Site unter [manhunt-fieldgame.scobione.chatgpt.site](https://manhunt-fieldgame.scobione.chatgpt.site) wurde am 21.10.2026 veröffentlicht und enthält dieselbe React-Oberfläche. Solange Supabase und das Node-Backend fehlen, sind Google-Anmeldung und Online-Spiele dort nicht verfügbar. Das ist kein Ersatz für das vollständige Render/Supabase-Deployment. Der Zonenplaner und die öffentlichen Informationsseiten funktionieren ohne Konto. Es werden keine Spieler, Statistiken oder GPS-Signale simuliert.
+
+Der GitHub-Workflow **Published frontend smoke** öffnet diese HTTPS-Adresse mit Chromium und speichert Screenshots. Er lässt sich unter Actions erneut starten. Seine Prüfungen beschreiben die Oberfläche vor Anschluss der Dienste; nach Aktivierung von OAuth sind die Erwartungen an den Einrichtungshinweis in `tests/public.spec.ts` anzupassen und authentifizierte Live-Prüfungen zu ergänzen.

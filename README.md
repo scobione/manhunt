@@ -4,6 +4,8 @@
 
 > **Stand:** Die Anwendung ist implementiert und lokal mit isolierten Mehrspieler-Browsertests geprüft. Supabase, Google OAuth und Render sind auf Wunsch des Projektinhabers noch nicht verbunden. Eine veröffentlichte Oberfläche ist deshalb noch kein online spielbarer Multiplayer-Dienst. Keine Gastkonten, künstlichen Spieler oder simulierten Standorte im Produktivbetrieb.
 
+**Veröffentlichte Oberfläche:** [MANHUNT öffnen](https://manhunt-fieldgame.scobione.chatgpt.site). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Der öffentliche Build enthält Zonenplanung, Spielmodi und Informationen; Online-Spiele werden nach Anschluss der Dienste verfügbar.
+
 ## Funktionen
 
 - **Identität & Crew:** Supabase Google OAuth mit PKCE, eindeutige Benutzernamen, private Avatar-Uploads, Freundescodes, Anfragen, Blockieren, Einladungen, Datenschutz bei Online-Status, Benachrichtigungen, Profile und Matchhistorie.
