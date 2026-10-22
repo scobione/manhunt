@@ -2,7 +2,7 @@
 
 **Deine Stadt. Dein Spielfeld.** Ein quelloffenes GPS-Verfolgungsspiel für private Gruppen — React, TypeScript, Socket.IO, Supabase und MapLibre. MIT-lizenziert.
 
-> **Stand:** Die Anwendung ist implementiert und lokal mit isolierten Mehrspieler-Browsertests geprüft. Supabase Free in Frankfurt ist eingerichtet: 21 Tabellen mit RLS und private Avatarablage. Google OAuth ist noch deaktiviert und der Spielserver noch nicht veröffentlicht. Eine veröffentlichte Oberfläche ist deshalb noch kein online spielbarer Multiplayer-Dienst. Keine Gastkonten, künstlichen Spieler oder simulierten Standorte im Produktivbetrieb.
+> **Stand:** Die Anwendung ist implementiert und lokal mit isolierten Mehrspieler-Browsertests geprüft. Supabase Free in Frankfurt ist eingerichtet: 21 Tabellen mit RLS und private Avatarablage. Google OAuth ist aktiviert und mit dem Frontend verbunden; der Spielserver ist noch nicht veröffentlicht. Eine bestätigte Google-Sitzung funktioniert unabhängig vom Spielserver. Eine veröffentlichte Oberfläche ist deshalb noch kein online spielbarer Multiplayer-Dienst. Keine Gastkonten, künstlichen Spieler oder simulierten Standorte im Produktivbetrieb.
 
 **Veröffentlichte Oberfläche:** [MANHUNT öffnen](https://manhunt-fieldgame.scobione.chatgpt.site). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Der öffentliche Build enthält Zonenplanung, Spielmodi und Informationen; Online-Spiele werden nach Anschluss der Dienste verfügbar.
 
@@ -28,7 +28,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Frontend: `http://localhost:5173`. API: `http://localhost:3001`. Vite leitet `/api` und `/socket.io` an das Backend weiter. Ohne Supabase bleibt die Anmeldung deaktiviert; Spielmodi, Sicherheitsinformationen und Zonenplanung sind bereits nutzbar.
+Frontend: `http://localhost:5173`. API: `http://localhost:3001`. Vite leitet `/api` und `/socket.io` an das Backend weiter. Der Produktionsbuild verwendet die öffentliche Projektkonfiguration unter `src/public-config.json`; eigene `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` überschreiben sie. Entwicklungs- und Testbuilds verwenden diese Produktionsvorgabe nicht. Ohne Supabase-Konfiguration bleibt die Anmeldung deaktiviert; Spielmodi, Sicherheitsinformationen und Zonenplanung sind bereits nutzbar.
 
 ### Umgebungsvariablen
 
@@ -44,7 +44,7 @@ Frontend: `http://localhost:5173`. API: `http://localhost:3001`. Vite leitet `/a
 | `VITE_OPERATOR_NAME/ADDRESS/EMAIL` | Frontend | tatsächliche Betreiberangaben |
 | `VAPID_PUBLIC_KEY/PRIVATE_KEY/SUBJECT` | Backend | optionale eigene Web-Push-Konfiguration |
 
-Die Google-OAuth-Client-ID und das Client-Secret werden bei Supabase hinterlegt. Das Secret gehört weder in dieses Repository noch in eine `VITE_`-Variable.
+Die Google-OAuth-Client-ID und das Client-Secret werden bei Supabase hinterlegt. Das Secret gehört weder in dieses Repository noch in eine `VITE_`-Variable. `src/public-config.json` enthält ausschließlich Projekt-URL und Publishable-Key: Dieser Schlüssel ist ausdrücklich für Browser vorgesehen und erlaubt keine privilegierten Serverzugriffe. Service-Role- und OAuth-Secrets sind dort verboten.
 
 ## Tests
 

@@ -11,7 +11,8 @@ Die folgenden Prüfungen wurden in der Entwicklungsumgebung und in GitHub Action
 | SQL-Migrationen / PostgreSQL-RLS | 10 bestanden |
 | Zonenimport, Export und fehlerhafte Dateien | 10 bestanden |
 | Chromium mit 2–3 getrennten Browser-Sitzungen | 8 Szenarien bestanden |
-| Chromium gegen Produktionsbundle ohne Testauthentifizierung | 3 Szenarien bestanden |
+| Chromium gegen Produktionsbundle, öffentliche Seiten | 3 Szenarien bestanden |
+| Chromium mit isolierten OAuth-Sitzungsfixtures | 3 Szenarien bestanden |
 | Chromium gegen die veröffentlichte HTTPS-Website | 3 Szenarien bestanden; Screenshots als GitHub-Artefakt gespeichert |
 | `npm audit` einschließlich Entwicklungsabhängigkeiten | 0 gemeldete Advisories |
 | Scan auf bekannte Secret-/Privatschlüssel-Muster | keine Treffer; nur `.env.example` eingecheckt |
@@ -20,7 +21,7 @@ Die folgenden Prüfungen wurden in der Entwicklungsumgebung und in GitHub Action
 
 **Engine:** alle acht Spielmodi; zufällige und manuelle Rollen; Rollen-/Hostberechtigungen; Vorbereitung/Vorsprung; Pin-Intervalle, Sichtfenster und Ablauf; Schutz fremder Koordinaten und Fangcodes; Fangbestätigung, Fangcode, Näheprüfung, doppelte Fänge und Fehlversuche; serverseitige Infektion; Teamziele und Siegbedingungen; Zeitlimits; Zonen und Schrumpfen; Grenzunsicherheit, alte GPS-Proben, Sprünge und serverseitige Empfangszeit; Notfallpause, Wiederaufnahme, Unterbrechungen; Löschung veralteter privater Zustände.
 
-**API/Socket:** anonyme Anfragen, beide Testmodus-Schranken, Supabase-Verifikationsfehler und abgelaufene Token, Profilisolation, eindeutige Namen, Avatarpfade, Empfängerberechtigung bei Freundschaftsanfragen, Blockieren, private Presets, Origin-Prüfung, gefilterte Zustände, dauerhafte Speicherung verworfener GPS-/Fangversuche, Ergebnisse nach Matchende, Verlassen abgeschlossener Matches, fehlschlagende Persistenz und Kontolöschung. Tests ersetzen Supabase-Auth durch explizite Testidentitäten; der echte OAuth-Provider ist nicht eingerichtet.
+**API/Socket:** anonyme Anfragen, beide Testmodus-Schranken, Supabase-Verifikationsfehler und abgelaufene Token, Profilisolation, eindeutige Namen, Avatarpfade, Empfängerberechtigung bei Freundschaftsanfragen, Blockieren, private Presets, Origin-Prüfung, gefilterte Zustände, dauerhafte Speicherung verworfener GPS-/Fangversuche, Ergebnisse nach Matchende, Verlassen abgeschlossener Matches, fehlschlagende Persistenz und Kontolöschung. Tests ersetzen Supabase-Auth durch explizite Testidentitäten; der echte OAuth-Provider ist separat eingerichtet; diese API-Tests sind kein Nachweis eines vollständigen Google-Logins.
 
 **SQL:** PostgreSQL als WASM (PGlite) führt alle Migrationen in Reihenfolge mit `pgcrypto` aus. Geprüft werden RLS auf allen 21 Anwendungstabellen (18 angeforderte plus 3 Hilfstabellen), Profil-Trigger, fehlende Client-Schreibrechte, Freundschafts-/Blocktransaktionen, private GPS-/Rollenabfragen, atomare Checkpoints und Versionsschutz, Bereinigung am Matchende, Einladungen, private Avatar-Policies, Erasure und Ablauf. Auth- und Storage-Plattformschemas sind klar gekennzeichnete Testfixtures. Ein realer Supabase-Storage-Upload und reale OAuth-Rückleitungen sind hiermit noch nicht verifiziert.
 
@@ -47,7 +48,7 @@ Die folgenden Prüfungen wurden in der Entwicklungsumgebung und in GitHub Action
 
 - Das lokale Chromium vertraut der Entwicklungsumgebungs-Proxy-CA nicht und meldet bei externem HTTPS `ERR_CERT_AUTHORITY_INVALID`. Eine zusätzliche CA-Vertrauensänderung wurde von der automatischen Freigabeprüfung abgelehnt und nicht durchgeführt. Die öffentliche Website und das Laden von OSM-Kacheln wurden anschließend erfolgreich mit dem regulären Chromium-Runner von GitHub geprüft, ohne TLS-Prüfungen abzuschalten.
 - Direkte HTTPS-Terminalanfragen funktionieren mit der vorhandenen System-Vertrauenskette. Der OSM-Tile-Dienst kann Anfragen der gemeinsam genutzten Entwicklungsumgebung zusätzlich gemäß seiner Nutzungsrichtlinie blockieren. Es wird keine Tile-Sperre umgangen.
-- Supabase ist eingerichtet und die Produktions-RLS-Konfiguration geprüft. Google OAuth ist laut echtem Auth-Einstellungsendpunkt noch deaktiviert; ein Spielserver ist nicht veröffentlicht. Reale Anmeldung, Storage-Uploads und Live-Multiplayer bleiben offen.
+- Supabase ist eingerichtet und die Produktions-RLS-Konfiguration geprüft. Google OAuth ist laut echtem Auth-Einstellungsendpunkt aktiviert und der PKCE-Start ist geprüft; ein Spielserver ist nicht veröffentlicht. Reale Anmeldung, Storage-Uploads und Live-Multiplayer bleiben offen.
 - Kein Zugriff auf echte iPhones/Android-Geräte: Homescreen-Installation, Betriebssystem-Push, reale Positionsgenauigkeit und Verhalten bei gesperrtem Bildschirm sind nicht physisch getestet.
 - Kein unabhängiges Security-Audit und kein Lasttest für einen öffentlichen Großbetrieb. Ein einzelner Spielserver ist vorgesehen.
 
@@ -58,3 +59,9 @@ Nach dem Anschluss der Dienste sind nur die Live-Prüfungen aus [DEPLOYMENT.md](
 Beide Migrationen sind auf Projekt `dxoleuqmhcnqnjyqdqvw` angewendet und ihr Verlauf entspricht den Dateinamen im Repository. SQL-Abfragen bestätigen RLS auf allen 21 Tabellen und die private Avatarablage mit 2-MB-Limit und JPEG/PNG/WebP-Whitelist. Anonyme Rollen haben keinen Zugriff auf Profile oder GPS-Pins; angemeldete Clients dürfen keine Profile direkt schreiben, Checkpoints lesen oder den Checkpoint-RPC ausführen. Der Service-Role darf den RPC ausführen. Es wurden keine Testkonten in der Produktionsdatenbank angelegt.
 
 Der Supabase-Advisor meldet nach der zweiten Migration keine Warnungen oder Fehler. Zwei Informationsgruppen sind erwartet: [RLS ohne Client-Policies](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy) bei sechs bewusst ausschließlich serverseitigen Tabellen sowie [noch unbenutzte Indizes](https://supabase.com/docs/guides/database/database-linter?lint=0005_unused_index) in einer frischen Datenbank. Acht fehlende Fremdschlüsselindizes und die ineffiziente Wiederholung von Auth-Abfragen in Policies sind behoben.
+
+## Google-Anmeldung — 0.2.1
+
+Der echte Auth-Einstellungsendpunkt meldet Google aktiviert. Der Autorisierungsendpunkt leitet mit HTTP 302 auf `accounts.google.com/o/oauth2/v2/auth` und verwendet den Callback `https://dxoleuqmhcnqnjyqdqvw.supabase.co/auth/v1/callback`. Der öffentliche Browsertest prüft Provider, PKCE-Challenge und Rücksprungziel des vom Anmeldebutton ausgelösten Requests, ohne Google-Anmeldedaten zu verwenden. Vollständige Anmeldung und Consent mit einem echten Konto bleiben eine separate Prüfung. Lokale Browserfixtures prüfen die serverseitige Verifikation der Sitzung, Ablehnung manipulierter Cache-Identitäten, Abmelden und abgebrochene Anmeldung. Diese Fixtures fangen sämtliche Supabase-Requests ab und schreiben nichts in die Produktionsdatenbank.
+
+Die Google-Weiterleitung wurde zusätzlich bis zur echten Google-Anmeldeseite (`accounts.google.com/v3/signin/identifier`, HTTP 200) verfolgt; keine `invalid_client`- oder `redirect_uri_mismatch`-Fehlermeldung erschien. Dabei wurden keine Google-Kontodaten eingegeben.

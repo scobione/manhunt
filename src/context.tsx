@@ -2,14 +2,17 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { io, type Socket } from 'socket.io-client';
 import type { Command, LobbyView, Profile } from '../shared/types';
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+import publicConfig from './public-config.json';
+const defaults = import.meta.env.MODE === 'production' ? publicConfig : null;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || defaults?.supabaseUrl;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || (!import.meta.env.VITE_SUPABASE_URL ? defaults?.supabasePublishableKey : undefined);
 export const supabase:SupabaseClient|null = supabaseUrl && supabaseKey ? createClient(supabaseUrl,supabaseKey,{auth:{flowType:'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}) : null;
 export const TEST_MODE = import.meta.env.MODE === 'test' && import.meta.env.VITE_TEST_AUTH === 'true';
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/,'');
 interface Config { configured:boolean; authConfigured:boolean; pushPublicKey?:string }
 interface AppContextValue {
   profile:Profile|null; token:string|null; lobby:LobbyView|null; connected:boolean; loading:boolean; config:Config|null;
+  identity:{id:string;email?:string}|null; authChecking:boolean; authError:string;
   notice:string; clearNotice:()=>void; notify:(message:string)=>void; api:<T=any>(path:string,options?:RequestInit)=>Promise<T>;
   emit:<T=LobbyView>(event:string,data?:unknown)=>Promise<T>; command:(command:Command)=>Promise<LobbyView>;
   login:()=>Promise<void>; logout:()=>Promise<void>; refreshProfile:()=>Promise<void>; setTestSession:(id:string,name:string)=>void; socialRevision:number;
@@ -18,6 +21,7 @@ const AppContext=createContext<AppContextValue|null>(null);
 export function AppProvider({children}:{children:ReactNode}) {
  const [profile,setProfile]=useState<Profile|null>(null), [token,setToken]=useState<string|null>(TEST_MODE?sessionStorage.getItem('manhunt:test-token'):null);
  const [lobby,setLobby]=useState<LobbyView|null>(null),[connected,setConnected]=useState(false),[loading,setLoading]=useState(true),[config,setConfig]=useState<Config|null>(null),[notice,setNotice]=useState(''),[socialRevision,setSocialRevision]=useState(0);
+ const [identity,setIdentity]=useState<{id:string;email?:string}|null>(null),[authChecking,setAuthChecking]=useState(false),[authError,setAuthError]=useState('');
  const socketRef=useRef<Socket|null>(null);const lastEvent=useRef<string|null>(null); const tokenRef=useRef(token); tokenRef.current=token;
  const notify=useCallback((message:string)=>setNotice(message),[]);
  const api=useCallback(async <T,>(path:string,options:RequestInit={}):Promise<T>=>{
@@ -31,12 +35,24 @@ export function AppProvider({children}:{children:ReactNode}) {
   fetch(`${API_BASE}/api/config`).then(r=>r.ok?r.json():Promise.reject()).then(setConfig).catch(()=>setConfig({configured:false,authConfigured:!!supabase}));
   if(TEST_MODE && sessionStorage.getItem('manhunt:test-token')) {setLoading(false);return;}
   if(!supabase){setLoading(false);return;}
-  supabase.auth.getSession().then(({data})=>{setToken(data.session?.access_token||null);setLoading(false);});
+  let active=true;
+  supabase.auth.getSession().then(({data,error})=>{if(!active)return;setToken(data.session?.access_token||null);if(error)setAuthError('Die Anmeldung konnte nicht abgeschlossen werden. Bitte starte sie erneut.');setLoading(false);}).catch(()=>{if(active){setAuthError('Die Anmeldung konnte nicht überprüft werden. Prüfe deine Verbindung und versuche es erneut.');setLoading(false);}});
   const {data}=supabase.auth.onAuthStateChange((_event,session)=>{setToken(session?.access_token||null);setLoading(false);});
-  return()=>data.subscription.unsubscribe();
+  return()=>{active=false;data.subscription.unsubscribe();};
  },[]);
  useEffect(()=>{
-  if(!token){setProfile(null);setLobby(null);setConnected(false);return;}
+  if(!token||!supabase){setIdentity(null);setAuthChecking(false);return;}
+  let active=true;
+  setAuthChecking(true);setIdentity(null);setAuthError('');
+  supabase.auth.getUser(token).then(({data,error})=>{
+   if(!active)return;
+   if(error||!data.user){setAuthError('Deine Sitzung konnte nicht bestätigt werden. Bitte melde dich erneut an.');return;}
+   setIdentity({id:data.user.id,email:data.user.email});
+  }).catch(()=>{if(active)setAuthError('Die Sitzung konnte nicht überprüft werden. Prüfe deine Verbindung und versuche es erneut.');}).finally(()=>{if(active)setAuthChecking(false);});
+  return()=>{active=false;};
+ },[token]);
+ useEffect(()=>{
+  if(!token||!config?.configured){setProfile(null);setLobby(null);setConnected(false);return;}
   let cancelled=false;
   refreshProfile().catch(e=>!cancelled&&notify(e.message));
   const socket=io(API_BASE||window.location.origin,{auth:{token},reconnection:true,reconnectionDelay:1000,reconnectionDelayMax:10000,timeout:20000});socketRef.current=socket;
@@ -50,7 +66,7 @@ export function AppProvider({children}:{children:ReactNode}) {
   socket.on('social:changed',()=>setSocialRevision(v=>v+1));
   socket.on('notice',(data:{message:string})=>notify(data.message));
   return()=>{cancelled=true;socket.disconnect();socketRef.current=null;};
- },[token,refreshProfile,notify]);
+ },[token,refreshProfile,notify,config?.configured]);
  const emit=useCallback(<T,>(event:string,data:unknown={}):Promise<T>=>new Promise((resolve,reject)=>{
   const socket=socketRef.current;if(!socket?.connected){reject(new Error('Keine Serververbindung. Warte auf die Wiederverbindung.'));return;}
   socket.timeout(15000).emit(event,data,(timeout:Error|null,result:any)=>{
@@ -62,10 +78,10 @@ export function AppProvider({children}:{children:ReactNode}) {
   });
  }),[]);
  const command=useCallback((command:Command)=>emit<LobbyView>('lobby:command',{command}),[emit]);
- async function login(){if(!supabase)throw new Error('Google-Anmeldung ist noch nicht eingerichtet. Supabase und Google OAuth müssen verbunden werden.');const {error}=await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:`${window.location.origin}/auth/callback`}});if(error)throw error;}
- async function logout(){if(lobby && lobby.status!=='finished')await command({type:'leave'});if(supabase)await supabase.auth.signOut();sessionStorage.removeItem('manhunt:test-token');setToken(null);setProfile(null);setLobby(null);}
+ async function login(){if(!supabase)throw new Error('Google-Anmeldung ist noch nicht eingerichtet. Supabase und Google OAuth müssen verbunden werden.');setAuthError('');const {error}=await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:`${window.location.origin}/auth/callback`}});if(error)throw error;}
+ async function logout(){if(lobby && lobby.status!=='finished')await command({type:'leave'});if(supabase){const {error}=await supabase.auth.signOut();if(error)throw error;}sessionStorage.removeItem('manhunt:test-token');setToken(null);setIdentity(null);setProfile(null);setLobby(null);setAuthError('');}
  function setTestSession(id:string,name:string){if(!TEST_MODE)return;const value=`test:${id}:${name}`;sessionStorage.setItem('manhunt:test-token',value);setToken(value);}
- return <AppContext.Provider value={{profile,token,lobby,connected,loading,config,notice,clearNotice:()=>setNotice(''),notify,api,emit,command,login,logout,refreshProfile,setTestSession,socialRevision}}>{children}</AppContext.Provider>;
+ return <AppContext.Provider value={{profile,token,lobby,connected,loading,identity,authChecking,authError,config,notice,clearNotice:()=>setNotice(''),notify,api,emit,command,login,logout,refreshProfile,setTestSession,socialRevision}}>{children}</AppContext.Provider>;
 }
 export function useApp(){const value=useContext(AppContext);if(!value)throw new Error('AppProvider missing');return value;}
 export function useNow(){const [now,setNow]=useState(Date.now());useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[]);return now;}

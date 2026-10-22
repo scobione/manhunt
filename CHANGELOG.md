@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.2.1 — 22.10.2026
+
+- Aktivierten Google-Anbieter mit dem Frontend verbunden; öffentlicher Publishable-Key mit unveränderten RLS-Rechten.
+- Google-Sitzung nach der Rückleitung über Supabase verifizieren und verständlich bestätigen, auch solange der Spielserver fehlt. Abmelden funktioniert unabhängig vom Spielserver.
+- Ohne verfügbaren Spielserver keine erfolglosen Profil- oder Socket.IO-Anfragen nach dem Login.
+- PKCE-Anmeldebeginn im Browser prüfen; getrennte lokale Tests für gültige, abgelehnte und abgebrochene Sitzungen.
+
 ## 0.2.0 — 22.10.2026
 
 - Supabase Free in Frankfurt tatsächlich eingerichtet: 21 Tabellen mit RLS, private Avatarablage und serverseitige RPCs. Produktionsrechte geprüft, Fremdschlüsselindizes und RLS-Abfragepläne verbessert.

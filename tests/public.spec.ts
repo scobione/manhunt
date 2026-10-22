@@ -10,7 +10,16 @@ test('production landing, all modes and privacy pages render without browser err
  await page.screenshot({path:'test-results-public/public-desktop.png',fullPage:true});
  await page.goto('/modes');await expect(page.locator('.all-modes article')).toHaveCount(8);
  await page.goto('/login');await expect(page.getByTestId('test-login')).toHaveCount(0);
- await page.getByRole('button',{name:'Mit Google fortfahren'}).click();await expect(page.getByRole('status')).toContainText('noch nicht eingerichtet');
+ // Inspect the actual PKCE request without signing in or supplying a Google account.
+ await page.route('**/auth/v1/authorize?**',route=>route.abort());
+ const expectedCallback=new URL('/auth/callback',page.url()).toString();
+ const authorization=page.waitForRequest(request=>new URL(request.url()).pathname==='/auth/v1/authorize');
+ await page.getByRole('button',{name:'Mit Google fortfahren'}).click();
+ const oauth=new URL((await authorization).url());
+ expect(oauth.searchParams.get('provider')).toBe('google');
+ expect(oauth.searchParams.get('code_challenge_method')).toBe('s256');
+ expect(oauth.searchParams.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);
+ expect(oauth.searchParams.get('redirect_to')).toBe(expectedCallback);
  await page.goto('/privacy');await expect(page.getByRole('heading',{name:'Dein Standort gehört dir.'})).toBeVisible();
  await page.goto('/safety');await expect(page.getByRole('heading',{name:'Gutes Spiel. Sicher draußen.'})).toBeVisible();
  expect(errors).toEqual([]);
