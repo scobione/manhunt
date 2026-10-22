@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import type { GeoJSONSource } from 'maplibre-gl';
-import { area, bbox, booleanWithin, center, circle, featureCollection, kinks, lineString, polygon } from '@turf/turf';
+import { area, bbox, bearing, center, circle, distance, featureCollection, lineString, polygon } from '@turf/turf';
 import type { Feature, Polygon, Position } from 'geojson';
-import { Check, Circle, Crosshair, Download, MapPin, Octagon, Plus, RotateCcw, Save, ShieldAlert, Square, Trash2, Undo2, X } from 'lucide-react';
+import { Check, Circle, Crosshair, Download, MapPin, Octagon, Plus, RotateCcw, Save, ShieldAlert, Square, Trash2, Undo2, Upload, X } from 'lucide-react';
 import type { Zone } from '../shared/types';
 import { tacticalStyle } from './MapView';
 import './maps.css';
+import { MAX_ZONE_FILE_BYTES, parseZoneFile, serializeZone, validZone } from './zoneFiles';
 
-type Shape = 'circle' | 'rectangle' | 'octagon';
+type Shape = 'circle' | 'rectangle' | 'octagon' | 'custom';
 interface SavedZone { id: string; zone: Zone }
 export interface ZoneEditorProps {
   value?: Zone | null;
@@ -18,6 +19,13 @@ export interface ZoneEditorProps {
 }
 const STORAGE_KEY = 'manhunt.saved-zones.v1';
 const empty = featureCollection([]);
+
+function zoneControls(zone: Zone) {
+  const origin = center(zone.feature).geometry.coordinates as [number, number];
+  const points = zone.feature.geometry.coordinates[0];
+  const shape: Shape = points.length === 5 ? 'rectangle' : points.length === 9 ? 'octagon' : points.length === 65 ? 'circle' : 'custom';
+  return { origin, shape, radius: Math.max(20, Math.min(10000, Math.round(distance(origin, points[0], { units: 'meters' })))), rotation: Math.round((360 - bearing(origin, points[0])) % 360) };
+}
 
 function regularZone(origin: [number, number], radius: number, shape: Shape, rotation: number): Feature<Polygon> {
   const result = circle(origin, radius / 1000, { steps: shape === 'circle' ? 64 : shape === 'rectangle' ? 4 : 8 });
@@ -35,23 +43,6 @@ function regularZone(origin: [number, number], radius: number, shape: Shape, rot
   return result;
 }
 
-function validPolygon(feature: unknown): feature is Feature<Polygon> {
-  const candidate = feature as Feature<Polygon>;
-  if (!candidate || candidate.type !== 'Feature' || candidate.geometry?.type !== 'Polygon' || candidate.geometry.coordinates.length !== 1) return false;
-  const ring = candidate.geometry.coordinates[0];
-  if (!Array.isArray(ring) || ring.length < 4 || ring.length > 130) return false;
-  if (ring.some(coordinate => !Array.isArray(coordinate) || coordinate.length < 2 || !Number.isFinite(coordinate[0]) || !Number.isFinite(coordinate[1]) || Math.abs(coordinate[0]) > 180 || Math.abs(coordinate[1]) > 85)) return false;
-  const first = ring[0], last = ring[ring.length - 1];
-  if (first[0] !== last[0] || first[1] !== last[1]) return false;
-  try { return kinks(candidate).features.length === 0 && area(candidate) >= 100 && area(candidate) <= 50_000_000; } catch { return false; }
-}
-
-function validZone(zone: unknown): zone is Zone {
-  const candidate = zone as Zone;
-  return !!candidate && typeof candidate.name === 'string' && candidate.name.length > 0 && candidate.name.length <= 60 && validPolygon(candidate.feature) && Array.isArray(candidate.excluded)
-    && candidate.excluded.length <= 12 && candidate.excluded.every(exclusion => validPolygon(exclusion) && booleanWithin(exclusion, candidate.feature));
-}
-
 function loadPresets(): SavedZone[] {
   try {
     const items: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
@@ -62,14 +53,15 @@ function loadPresets(): SavedZone[] {
 
 export default function ZoneEditor({ value = null, onChange, onSave, readOnly = false }: ZoneEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const importRef = useRef<HTMLInputElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
   const [draft, setDraft] = useState<Zone | null>(value);
-  const [shape, setShape] = useState<Shape>('circle');
+  const [shape, setShape] = useState<Shape>(() => value ? zoneControls(value).shape : 'circle');
   const [origin, setOrigin] = useState<[number, number] | null>(value ? center(value.feature).geometry.coordinates as [number, number] : null);
-  const [radius, setRadius] = useState(500);
+  const [radius, setRadius] = useState(() => value ? zoneControls(value).radius : 500);
   const [unit, setUnit] = useState<'m' | 'km'>('m');
-  const [rotation, setRotation] = useState(0);
+  const [rotation, setRotation] = useState(() => value ? zoneControls(value).rotation : 0);
   const [placingCenter, setPlacingCenter] = useState(!value);
   const [drawingExclusion, setDrawingExclusion] = useState(false);
   const [exclusionPoints, setExclusionPoints] = useState<Position[]>([]);
@@ -102,7 +94,12 @@ export default function ZoneEditor({ value = null, onChange, onSave, readOnly = 
     setDraft(value);
     draftRef.current = value;
     setSafetyChecked(value?.confirmed ?? false);
-    if (value) setOrigin(center(value.feature).geometry.coordinates as [number, number]);
+    if (value) {
+      const settings = zoneControls(value);
+      setOrigin(settings.origin); setShape(settings.shape); setRadius(settings.radius); setRotation(settings.rotation);
+      setPlacingCenter(false); setDrawingExclusion(false); setExclusionPoints([]); setSelectedExclusion(null);
+      if (mapRef.current && loaded) fitZone(mapRef.current, value);
+    }
   }, [value]);
 
   useEffect(() => {
@@ -215,7 +212,7 @@ export default function ZoneEditor({ value = null, onChange, onSave, readOnly = 
   }, [loaded, draft, shape, readOnly, exclusionPoints, selectedExclusion, placingCenter, drawingExclusion]);
 
   const regenerate = (nextShape = shape, nextRadius = radius, nextRotation = rotation, nextOrigin = origin) => {
-    if (!nextOrigin) return;
+    if (!nextOrigin || nextShape === 'custom') return;
     const feature = regularZone(nextOrigin, nextRadius, nextShape, nextRotation);
     const next: Zone = { feature, excluded: draft?.excluded ?? [], name: draft?.name ?? 'Mein Revier', confirmed: false };
     if (!validZone(next)) {
@@ -244,6 +241,7 @@ export default function ZoneEditor({ value = null, onChange, onSave, readOnly = 
     try {
       await callbacks.current.onSave?.(confirmed);
       updateDraft(confirmed, false);
+      setError('');
       setMessage(callbacks.current.onSave ? 'Zone übernommen.' : 'Zone bestätigt. Speichere sie lokal, um sie später wiederzuverwenden.');
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Die Zone konnte nicht übernommen werden.'); }
     finally { setSaving(false); }
@@ -261,13 +259,26 @@ export default function ZoneEditor({ value = null, onChange, onSave, readOnly = 
   };
   const exportZone = () => {
     if (!draft) return;
-    const data = featureCollection<Polygon, Record<string, unknown>>([{ ...draft.feature, properties: { ...draft.feature.properties, name: draft.name, kind: 'safe-zone' } }, ...draft.excluded.map(feature => ({ ...feature, properties: { kind: 'excluded' } }))]);
-    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/geo+json' }));
+    let data: string;
+    try { data = serializeZone(draft); } catch (failure) { setError((failure as Error).message); return; }
+    const url = URL.createObjectURL(new Blob([data], { type: 'application/geo+json' }));
     const link = document.createElement('a');
     link.href = url;
     link.download = 'manhunt-zone.geojson';
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const openZone = (zone: Zone) => {
+    const next = { ...zone, confirmed: false };
+    const settings = zoneControls(next);
+    updateDraft(next);
+    setOrigin(settings.origin); setShape(settings.shape); setRadius(settings.radius); setRotation(settings.rotation);
+    setPlacingCenter(false);
+    setDrawingExclusion(false);
+    setExclusionPoints([]);
+    setSelectedExclusion(null);
+    setError('');
+    if (mapRef.current) fitZone(mapRef.current, next);
   };
   const playableArea = useMemo(() => draft ? Math.max(0, area(draft.feature) - draft.excluded.reduce((total, feature) => total + area(feature), 0)) : 0, [draft]);
 
@@ -291,12 +302,12 @@ export default function ZoneEditor({ value = null, onChange, onSave, readOnly = 
         <div className="mh-shape-select" role="group" aria-label="Zonenform">
           {([{ id: 'circle', label: 'Kreis', Icon: Circle }, { id: 'rectangle', label: 'Viereck', Icon: Square }, { id: 'octagon', label: 'Achteck', Icon: Octagon }] as const).map(({ id, label, Icon }) => <button type="button" key={id} aria-pressed={shape === id} onClick={() => { setShape(id); setSelectedExclusion(null); regenerate(id); }}><Icon size={19} />{label}</button>)}
         </div>
-        <div className="mh-zone-size-row"><label className="mh-map-field">{shape === 'circle' ? 'Radius' : 'Größe · Umkreisradius'}<input type="number" min={unit === 'm' ? 20 : 0.02} max={unit === 'm' ? 10000 : 10} step={unit === 'm' ? 10 : 0.01} value={unit === 'm' ? radius : radius / 1000} onChange={event => {
+        {shape !== 'custom' && <div className="mh-zone-size-row"><label className="mh-map-field">{shape === 'circle' ? 'Radius' : 'Größe · Umkreisradius'}<input type="number" min={unit === 'm' ? 20 : 0.02} max={unit === 'm' ? 10000 : 10} step={unit === 'm' ? 10 : 0.01} value={unit === 'm' ? radius : radius / 1000} onChange={event => {
           const meters = Number(event.target.value) * (unit === 'm' ? 1 : 1000);
           if (Number.isFinite(meters) && meters >= 20 && meters <= 10000) { setRadius(meters); regenerate(shape, meters); }
-        }} /></label><label className="mh-map-field">Einheit<select value={unit} onChange={event => setUnit(event.target.value as 'm' | 'km')}><option value="m">Meter</option><option value="km">Kilometer</option></select></label></div>
-        {shape !== 'circle' && <label className="mh-map-field">Rotation · {rotation}°<input type="range" min="0" max="359" value={rotation} onChange={event => { const degrees = Number(event.target.value); setRotation(degrees); regenerate(shape, radius, degrees); }} /></label>}
-        <button type="button" className="mh-map-button" aria-pressed={placingCenter} onClick={() => { setPlacingCenter(current => !current); setDrawingExclusion(false); setExclusionPoints([]); setSelectedExclusion(null); }}><MapPin size={16} />{placingCenter ? 'Mittelpunkt auf Karte wählen' : 'Mittelpunkt neu setzen'}</button>
+        }} /></label><label className="mh-map-field">Einheit<select value={unit} onChange={event => setUnit(event.target.value as 'm' | 'km')}><option value="m">Meter</option><option value="km">Kilometer</option></select></label></div>}
+        {shape !== 'circle' && shape !== 'custom' && <label className="mh-map-field">Rotation · {rotation}°<input type="range" min="0" max="359" value={rotation} onChange={event => { const degrees = Number(event.target.value); setRotation(degrees); regenerate(shape, radius, degrees); }} /></label>}
+        {shape !== 'custom' && <button type="button" className="mh-map-button" aria-pressed={placingCenter} onClick={() => { setPlacingCenter(current => !current); setDrawingExclusion(false); setExclusionPoints([]); setSelectedExclusion(null); }}><MapPin size={16} />{placingCenter ? 'Mittelpunkt auf Karte wählen' : 'Mittelpunkt neu setzen'}</button>}
         {origin && <p className="mh-zone-coordinates">{origin[1].toFixed(5)}° N · {origin[0].toFixed(5)}° E</p>}
         {draft && <>
           <div className="mh-zone-divider" />
@@ -320,17 +331,22 @@ export default function ZoneEditor({ value = null, onChange, onSave, readOnly = 
           const item = saved.find(item => item.id === event.target.value);
           setSelectedPreset(event.target.value);
           if (!item) return;
-          const next = { ...item.zone, confirmed: false };
-          updateDraft(next);
-          setOrigin(center(next.feature).geometry.coordinates as [number, number]);
-          const count = next.feature.geometry.coordinates[0].length;
-          setShape(count === 5 ? 'rectangle' : count === 9 ? 'octagon' : 'circle');
-          setPlacingCenter(false);
-          setSelectedExclusion(null);
-          if (mapRef.current) fitZone(mapRef.current, next);
+          openZone(item.zone);
         }}><option value="">Neue Zone</option>{saved.map(item => <option key={item.id} value={item.id}>{item.zone.name || 'Unbenannte Zone'}</option>)}</select></label>
         <div className="mh-zone-action-row"><button type="button" onClick={saveLocal} disabled={!draft} className="mh-map-button"><Save size={16} />Lokal speichern</button><button type="button" onClick={exportZone} disabled={!draft} className="mh-map-button" title="GeoJSON herunterladen" aria-label="Zone als GeoJSON herunterladen"><Download size={16} /></button>{selectedPreset && <button type="button" className="mh-map-button" aria-label="Gespeicherte Zone löschen" onClick={() => { try { const next = saved.filter(item => item.id !== selectedPreset); localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); setSaved(next); setSelectedPreset(''); setMessage('Gespeicherte Zone entfernt.'); } catch { setError('Lokaler Speicher ist nicht verfügbar.'); } }}><Trash2 size={16} /></button>}</div>
-        {draft && shape !== 'circle' && <button type="button" className="mh-map-text-button" onClick={() => { setSelectedExclusion(null); regenerate(); }}><RotateCcw size={13} />Eckpunkte auf Grundform zurücksetzen</button>}
+        <input ref={importRef} type="file" className="mh-visually-hidden" aria-label="Zonendatei auswählen" accept=".geojson,.json,application/geo+json,application/json" onChange={async event => {
+          const file = event.target.files?.[0]; event.target.value = '';
+          if (!file) return;
+          try {
+            if (file.size > MAX_ZONE_FILE_BYTES) throw new Error('Die Zonendatei darf höchstens 256 KB groß sein.');
+            const next = parseZoneFile(await file.text());
+            openZone(next); setSelectedPreset('');
+            setMessage('Zone importiert. Prüfe das Gebiet und bestätige die Sicherheit erneut.');
+          } catch (failure) { setError(failure instanceof Error ? failure.message : 'Die Datei konnte nicht geöffnet werden.'); }
+        }}/>
+        <button type="button" className="mh-map-button" onClick={() => importRef.current?.click()}><Upload size={16}/>GeoJSON importieren</button>
+        <p className="mh-map-muted">Exportierte Zonen mit Sperrbereichen hier wieder öffnen. Die Datei bleibt auf deinem Gerät.</p>
+        {draft && shape !== 'circle' && shape !== 'custom' && <button type="button" className="mh-map-text-button" onClick={() => { setSelectedExclusion(null); regenerate(); }}><RotateCcw size={13} />Eckpunkte auf Grundform zurücksetzen</button>}
         <p className="mh-map-muted">Kartendaten: OpenStreetMap. Beim Laden werden IP-Adresse und Kartenausschnitt an den Kartenanbieter übermittelt. Keine Offline-Kartendownloads.</p>
       </div>}
     </div>

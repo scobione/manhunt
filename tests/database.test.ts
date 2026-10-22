@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { DEFAULT_SETTINGS, type Lobby } from '../shared/types';
 
@@ -29,7 +29,9 @@ function state():Lobby{
 beforeAll(async()=>{
  db=new PGlite({extensions:{pgcrypto}});
  await db.exec(await readFile('supabase/tests/bootstrap.sql','utf8'));
- await db.exec(await readFile('supabase/migrations/202610200001_initial.sql','utf8'));
+ for (const file of (await readdir('supabase/migrations')).filter(name=>name.endsWith('.sql')).sort()) {
+  await db.exec(await readFile(`supabase/migrations/${file}`,'utf8'));
+ }
 },30000);
 beforeEach(async()=>{
  await db.exec('truncate auth.users cascade');

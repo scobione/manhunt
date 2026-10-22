@@ -1,9 +1,12 @@
+import { readFileSync } from 'node:fs';
 import {test,expect} from '@playwright/test';
+const {version}=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
 // No synthetic users, no GPS simulation, no authentication bypass in these production checks.
 test('production landing, all modes and privacy pages render without browser errors',async({page})=>{
  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
  await page.goto('/');await expect(page.getByRole('heading',{name:'Raus aus dem Alltag.',exact:true})).toBeVisible();
  await expect(page.getByText('Die Spielzentrale wird eingerichtet.')).toBeVisible();
+ await expect(page.locator('.sidebar-foot')).toContainText(`V${version}`);
  await page.screenshot({path:'test-results-public/public-desktop.png',fullPage:true});
  await page.goto('/modes');await expect(page.locator('.all-modes article')).toHaveCount(8);
  await page.goto('/login');await expect(page.getByTestId('test-login')).toHaveCount(0);
@@ -27,6 +30,18 @@ test('public zone editor creates, edits, confirms and exports actual GeoJSON',as
  await expect(page.getByRole('status').filter({hasText:'Zone auf diesem Gerät gespeichert.'})).toBeVisible();
  await page.getByRole('button',{name:'Lokal speichern',exact:true}).click();
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Zone als GeoJSON herunterladen'}).click();expect((await download).suggestedFilename()).toBe('manhunt-zone.geojson');
+ const savedFile=await (await download).path();expect(savedFile).toBeTruthy();
+ await page.getByLabel('Zonenname',{exact:true}).fill('Zwischenentwurf');
+ await page.getByLabel('Zonendatei auswählen').setInputFiles(savedFile!);
+ await expect(page.getByLabel('Zonenname',{exact:true})).toHaveValue('Browser-Prüfzone');
+ await expect(page.getByRole('checkbox',{name:/Ich habe das Gebiet geprüft/})).not.toBeChecked();
+ await expect(page.getByRole('button',{name:'Zone bestätigen & übernehmen'})).toBeDisabled();
+ await expect(page.getByRole('status').filter({hasText:'Zone importiert.'})).toBeVisible();
+ await page.getByLabel('Zonendatei auswählen').setInputFiles({name:'broken.geojson',mimeType:'application/geo+json',buffer:Buffer.from('{"type":"Feature","geometry":{"type":"Polygon"}}')});
+ await expect(page.getByRole('alert').filter({hasText:'Erwartet wird eine Spielzone'})).toBeVisible();
+ await expect(page.getByLabel('Zonenname',{exact:true})).toHaveValue('Browser-Prüfzone');
+ await page.getByRole('checkbox',{name:/Ich habe das Gebiet geprüft/}).check();
+ await page.getByRole('button',{name:'Zone bestätigen & übernehmen'}).click();
  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('manhunt:planned-zone')!).feature.geometry.type)).toBe('Polygon');
  await page.screenshot({path:'test-results-public/public-zone-editor.png',fullPage:true});expect(errors).toEqual([]);expect([...diagnostics].some(x=>x.includes('Worker failed to load'))).toBe(false);if([...diagnostics].some(x=>x.includes('ERR_CERT_AUTHORITY_INVALID')))console.log('External tile HTTPS remains unverified: environment CA is not trusted by Chromium.');
 });

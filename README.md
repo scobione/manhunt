@@ -2,7 +2,7 @@
 
 **Deine Stadt. Dein Spielfeld.** Ein quelloffenes GPS-Verfolgungsspiel für private Gruppen — React, TypeScript, Socket.IO, Supabase und MapLibre. MIT-lizenziert.
 
-> **Stand:** Die Anwendung ist implementiert und lokal mit isolierten Mehrspieler-Browsertests geprüft. Supabase, Google OAuth und Render sind auf Wunsch des Projektinhabers noch nicht verbunden. Eine veröffentlichte Oberfläche ist deshalb noch kein online spielbarer Multiplayer-Dienst. Keine Gastkonten, künstlichen Spieler oder simulierten Standorte im Produktivbetrieb.
+> **Stand:** Die Anwendung ist implementiert und lokal mit isolierten Mehrspieler-Browsertests geprüft. Supabase Free in Frankfurt ist eingerichtet: 21 Tabellen mit RLS und private Avatarablage. Google OAuth ist noch deaktiviert und der Spielserver noch nicht veröffentlicht. Eine veröffentlichte Oberfläche ist deshalb noch kein online spielbarer Multiplayer-Dienst. Keine Gastkonten, künstlichen Spieler oder simulierten Standorte im Produktivbetrieb.
 
 **Veröffentlichte Oberfläche:** [MANHUNT öffnen](https://manhunt-fieldgame.scobione.chatgpt.site). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Der öffentliche Build enthält Zonenplanung, Spielmodi und Informationen; Online-Spiele werden nach Anschluss der Dienste verfügbar.
 
@@ -12,7 +12,7 @@
 - **Private Lobbys:** kryptografisch zufällige sechsstellige Codes, Einladungslinks, Bereitschaft, Host-Übertragung, Entfernen, Rollen-/Teamzuweisung, Regeln und gespeicherte Presets.
 - **Autoritative Engine:** serverseitige Rollenauslosung, Vorbereitung und Hider-Vorsprung, periodische Pins, Bestätigungs-/Code-/GPS-Fänge, Infektionen, Ergebnisse und Wiederverbindung.
 - **Acht Modi:** Normal, Zombie, Apokalypse, Hide & Seek, Last Survivor, Team Hunt, Infection Rush und Custom. Team Hunt erfordert mindestens vier Personen, zwei Hunter und je einen Hider pro Team. Last Survivor erfordert mindestens zwei Hider.
-- **Karte & Zonen:** MapLibre, GeoJSON und Turf; Kreis, Viereck, Achteck; verschiebbare Eckpunkte, Radius, Rotation, Sperrbereiche, Sicherheitsbestätigung, lokale Zonen und GeoJSON-Export. Schrumpfende Zonen werden auf das bestätigte Gebiet begrenzt.
+- **Karte & Zonen:** MapLibre, GeoJSON und Turf; Kreis, Viereck, Achteck; verschiebbare Eckpunkte, Radius, Rotation, Sperrbereiche, Sicherheitsbestätigung, lokale Zonen, GeoJSON-Export und validierter Import mit erneuter Sicherheitsbestätigung. Schrumpfende Zonen werden auf das bestätigte Gebiet begrenzt.
 - **Outdoor-Sicherheit:** ausdrückliche GPS-Freigabe, Stoppen der Freigabe, Notfallpause für alle Spieler, Host-Wiederaufnahme, sicheres Verlassen, Genauigkeitsprüfung, Sprungerkennung und keine blinde Eliminierung bei ausbleibenden GPS-Proben.
 - **Mobil:** responsive Oberfläche, PWA-Manifest, Symbole, Service Worker mit Offline-Hinweis, Infektions-Swipe, reduzierte Bewegung und optionale Web-Push-Einladungen.
 - **Schutz & Betrieb:** validierte APIs/Sockets, Rate Limits, gefilterte Zustände pro Spieler, RLS, private Storage-Policies, atomare Datenbank-Checkpoints, Wiederaufnahme nach Neustart, Löschroutinen und Audit-Logs ohne GPS-/Tokeninhalte.
@@ -61,7 +61,7 @@ Unter Linux wird standardmäßig `/usr/bin/chromium` genutzt; `PLAYWRIGHT_CHROMI
 
 **Testidentitäten und simulierte GPS-Koordinaten existieren ausschließlich in automatisierten Tests.** Der Backend-Bypass setzt gleichzeitig `NODE_ENV=test` und `TEST_AUTH=true` voraus. Im Frontend sind zusätzlich der Vite-Modus `test` und `VITE_TEST_AUTH=true` notwendig. Ein Produktionsserver verweigert den Start mit aktiviertem `TEST_AUTH`.
 
-Die SQL-Regressionstests führen die unveränderte Migration in echtem PostgreSQL als WASM (PGlite) aus. Minimale Auth-/Storage-Testschemas bilden ausschließlich die Plattformverträge ab. Google OAuth, Supabase Storage-Bytes, reale Geräteortung und der Betrieb auf Render benötigen zusätzliche Tests nach Einrichtung der echten Dienste.
+Die SQL-Regressionstests führen alle eingecheckten Migrationen unverändert in echtem PostgreSQL als WASM (PGlite) aus. Minimale Auth-/Storage-Testschemas bilden ausschließlich die Plattformverträge ab. Google OAuth, Supabase Storage-Bytes, reale Geräteortung und der Betrieb auf Render benötigen zusätzliche Tests nach Einrichtung der echten Dienste.
 
 Details und tatsächlich ausgeführte Ergebnisse: [Testbericht](docs/TESTING.md).
 
