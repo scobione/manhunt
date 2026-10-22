@@ -20,7 +20,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - name: Install Chromium for Playwright
+        # Use the runner's existing system libraries; download the locked
+        # Playwright browser without upgrading packages through apt mirrors.
+        timeout-minutes: 3
+        run: npx playwright install chromium
       - name: Open the published frontend in Chromium
         env:
           PUBLIC_URL: https://manhunt-fieldgame.scobione.chatgpt.site

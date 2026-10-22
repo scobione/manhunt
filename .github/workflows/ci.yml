@@ -24,7 +24,10 @@ jobs:
       - run: npm run build
       - run: npm audit --omit=dev --audit-level=high
       - name: Install Chromium for Playwright
-        run: npx playwright install --with-deps chromium
+        # ubuntu-latest already supplies Chromium's shared libraries. Avoid
+        # unrelated apt upgrades, which can stall on a slow Ubuntu mirror.
+        timeout-minutes: 3
+        run: npx playwright install chromium
       - name: Run isolated browser multiplayer tests
         run: |
           export PLAYWRIGHT_CHROMIUM_PATH=$(node --input-type=module -e "import { chromium } from '@playwright/test'; console.log(chromium.executablePath())")
