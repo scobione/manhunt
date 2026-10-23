@@ -69,7 +69,7 @@ test('provider callback failure is explained without exposing raw OAuth details'
 
 test('callback in a different browser explains the missing local verifier',async({page})=>{
  const tokenRequests:string[]=[];
- await page.route(`${origin}/**`,route=>{tokenRequests.push(new URL(route.request().url()).pathname);return route.abort();});
+ await page.route(`${origin}/**`,route=>{const path=new URL(route.request().url()).pathname;if(path.startsWith('/auth/'))tokenRequests.push(path);return route.abort();});
  await page.goto('/auth/callback?code=isolated-code-without-local-verifier');
  await expect(page.getByRole('alert')).toContainText('Der Anmeldenachweis fehlt in diesem Browser');
  await expect(page.getByRole('alert')).toContainText('Safari');

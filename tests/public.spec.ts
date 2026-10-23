@@ -5,8 +5,8 @@ const {version}=JSON.parse(readFileSync(new URL('../package.json',import.meta.ur
 test('production landing, all modes and privacy pages render without browser errors',async({page})=>{
  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
  await page.goto('/');await expect(page.getByRole('heading',{name:'Raus aus dem Alltag.',exact:true})).toBeVisible();
- await expect(page.getByText('Die Spielzentrale wird eingerichtet.')).toBeVisible();
- await expect(page.locator('.sidebar-foot')).toContainText(`V${version}`);
+ if(process.env.PUBLIC_URL)await expect(page.getByText('Spielserver verbunden.')).toBeVisible();
+ await expect(page.locator('.sidebar-foot')).toContainText(version.endsWith('-beta')?'b.'+version.slice(0,-5):`V${version}`);
  await page.screenshot({path:'test-results-public/public-desktop.png',fullPage:true});
  await page.goto('/modes');await expect(page.locator('.all-modes article')).toHaveCount(8);
  await page.goto('/login');await expect(page.getByTestId('test-login')).toHaveCount(0);
@@ -38,7 +38,7 @@ test('public zone editor creates, edits, confirms and exports actual GeoJSON',as
  await page.getByRole('button',{name:'Achteck',exact:true}).click();await expect(page.locator('.mh-zone-handle')).toHaveCount(8);
  await page.getByRole('button',{name:'Kreis',exact:true}).click();await page.getByLabel('Radius',{exact:true}).fill('400');
  await page.getByRole('checkbox',{name:/Ich habe das Gebiet geprüft/}).check();
- await page.getByRole('button',{name:'Zone bestätigen & übernehmen'}).click();
+ await page.getByRole('button',{name:'Zone bestätigen & speichern'}).click();
  await expect(page.getByRole('status').filter({hasText:'Zone auf diesem Gerät gespeichert.'})).toBeVisible();
  await page.getByRole('button',{name:'Lokal speichern',exact:true}).click();
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Zone als GeoJSON herunterladen'}).click();expect((await download).suggestedFilename()).toBe('manhunt-zone.geojson');
@@ -47,14 +47,16 @@ test('public zone editor creates, edits, confirms and exports actual GeoJSON',as
  await page.getByLabel('Zonendatei auswählen').setInputFiles(savedFile!);
  await expect(page.getByLabel('Zonenname',{exact:true})).toHaveValue('Browser-Prüfzone');
  await expect(page.getByRole('checkbox',{name:/Ich habe das Gebiet geprüft/})).not.toBeChecked();
- await expect(page.getByRole('button',{name:'Zone bestätigen & übernehmen'})).toBeDisabled();
+ await expect(page.getByRole('button',{name:'Zone bestätigen & speichern'})).toBeDisabled();
  await expect(page.getByRole('status').filter({hasText:'Zone importiert.'})).toBeVisible();
  await page.getByLabel('Zonendatei auswählen').setInputFiles({name:'broken.geojson',mimeType:'application/geo+json',buffer:Buffer.from('{"type":"Feature","geometry":{"type":"Polygon"}}')});
  await expect(page.getByRole('alert').filter({hasText:'Erwartet wird eine Spielzone'})).toBeVisible();
  await expect(page.getByLabel('Zonenname',{exact:true})).toHaveValue('Browser-Prüfzone');
  await page.getByRole('checkbox',{name:/Ich habe das Gebiet geprüft/}).check();
- await page.getByRole('button',{name:'Zone bestätigen & übernehmen'}).click();
+ await page.getByRole('button',{name:'Zone bestätigen & speichern'}).click();
  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('manhunt:planned-zone')!).feature.geometry.type)).toBe('Polygon');
+ await expect(page.getByRole('heading',{name:'Deine Zone ist gespeichert.'})).toBeVisible();
+ await page.reload();await expect(page.getByLabel('Zonenname',{exact:true})).toHaveValue('Browser-Prüfzone');await expect(page.getByRole('checkbox',{name:/Ich habe das Gebiet geprüft/})).not.toBeChecked();
  await page.screenshot({path:'test-results-public/public-zone-editor.png',fullPage:true});expect(errors).toEqual([]);expect([...diagnostics].some(x=>x.includes('Worker failed to load'))).toBe(false);if([...diagnostics].some(x=>x.includes('ERR_CERT_AUTHORITY_INVALID')))console.log('External tile HTTPS remains unverified: environment CA is not trusted by Chromium.');
 });
 test('mobile production layout and PWA metadata work without test login',async({page})=>{

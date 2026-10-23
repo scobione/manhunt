@@ -40,9 +40,48 @@ beforeEach(async()=>{
 afterAll(async()=>{await db?.close();});
 
 describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
+ it('keeps edge snapshots, presence and global quotas inaccessible to clients',async()=>{
+  for(const table of ['edge_runtime','edge_presence','edge_quotas'])await expect(userRole(a,`select * from ${table}`)).rejects.toThrow(/permission denied/);
+  for(const sql of ['select edge_snapshot()',`select edge_touch('${a}')`,`select edge_commit(0,'[]',null)`,`select edge_quota('${a}','api',999)`])await expect(userRole(a,sql)).rejects.toThrow(/permission denied/);
+ });
+ it('atomically commits one winning snapshot and rejects stale concurrent writers',async()=>{
+  const original=(await rpc('edge_snapshot',[])).rows[0].value as {revision:number};
+  const lobby=state();
+  expect((await rpc('edge_commit',[original.revision,JSON.stringify([lobby]),null])).rows[0].value).toBe(true);
+  lobby.players[1].eliminated=true;lobby.revision++;
+  expect((await rpc('edge_commit',[original.revision,JSON.stringify([lobby]),null])).rows[0].value).toBe(false);
+  const saved=(await rpc('edge_snapshot',[])).rows[0].value as {lobbies:Lobby[]};
+  expect(saved.lobbies[0].players[1].eliminated).toBe(false);
+ });
+ it('invalidates snapshots when account erasure changes checkpoint membership',async()=>{
+  await rpc('save_game_checkpoint',[JSON.stringify(state())]);
+  const before=(await rpc('edge_snapshot',[])).rows[0].value as {revision:number;lobbies:Lobby[]};
+  await rpc('delete_account',[b]);
+  expect((await rpc('edge_commit',[before.revision,JSON.stringify(before.lobbies),null])).rows[0].value).toBe(false);
+ });
+ it('rolls back the revision and all writes when any checkpoint fails',async()=>{
+  const before=(await rpc('edge_snapshot',[])).rows[0].value as {revision:number};
+  const bad=state();bad.hostId=randomUUID();
+  await expect(rpc('edge_commit',[before.revision,JSON.stringify([bad]),null])).rejects.toThrow();
+  expect(((await rpc('edge_snapshot',[])).rows[0].value as {revision:number}).revision).toBe(before.revision);
+ });
+ it('shares rate limits across requests and never exposes presence',async()=>{
+  expect((await rpc('edge_quota',[a,'gps',2])).rows[0].value).toBe(true);
+  expect((await rpc('edge_quota',[a,'gps',2])).rows[0].value).toBe(true);
+  expect((await rpc('edge_quota',[a,'gps',2])).rows[0].value).toBe(false);
+  expect((await rpc('edge_quota',[b,'gps',2])).rows[0].value).toBe(true);
+  await rpc('edge_touch',[a]);const result=(await rpc('edge_snapshot',[])).rows[0].value as {presence:Record<string,number>};
+  expect(result.presence[a]).toBeGreaterThan(0);
+ });
+ it('advances the social revision for friend requests and approvals',async()=>{
+  const before=(await rpc('edge_snapshot',[])).rows[0].value as {socialRevision:number};
+  await befriend();
+  const after=(await rpc('edge_snapshot',[])).rows[0].value as {socialRevision:number};
+  expect(after.socialRevision).toBeGreaterThan(before.socialRevision);
+ });
  it('executes the full unchanged migration and enables RLS on every application table',async()=>{
   const tables=await db.query<{tablename:string;rowsecurity:boolean}>("select tablename,rowsecurity from pg_tables where schemaname='public'");
-  expect(tables.rows.length).toBe(21);
+  expect(tables.rows.length).toBe(24);
   expect(tables.rows.every(t=>t.rowsecurity)).toBe(true);
   expect((await db.query('select * from profiles')).rows).toHaveLength(3);
   expect(await friendCode(a)).toMatch(/^[A-Z0-9]{12}$/);

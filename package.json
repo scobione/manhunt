@@ -1,6 +1,6 @@
 {
   "name": "manhunt",
-  "version": "0.2.2",
+  "version": "0.69.43-beta",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -11,12 +11,14 @@
     "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:web\"",
     "dev:web": "vite --host 0.0.0.0",
     "dev:server": "tsx watch server/index.ts",
-    "build": "tsc --noEmit && vite build && esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist-server/index.js",
+    "build": "tsc --noEmit && vite build && esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist-server/index.js && npm run build:edge",
     "start": "node dist-server/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:public": "playwright test -c playwright.public.config.ts"
+    "test:public": "playwright test -c playwright.public.config.ts",
+    "build:edge": "node scripts/build-edge.mjs",
+    "test:edge:e2e": "playwright test -c playwright.edge.config.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",

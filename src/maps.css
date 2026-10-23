@@ -72,3 +72,6 @@
 @media(max-width:1050px){.mh-zone-editor{grid-template-columns:minmax(0,1fr) minmax(250px,.8fr);gap:14px}.mh-zone-panel{padding:16px}}
 @media(max-width:750px){.mh-zone-editor{grid-template-columns:1fr}.mh-zone-map-column{height:400px;position:relative;top:auto}.mh-map-wrap{min-height:380px;height:58vh}.mh-map-legend{gap:10px;padding:8px;font-size:8px;left:8px}.mh-zone-panel{padding:18px}.mh-zone-draw-tools{left:7px;right:7px}.mh-zone-draw-tools button{font-size:10px;padding:8px}.mh-zone-fit,.mh-map-tools button{width:40px;height:40px}.mh-map-error{font-size:11px}}
 @media(prefers-reduced-motion:reduce){.mh-pin::after{animation:none!important;opacity:.3}}
+
+.zone-next-step{margin-top:24px;scroll-margin-block:110px;outline-color:#00ff9c}.zone-next-step p{line-height:1.8;max-width:65ch}.zone-next-step .button-row{margin-top:20px;flex-wrap:wrap}
+.create-layout>.inline-info{grid-column:1/-1}

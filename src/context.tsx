@@ -4,6 +4,7 @@ import { io, type Socket } from 'socket.io-client';
 import type { Command, LobbyView, Profile } from '../shared/types';
 import publicConfig from './public-config.json';
 import { readAuthReturn, authInitializationMessage, clearAuthReturn } from './auth-return';
+import { httpSession } from './http-session';
 // Capture only safe metadata before the SDK consumes the callback URL.
 const authReturn=readAuthReturn(window.location.href);
 const defaults = import.meta.env.MODE === 'production' ? publicConfig : null;
@@ -11,8 +12,8 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || defaults?.supabaseUrl;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || (!import.meta.env.VITE_SUPABASE_URL ? defaults?.supabasePublishableKey : undefined);
 export const supabase:SupabaseClient|null = supabaseUrl && supabaseKey ? createClient(supabaseUrl,supabaseKey,{auth:{flowType:'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}) : null;
 export const TEST_MODE = import.meta.env.MODE === 'test' && import.meta.env.VITE_TEST_AUTH === 'true';
-const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/,'');
-interface Config { configured:boolean; authConfigured:boolean; pushPublicKey?:string }
+const API_BASE = (import.meta.env.VITE_API_URL || defaults?.apiUrl || '').replace(/\/$/,'');
+interface Config { configured:boolean; authConfigured:boolean; pushPublicKey?:string; transport?:'http'|'socket' }
 interface AppContextValue {
   profile:Profile|null; token:string|null; lobby:LobbyView|null; connected:boolean; loading:boolean; config:Config|null;
   identity:{id:string;email?:string}|null; authChecking:boolean; authError:string;
@@ -28,11 +29,12 @@ export function AppProvider({children}:{children:ReactNode}) {
  const [identity,setIdentity]=useState<{id:string;email?:string}|null>(null),[authChecking,setAuthChecking]=useState(false),[authError,setAuthError]=useState('');
  const [passwordRecovery,setPasswordRecovery]=useState(false);
  const socketRef=useRef<Socket|null>(null);const lastEvent=useRef<string|null>(null); const tokenRef=useRef(token); tokenRef.current=token;
+ const httpRef=useRef<ReturnType<typeof httpSession>|null>(null);
  const notify=useCallback((message:string)=>setNotice(message),[]);
  const api=useCallback(async <T,>(path:string,options:RequestInit={}):Promise<T>=>{
-   const response=await fetch(`${API_BASE}/api${path}`,{...options,headers:{'Content-Type':'application/json',...(tokenRef.current?{Authorization:`Bearer ${tokenRef.current}`} : {}),...options.headers}});
+   const response=await fetch(`${API_BASE}/api${path}`,{signal:AbortSignal.timeout(15000),...options,headers:{'Content-Type':'application/json',...(tokenRef.current?{Authorization:`Bearer ${tokenRef.current}`} : {}),...options.headers}});
    const body=await response.json().catch(()=>null);
-   if(!response.ok) throw new Error(body?.error||'Der Server ist gerade nicht erreichbar. Bitte versuche es erneut.');
+   if(!response.ok) throw Object.assign(new Error(body?.error||'Der Server ist gerade nicht erreichbar. Bitte versuche es erneut.'),{status:response.status});
    return body as T;
  },[]);
  const refreshProfile=useCallback(async()=>{ if(tokenRef.current) setProfile(await api<Profile>('/profile')); },[api]);
@@ -69,6 +71,15 @@ export function AppProvider({children}:{children:ReactNode}) {
   if(!token||!config?.configured){setProfile(null);setLobby(null);setConnected(false);return;}
   let cancelled=false;
   refreshProfile().catch(e=>!cancelled&&notify(e.message));
+  if(config.transport==='http'){
+   let refreshing=false;
+   const session=httpSession({request:api,onConnection:setConnected,onSocial:()=>setSocialRevision(v=>v+1),onState:state=>{
+    setLobby(state?.status==='closed'?null:state);
+    const latest=state?.events.at(-1);if(latest&&latest.id!==lastEvent.current){if(lastEvent.current&&state?.settings.notifications&&['capture','infection','match_finished','emergency_pause','disconnect_pause'].includes(latest.type))notify(latest.message);lastEvent.current=latest.id;}
+   },onExpired:()=>{if(refreshing||!supabase)return;refreshing=true;void supabase.auth.refreshSession().then(({data,error})=>{if(cancelled)return;if(error||!data.session){setToken(null);notify('Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.');}else setToken(data.session.access_token);}).finally(()=>{refreshing=false;});}});
+   httpRef.current=session;
+   return()=>{cancelled=true;session.close();httpRef.current=null;};
+  }
   const socket=io(API_BASE||window.location.origin,{auth:{token},reconnection:true,reconnectionDelay:1000,reconnectionDelayMax:10000,timeout:20000});socketRef.current=socket;
   socket.on('connect',()=>{setConnected(true);socket.emit('lobby:sync',{},(response:any)=>{if(response?.ok)setLobby(response.data??null);});});
   socket.on('disconnect',()=>setConnected(false));
@@ -80,8 +91,9 @@ export function AppProvider({children}:{children:ReactNode}) {
   socket.on('social:changed',()=>setSocialRevision(v=>v+1));
   socket.on('notice',(data:{message:string})=>notify(data.message));
   return()=>{cancelled=true;socket.disconnect();socketRef.current=null;};
- },[token,refreshProfile,notify,config?.configured]);
+ },[token,refreshProfile,notify,api,config?.configured,config?.transport]);
  const emit=useCallback(<T,>(event:string,data:unknown={}):Promise<T>=>new Promise((resolve,reject)=>{
+  if(httpRef.current){httpRef.current.send<T>(event,data).then(resolve,reject);return;}
   const socket=socketRef.current;if(!socket?.connected){reject(new Error('Keine Serververbindung. Warte auf die Wiederverbindung.'));return;}
   socket.timeout(15000).emit(event,data,(timeout:Error|null,result:any)=>{
    if(timeout){reject(new Error('Der Server antwortet noch nicht. Bei einem kostenlosen Server kann der Start etwa eine Minute dauern.'));return;}

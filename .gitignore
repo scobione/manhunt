@@ -13,3 +13,7 @@ coverage/
 .DS_Store
 *.local
 .cache/
+
+.edge-test-dist/
+supabase/functions/manhunt-api/index.js
+supabase/.temp/

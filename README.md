@@ -2,9 +2,9 @@
 
 **Deine Stadt. Dein Spielfeld.** Ein quelloffenes GPS-Verfolgungsspiel für private Gruppen — React, TypeScript, Socket.IO, Supabase und MapLibre. MIT-lizenziert.
 
-> **Stand:** Die Anwendung ist implementiert und lokal mit isolierten Mehrspieler-Browsertests geprüft. Supabase Free in Frankfurt ist eingerichtet: 21 Tabellen mit RLS und private Avatarablage. Google OAuth ist aktiviert und mit dem Frontend verbunden. Der aktuelle echte Callback scheitert noch an einem ungültigen Google-Client-Secret in Supabase; der Kontoinhaber muss es dort ersetzen. Der Spielserver ist noch nicht veröffentlicht. E-Mail-Anmeldung, Registrierung und Passwort-Zurücksetzen sind ebenfalls implementiert; der E-Mail-Anbieter und Bestätigungspflicht sind in Supabase aktiviert. Echte Mailzustellung ist noch zu prüfen und benötigt für öffentliche Registrierungen eigenen SMTP-Versand. Eine bestätigte Sitzung funktioniert unabhängig vom Spielserver. Eine veröffentlichte Oberfläche ist deshalb noch kein online spielbarer Multiplayer-Dienst. Keine Gastkonten, künstlichen Spieler oder simulierten Standorte im Produktivbetrieb.
+> **Stand b.0.69.43:** Der Multiplayer-Server läuft als Supabase Edge Function und speichert autoritative Spielstände in PostgreSQL. Die React-App bleibt auf der bestehenden Sites-Adresse. Der Edge-Betrieb synchronisiert per authentifizierten HTTPS-Anfragen im Abstand von etwa zwei Sekunden; das Node-/Socket.IO-Backend bleibt als alternative Betriebsart erhalten. 24 Tabellen verwenden RLS, Profilbilder liegen in privatem Storage. Google und E-Mail/Passwort nutzen Supabase Auth. Echte Google-Anmeldung, Mailzustellung und Geräte-GPS müssen zusätzlich mit eigenen Konten und Geräten geprüft werden. Keine künstlichen Spieler oder simulierten Standorte im Produktivbetrieb.
 
-**Veröffentlichte Oberfläche:** [MANHUNT öffnen](https://manhunt-fieldgame.scobione.chatgpt.site). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Der öffentliche Build enthält Zonenplanung, Spielmodi und Informationen; Online-Spiele werden nach Anschluss der Dienste verfügbar.
+**Veröffentlichte Oberfläche:** [MANHUNT öffnen](https://manhunt-fieldgame.scobione.chatgpt.site). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Die Zone führt nach dem Speichern zur Lobby-Erstellung. Danach Code teilen, Zone bestätigen, alle bereit melden und Match starten.
 
 ## Funktionen
 
@@ -54,6 +54,7 @@ npm test
 npm run build
 npx playwright install chromium
 PLAYWRIGHT_CHROMIUM_PATH="$(node --input-type=module -e "import { chromium } from '@playwright/test'; console.log(chromium.executablePath())")" npm run test:e2e
+npm run test:edge:e2e
 npx playwright test -c playwright.public.config.ts
 ```
 
@@ -96,3 +97,7 @@ render.yaml           Free-Deployment-Konfiguration
 ```
 
 Beiträge: [CONTRIBUTING.md](CONTRIBUTING.md). Sicherheitsmodell: [SECURITY.md](SECURITY.md). Datenbankverträge: [docs/DATABASE.md](docs/DATABASE.md).
+
+## Aktuelle Veröffentlichung
+
+[Release b.0.69.43](docs/RELEASE-b.0.69.43.md) beschreibt die Bereitstellung, Prüfgrenzen und den vom Nutzer gewünschten späteren Codex-Security-Check. [Edge-Betrieb](docs/EDGE-DEPLOYMENT.md) erklärt Zustandsabgleich, Wiederverbindung und Free-Tier-Grenzen.

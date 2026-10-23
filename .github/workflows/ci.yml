@@ -32,6 +32,7 @@ jobs:
         run: |
           export PLAYWRIGHT_CHROMIUM_PATH=$(node --input-type=module -e "import { chromium } from '@playwright/test'; console.log(chromium.executablePath())")
           npm run test:e2e
+          npm run test:edge:e2e
       - name: Check the production frontend bundle
         run: |
           export PLAYWRIGHT_CHROMIUM_PATH=$(node --input-type=module -e "import { chromium } from '@playwright/test'; console.log(chromium.executablePath())")

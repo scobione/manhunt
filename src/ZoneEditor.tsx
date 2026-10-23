@@ -16,6 +16,7 @@ export interface ZoneEditorProps {
   onChange?: (zone: Zone) => void;
   onSave?: (zone: Zone) => void | Promise<void>;
   readOnly?: boolean;
+  saveLabel?: string;
 }
 const STORAGE_KEY = 'manhunt.saved-zones.v1';
 const empty = featureCollection([]);
@@ -51,7 +52,7 @@ function loadPresets(): SavedZone[] {
   } catch { return []; }
 }
 
-export default function ZoneEditor({ value = null, onChange, onSave, readOnly = false }: ZoneEditorProps) {
+export default function ZoneEditor({ value = null, onChange, onSave, readOnly = false, saveLabel = 'Zone bestätigen & übernehmen' }: ZoneEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -320,7 +321,7 @@ export default function ZoneEditor({ value = null, onChange, onSave, readOnly = 
           </div>)}
           <div className="mh-zone-divider" />
           <label className="mh-zone-confirm"><input type="checkbox" checked={safetyChecked} onChange={event => setSafetyChecked(event.target.checked)} /><span>Ich habe das Gebiet geprüft. Es ist sicher und erlaubt zugänglich; gefährliche Bereiche sind ausgeschlossen.</span></label>
-          <button type="button" className="mh-map-button primary" onClick={save} disabled={!safetyChecked || saving}><Check size={17} />{saving ? 'Wird übernommen …' : 'Zone bestätigen & übernehmen'}</button>
+          <button type="button" className="mh-map-button primary" onClick={save} disabled={!safetyChecked || saving}><Check size={17} />{saving ? 'Wird übernommen …' : saveLabel}</button>
         </>}
       </fieldset>
       {error && <div className="mh-zone-feedback error" role="alert"><ShieldAlert size={17} />{error}<button type="button" aria-label="Meldung schließen" onClick={() => setError('')}><X size={14} /></button></div>}

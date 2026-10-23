@@ -1,5 +1,7 @@
 # Deployment
 
+**Aktuell, b.0.69.43:** Der Multiplayer-Server wurde auf dem vorhandenen Supabase-Projekt eingerichtet. Die bisherige Sites-Adresse bleibt erhalten. Für diese Betriebsart ist kein Render-Zugang erforderlich. Die folgenden Render-Abschnitte beschreiben eine alternative Node-/Socket.IO-Installation; historische Hinweise zum fehlenden Server sind damit überholt. Siehe [Edge-Deployment](EDGE-DEPLOYMENT.md) und [Release-Status](RELEASE-b.0.69.43.md).
+
 Die Quellen sind für Render (ein Node-Webservice und eine Static Site) und Supabase vorbereitet. Kein Testmodus auf einem öffentlich erreichbaren Server. Konfigurationswerte in `.env.example` sind bewusst leer; keine erfundenen Zugangsdaten.
 
 ## Bereits eingerichtet — 22.10.2026
