@@ -10,6 +10,9 @@ test('production landing, all modes and privacy pages render without browser err
  await page.screenshot({path:'test-results-public/public-desktop.png',fullPage:true});
  await page.goto('/modes');await expect(page.locator('.all-modes article')).toHaveCount(8);
  await page.goto('/login');await expect(page.getByTestId('test-login')).toHaveCount(0);
+ await expect(page.getByLabel('E-Mail-Adresse',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Mit E-Mail anmelden',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Registrieren',exact:true})).toBeVisible();
  // Inspect the actual PKCE request without signing in or supplying a Google account.
  await page.route('**/auth/v1/authorize?**',route=>route.abort());
  const expectedCallback=new URL('/auth/callback',page.url()).toString();

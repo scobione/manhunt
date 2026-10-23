@@ -2,13 +2,13 @@
 
 **Deine Stadt. Dein Spielfeld.** Ein quelloffenes GPS-Verfolgungsspiel für private Gruppen — React, TypeScript, Socket.IO, Supabase und MapLibre. MIT-lizenziert.
 
-> **Stand:** Die Anwendung ist implementiert und lokal mit isolierten Mehrspieler-Browsertests geprüft. Supabase Free in Frankfurt ist eingerichtet: 21 Tabellen mit RLS und private Avatarablage. Google OAuth ist aktiviert und mit dem Frontend verbunden; der Spielserver ist noch nicht veröffentlicht. Eine bestätigte Google-Sitzung funktioniert unabhängig vom Spielserver. Eine veröffentlichte Oberfläche ist deshalb noch kein online spielbarer Multiplayer-Dienst. Keine Gastkonten, künstlichen Spieler oder simulierten Standorte im Produktivbetrieb.
+> **Stand:** Die Anwendung ist implementiert und lokal mit isolierten Mehrspieler-Browsertests geprüft. Supabase Free in Frankfurt ist eingerichtet: 21 Tabellen mit RLS und private Avatarablage. Google OAuth ist aktiviert und mit dem Frontend verbunden. Der aktuelle echte Callback scheitert noch an einem ungültigen Google-Client-Secret in Supabase; der Kontoinhaber muss es dort ersetzen. Der Spielserver ist noch nicht veröffentlicht. E-Mail-Anmeldung, Registrierung und Passwort-Zurücksetzen sind ebenfalls implementiert; der E-Mail-Anbieter und Bestätigungspflicht sind in Supabase aktiviert. Echte Mailzustellung ist noch zu prüfen und benötigt für öffentliche Registrierungen eigenen SMTP-Versand. Eine bestätigte Sitzung funktioniert unabhängig vom Spielserver. Eine veröffentlichte Oberfläche ist deshalb noch kein online spielbarer Multiplayer-Dienst. Keine Gastkonten, künstlichen Spieler oder simulierten Standorte im Produktivbetrieb.
 
 **Veröffentlichte Oberfläche:** [MANHUNT öffnen](https://manhunt-fieldgame.scobione.chatgpt.site). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Der öffentliche Build enthält Zonenplanung, Spielmodi und Informationen; Online-Spiele werden nach Anschluss der Dienste verfügbar.
 
 ## Funktionen
 
-- **Identität & Crew:** Supabase Google OAuth mit PKCE, eindeutige Benutzernamen, private Avatar-Uploads, Freundescodes, Anfragen, Blockieren, Einladungen, Datenschutz bei Online-Status, Benachrichtigungen, Profile und Matchhistorie.
+- **Identität & Crew:** Supabase E-Mail/Passwort und Google OAuth mit PKCE, eindeutige Benutzernamen, private Avatar-Uploads, Freundescodes, Anfragen, Blockieren, Einladungen, Datenschutz bei Online-Status, Benachrichtigungen, Profile und Matchhistorie.
 - **Private Lobbys:** kryptografisch zufällige sechsstellige Codes, Einladungslinks, Bereitschaft, Host-Übertragung, Entfernen, Rollen-/Teamzuweisung, Regeln und gespeicherte Presets.
 - **Autoritative Engine:** serverseitige Rollenauslosung, Vorbereitung und Hider-Vorsprung, periodische Pins, Bestätigungs-/Code-/GPS-Fänge, Infektionen, Ergebnisse und Wiederverbindung.
 - **Acht Modi:** Normal, Zombie, Apokalypse, Hide & Seek, Last Survivor, Team Hunt, Infection Rush und Custom. Team Hunt erfordert mindestens vier Personen, zwei Hunter und je einen Hider pro Team. Last Survivor erfordert mindestens zwei Hider.

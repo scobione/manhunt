@@ -8,6 +8,10 @@ Die Quellen sind für Render (ein Node-Webservice und eine Static Site) und Supa
 
 Die bestehende Website-Adresse kann bleiben. Sites liefert derzeit den statischen React-Build; der vorhandene Node-/Express-/Socket.IO-Prozess läuft dort nicht. Render ist optional: Ein anderer geeigneter Node-Host mit WebSockets funktioniert ebenfalls. Für Sites wäre ein eigener Worker-Transport samt dauerhaft koordinierter Spielzustände erforderlich; die lokale Entwicklungsumgebung ist kein Produktionshost. Supabase Edge Functions sind kein unveränderter Ersatz für diesen Prozess: Im Free-Tarif endet ein Worker spätestens nach 150 Sekunden ([Laufzeitgrenzen](https://supabase.com/docs/guides/functions/limits)). Für die vorhandene Site wird kein zweites Frontend benötigt.
 
+## Aktueller Google-Fehler — 22.10.2026
+
+Die echte Google-Rückleitung schlägt derzeit mit `invalid_client` / `The provided client secret is invalid` fehl. Unter [Google OAuth Clients](https://console.cloud.google.com/auth/clients) den vorhandenen Webclient öffnen und seine Client-ID mit dem zugehörigen gültigen Secret unter [Supabase → Google](https://supabase.com/dashboard/project/dxoleuqmhcnqnjyqdqvw/auth/providers) speichern. Falls das Secret nicht mehr verfügbar ist, beim selben Google-Client ein neues erstellen. Geheimnisse nie in Repository, Chat oder Frontend übernehmen. Die Site URL und die erlaubte Callback-URL sind bereits bestätigt; sie müssen dafür nicht erneut geändert werden. Danach einen vollständigen Login prüfen.
+
 ## 1. Supabase für eine eigene Installation
 
 1. Ein **Free**-Projekt in einer europäischen Region erstellen. Kein kostenpflichtiges Upgrade wählen.
@@ -77,3 +81,9 @@ Die vorhandene Supabase-Verbindung erlaubt Tabellen, Migrationen, Storage und Pr
 Die Dateien der ersten Migration wurden auf die tatsächlich auf Supabase gespeicherte Version `20261022061735` umbenannt; ihr SQL-Inhalt blieb identisch. Die Performance-Migration ist `20261022062300`. Bereits früher mit der alten lokalen Versionsnummer eingerichtete Fremdinstallationen müssen ihren Migrationsverlauf abgleichen, bevor `db push` läuft; die erste Migration nicht doppelt anwenden.
 
 Die öffentliche Supabase-Projektkonfiguration ist unter `src/public-config.json` hinterlegt und wird nur in Produktionsbuilds als Vorgabe verwendet. Die privaten Server-/OAuth-Schlüssel bleiben vollständig außerhalb des Frontends.
+
+## E-Mail und Passwort
+
+Ab Version 0.2.2 stehen unter `/login` Anmelden, Registrieren und Passwort vergessen zur Verfügung. Supabase bestätigt E-Mail als aktivierten Provider; neue Konten müssen ihre Adresse bestätigen. Registrierung und Recovery verwenden die bereits erlaubte `/auth/callback`-Adresse. Ein in einem anderen Browser geöffneter Bestätigungslink kann den lokalen PKCE-Nachweis nicht übernehmen; nach bestätigter Adresse ist eine normale E-Mail-/Passwort-Anmeldung möglich.
+
+Für öffentliche Bestätigungs- und Reset-Mails unter [Supabase SMTP](https://supabase.com/dashboard/project/dxoleuqmhcnqnjyqdqvw/auth/smtp) einen eigenen SMTP-Dienst konfigurieren. Der Supabase-Standardversand ist auf Projektmitglieder und ein kleines Kontingent begrenzt ([Dokumentation](https://supabase.com/docs/guides/auth/auth-smtp)). SMTP-Zugangsdaten nur dort speichern; keine kostenpflichtigen Dienste ohne Freigabe. Die Bestätigungspflicht bleibt aktiviert. Telefonnummern-Anmeldung ist nicht aktiviert und würde einen zusätzlichen SMS-Anbieter benötigen.

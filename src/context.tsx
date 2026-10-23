@@ -3,6 +3,9 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { io, type Socket } from 'socket.io-client';
 import type { Command, LobbyView, Profile } from '../shared/types';
 import publicConfig from './public-config.json';
+import { readAuthReturn, authInitializationMessage, clearAuthReturn } from './auth-return';
+// Capture only safe metadata before the SDK consumes the callback URL.
+const authReturn=readAuthReturn(window.location.href);
 const defaults = import.meta.env.MODE === 'production' ? publicConfig : null;
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || defaults?.supabaseUrl;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || (!import.meta.env.VITE_SUPABASE_URL ? defaults?.supabasePublishableKey : undefined);
@@ -13,6 +16,7 @@ interface Config { configured:boolean; authConfigured:boolean; pushPublicKey?:st
 interface AppContextValue {
   profile:Profile|null; token:string|null; lobby:LobbyView|null; connected:boolean; loading:boolean; config:Config|null;
   identity:{id:string;email?:string}|null; authChecking:boolean; authError:string;
+  passwordRecovery:boolean; finishPasswordRecovery:()=>void; clearAuthError:()=>void;
   notice:string; clearNotice:()=>void; notify:(message:string)=>void; api:<T=any>(path:string,options?:RequestInit)=>Promise<T>;
   emit:<T=LobbyView>(event:string,data?:unknown)=>Promise<T>; command:(command:Command)=>Promise<LobbyView>;
   login:()=>Promise<void>; logout:()=>Promise<void>; refreshProfile:()=>Promise<void>; setTestSession:(id:string,name:string)=>void; socialRevision:number;
@@ -22,6 +26,7 @@ export function AppProvider({children}:{children:ReactNode}) {
  const [profile,setProfile]=useState<Profile|null>(null), [token,setToken]=useState<string|null>(TEST_MODE?sessionStorage.getItem('manhunt:test-token'):null);
  const [lobby,setLobby]=useState<LobbyView|null>(null),[connected,setConnected]=useState(false),[loading,setLoading]=useState(true),[config,setConfig]=useState<Config|null>(null),[notice,setNotice]=useState(''),[socialRevision,setSocialRevision]=useState(0);
  const [identity,setIdentity]=useState<{id:string;email?:string}|null>(null),[authChecking,setAuthChecking]=useState(false),[authError,setAuthError]=useState('');
+ const [passwordRecovery,setPasswordRecovery]=useState(false);
  const socketRef=useRef<Socket|null>(null);const lastEvent=useRef<string|null>(null); const tokenRef=useRef(token); tokenRef.current=token;
  const notify=useCallback((message:string)=>setNotice(message),[]);
  const api=useCallback(async <T,>(path:string,options:RequestInit={}):Promise<T>=>{
@@ -36,8 +41,17 @@ export function AppProvider({children}:{children:ReactNode}) {
   if(TEST_MODE && sessionStorage.getItem('manhunt:test-token')) {setLoading(false);return;}
   if(!supabase){setLoading(false);return;}
   let active=true;
-  supabase.auth.getSession().then(({data,error})=>{if(!active)return;setToken(data.session?.access_token||null);if(error)setAuthError('Die Anmeldung konnte nicht abgeschlossen werden. Bitte starte sie erneut.');setLoading(false);}).catch(()=>{if(active){setAuthError('Die Anmeldung konnte nicht überprüft werden. Prüfe deine Verbindung und versuche es erneut.');setLoading(false);}});
-  const {data}=supabase.auth.onAuthStateChange((_event,session)=>{setToken(session?.access_token||null);setLoading(false);});
+  // getSession() waits for initialization but does not return its OAuth error.
+  // Read initialize() explicitly so provider and code-exchange failures survive.
+  void (async()=>{
+   const initialized=await supabase.auth.initialize();
+   const {data,error}=await supabase.auth.getSession();
+   if(!active)return;
+   setToken(data.session?.access_token||null);
+   setAuthError(authInitializationMessage(authReturn,initialized.error||error,!!data.session));
+   clearAuthReturn();setLoading(false);
+  })().catch(()=>{if(active){setAuthError('Die Anmeldung konnte nicht überprüft werden. Prüfe deine Verbindung und versuche es erneut.');clearAuthReturn();setLoading(false);}});
+  const {data}=supabase.auth.onAuthStateChange((event,session)=>{setToken(session?.access_token||null);if(event==='PASSWORD_RECOVERY')setPasswordRecovery(true);if(event==='SIGNED_OUT')setPasswordRecovery(false);});
   return()=>{active=false;data.subscription.unsubscribe();};
  },[]);
  useEffect(()=>{
@@ -81,7 +95,7 @@ export function AppProvider({children}:{children:ReactNode}) {
  async function login(){if(!supabase)throw new Error('Google-Anmeldung ist noch nicht eingerichtet. Supabase und Google OAuth müssen verbunden werden.');setAuthError('');const {error}=await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:`${window.location.origin}/auth/callback`}});if(error)throw error;}
  async function logout(){if(lobby && lobby.status!=='finished')await command({type:'leave'});if(supabase){const {error}=await supabase.auth.signOut();if(error)throw error;}sessionStorage.removeItem('manhunt:test-token');setToken(null);setIdentity(null);setProfile(null);setLobby(null);setAuthError('');}
  function setTestSession(id:string,name:string){if(!TEST_MODE)return;const value=`test:${id}:${name}`;sessionStorage.setItem('manhunt:test-token',value);setToken(value);}
- return <AppContext.Provider value={{profile,token,lobby,connected,loading,identity,authChecking,authError,config,notice,clearNotice:()=>setNotice(''),notify,api,emit,command,login,logout,refreshProfile,setTestSession,socialRevision}}>{children}</AppContext.Provider>;
+ return <AppContext.Provider value={{profile,token,lobby,connected,loading,identity,authChecking,authError,passwordRecovery,finishPasswordRecovery:()=>setPasswordRecovery(false),clearAuthError:()=>setAuthError(''),config,notice,clearNotice:()=>setNotice(''),notify,api,emit,command,login,logout,refreshProfile,setTestSession,socialRevision}}>{children}</AppContext.Provider>;
 }
 export function useApp(){const value=useContext(AppContext);if(!value)throw new Error('AppProvider missing');return value;}
 export function useNow(){const [now,setNow]=useState(Date.now());useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[]);return now;}

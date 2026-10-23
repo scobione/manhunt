@@ -1,5 +1,14 @@
 # Änderungen
 
+## 0.2.2 — 22.10.2026
+
+- E-Mail-/Passwort-Anmeldung, Registrierung mit E-Mail-Bestätigung, erneute Bestätigungsmail sowie Passwort-Zurücksetzen und Ändern ergänzt. Sitzungen werden weiterhin über Supabase verifiziert. SMTP-Versandfehler werden verständlich angezeigt.
+
+- Fehler aus der OAuth-Initialisierung auswerten: Providerfehler, Abbruch und ungültige oder fehlende PKCE-Nachweise verständlich anzeigen. Rohe Providerantworten werden nicht angezeigt; Callback-Parameter werden nach der Verarbeitung aus der Adresszeile entfernt.
+- Echten SDK-Codeaustausch mit isolierten Browserfixtures prüfen, einschließlich Fehlerfällen und verlorenem Browser-Speicher.
+- Abstand zur iPhone-Statusleiste im Homescreen-Modus berücksichtigen.
+- Live-Diagnose: Google lehnt das in Supabase hinterlegte Client Secret ab. Der Kontoinhaber muss das passende Secret beim Google-Anbieter in Supabase ersetzen; ein App-Update allein behebt diese externe Konfiguration nicht.
+
 ## 0.2.1 — 22.10.2026
 
 - Aktivierten Google-Anbieter mit dem Frontend verbunden; öffentlicher Publishable-Key mit unveränderten RLS-Rechten.

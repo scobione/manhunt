@@ -12,7 +12,7 @@ Die folgenden Prüfungen wurden in der Entwicklungsumgebung und in GitHub Action
 | Zonenimport, Export und fehlerhafte Dateien | 10 bestanden |
 | Chromium mit 2–3 getrennten Browser-Sitzungen | 8 Szenarien bestanden |
 | Chromium gegen Produktionsbundle, öffentliche Seiten | 3 Szenarien bestanden |
-| Chromium mit isolierten OAuth-Sitzungsfixtures | 3 Szenarien bestanden |
+| Chromium mit isolierten Auth-Sitzungsfixtures | 12 Szenarien; OAuth, E-Mail/Passwort, Registrierung, Versandfehler und Passwort-Rücksetzung |
 | Chromium gegen die veröffentlichte HTTPS-Website | 3 Szenarien bestanden; Screenshots als GitHub-Artefakt gespeichert |
 | `npm audit` einschließlich Entwicklungsabhängigkeiten | 0 gemeldete Advisories |
 | Scan auf bekannte Secret-/Privatschlüssel-Muster | keine Treffer; nur `.env.example` eingecheckt |
@@ -65,3 +65,11 @@ Der Supabase-Advisor meldet nach der zweiten Migration keine Warnungen oder Fehl
 Der echte Auth-Einstellungsendpunkt meldet Google aktiviert. Der Autorisierungsendpunkt leitet mit HTTP 302 auf `accounts.google.com/o/oauth2/v2/auth` und verwendet den Callback `https://dxoleuqmhcnqnjyqdqvw.supabase.co/auth/v1/callback`. Der öffentliche Browsertest prüft Provider, PKCE-Challenge und Rücksprungziel des vom Anmeldebutton ausgelösten Requests, ohne Google-Anmeldedaten zu verwenden. Vollständige Anmeldung und Consent mit einem echten Konto bleiben eine separate Prüfung. Lokale Browserfixtures prüfen die serverseitige Verifikation der Sitzung, Ablehnung manipulierter Cache-Identitäten, Abmelden und abgebrochene Anmeldung. Diese Fixtures fangen sämtliche Supabase-Requests ab und schreiben nichts in die Produktionsdatenbank.
 
 Die Google-Weiterleitung wurde zusätzlich bis zur echten Google-Anmeldeseite (`accounts.google.com/v3/signin/identifier`, HTTP 200) verfolgt; keine `invalid_client`- oder `redirect_uri_mismatch`-Fehlermeldung erschien. Dabei wurden keine Google-Kontodaten eingegeben.
+
+## OAuth-Fehlerdiagnose — 0.2.2
+
+Der gemeldete Fehler wurde am 22.10.2026 in Supabase Auth nachvollzogen: Google antwortet beim Callback mit `invalid_client` und lehnt das Client Secret ab. Das ist eine externe Providerkonfiguration. Die bisherigen Prüfungen des OAuth-Starts konnten diesen erst nach der Google-Anmeldung auftretenden Fehler nicht erfassen. Der Betreiber muss das passende Google-Secret ausschließlich in Supabase ersetzen.
+
+Zusätzlich wurde die verschluckte Fehleranzeige mit einem lokalen Browser-Regressionsfall nachgestellt. Die App wertet nun das Ergebnis von `auth.initialize()` aus; `getSession()` allein gibt Initialisierungsfehler nicht weiter. Neue isolierte Fixtures prüfen erfolgreichen und abgelehnten PKCE-Codeaustausch sowie die Rückleitung in einen Browser ohne lokalen Verifier. Es werden weiterhin keine echten Google-Sitzungen simuliert oder Konten in Supabase angelegt. Ein Test auf einem echten iPhone bleibt erforderlich.
+
+E-Mail-Tests fangen ebenfalls sämtliche Supabase-Requests ab. Sie prüfen falsche und gültige Zugangsdaten, Bestätigungspflicht, Bestätigung erneut anfordern, SMTP-Fehler, einen neutralen Reset-Hinweis sowie das Ändern des Passworts nach einem verifizierten Recovery-Callback. Es wurden keine echten E-Mails versandt. Der öffentliche Einstellungsendpunkt bestätigt `email: true`, `disable_signup: false` und `mailer_autoconfirm: false`; das beweist noch keinen funktionierenden SMTP-Versand.
