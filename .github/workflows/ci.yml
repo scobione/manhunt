@@ -41,5 +41,9 @@ jobs:
         if: failure()
         with:
           name: browser-test-report
-          path: playwright-report/
+          path: |
+            playwright-report/
+            test-results/
+            test-results-edge/
+            test-results-public/
           retention-days: 7

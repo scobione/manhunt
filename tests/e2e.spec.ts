@@ -169,11 +169,15 @@ test('two real browsers create, join and start a match; private locations and pe
     const other = hunterView.players.find(player => player.id === guest.id)!;
     expect(other).not.toHaveProperty('location');
     expect(other).not.toHaveProperty('captureCode');
-    expect(hunterView.pins).toHaveLength(0);
+    // The first scheduled pin is now available as soon as the head start ends.
+    expect(hunterView.pins).toHaveLength(1);
+    expect(hunterView.pins[0].playerId).toBe(guest.id);
+    expect(hunterView.visibleLocations?.some(pin => pin.playerId === guest.id)).toBe(false);
     await expect.poll(async () => {
       await command(guest, { type: 'location', location: { ...TEST_GPS, timestamp: Date.now() }, publish: true });
       return (await view(host)).pins.length;
     }, { timeout: 15_000, intervals: [1000] }).toBe(1);
+    await expect(host.page.locator(`[data-testid="map-player-pin"][data-player-id="${guest.id}"]`)).toBeVisible();
     await host.page.screenshot({ path: 'test-results/normal-match.png', fullPage: true });
     await guest.page.reload();
     await expect.poll(async () => (await view(guest)).self.id).toBe(guest.id);

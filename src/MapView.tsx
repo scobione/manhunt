@@ -171,9 +171,11 @@ export default function MapView({ zone, activeZone, pins = [], location, role = 
     for (const pin of pins.filter(pin => pin.expiresAt > now)) {
       const element = document.createElement('button');
       element.type = 'button';
-      element.className = `mh-pin mh-pin-${pin.role} ${now - pin.createdAt > 60000 ? 'mh-pin-old' : ''}`;
-      const time = new Date(pin.createdAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      element.setAttribute('aria-label', `${pin.username}, ${pin.role}, Standortmeldung ${time}`);
+      const observedAt=pin.observedAt??pin.createdAt;const stale=!!pin.stale||now-observedAt>15000;
+      element.className = `mh-pin mh-pin-${pin.role} ${stale?'mh-pin-old':''} ${pin.kind==='live'?'mh-pin-live':''}`;
+      element.dataset.testid='map-player-pin';element.dataset.playerId=pin.playerId;
+      const time = new Date(observedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      element.setAttribute('aria-label', `${pin.username}, ${pin.role}, ${stale?'letzter bekannter Standort':pin.kind==='live'?'Live-Position':'Standortmeldung'} ${time}`);
       const popup = document.createElement('div');
       popup.className = 'mh-map-popup';
       const name = document.createElement('strong');
@@ -181,7 +183,8 @@ export default function MapView({ zone, activeZone, pins = [], location, role = 
       const detail = document.createElement('p');
       detail.textContent = `${time} · ± ${Math.round(pin.accuracy)} m`;
       const caveat = document.createElement('small');
-      caveat.textContent = 'Gemeldete Position – kein Live-Standort';
+      caveat.textContent = stale?`Letzter bekannter Standort · vor ${Math.max(0,Math.floor((now-observedAt)/1000))} s`:pin.kind==='live'?'Neueste Hunter-Position':pin.kind==='safety'?'Standort während der Notfallpause':'Intervall-Pin';
+      const label=document.createElement('span');label.className='mh-pin-label';label.textContent=`${pin.username}${stale?' · ALT':pin.kind==='live'?' · LIVE':''}`;element.append(label);
       popup.append(name, detail, caveat);
       if (location) {
         const range = document.createElement('p');

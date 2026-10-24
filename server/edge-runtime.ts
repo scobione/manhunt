@@ -4,7 +4,7 @@ import { GameEngine, GameError } from './engine';
 import { HttpError, safeMessage, statusCode, uuid, type Identity } from './auth';
 import type { Repository } from './repository';
 import type { EdgeStore } from './edge-store';
-import { settingsSchema } from './validation';
+import { settingsSchema, partialSettingsSchema } from './validation';
 import { version } from '../package.json';
 import { randomUUID } from 'node:crypto';
 
@@ -30,7 +30,7 @@ async function jsonBody(request:Request){
 export function createEdgeHandler({repository:repo,store,verify,origins}:EdgeOptions){
   async function game(identity:Identity,profile:Profile,event:string,raw:unknown){
     const id=identity.id;
-    const settings=event==='lobby:create'?z.object({settings:settingsSchema.innerType().partial().optional()}).strict().parse(raw??{}).settings:undefined;
+    const settings=event==='lobby:create'?z.object({settings:partialSettingsSchema.optional()}).strict().parse(raw??{}).settings:undefined;
     const code=event==='lobby:join'?z.object({code:codeSchema}).strict().parse(raw).code:undefined;
     const command=event==='lobby:command'?commandSchema.parse(raw).command as Command:undefined;
     if(event==='lobby:sync')empty.parse(raw??{});

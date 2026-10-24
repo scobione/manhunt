@@ -17,3 +17,4 @@ coverage/
 .edge-test-dist/
 supabase/functions/manhunt-api/index.js
 supabase/.temp/
+test-results-edge/

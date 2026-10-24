@@ -75,3 +75,5 @@
 
 .zone-next-step{margin-top:24px;scroll-margin-block:110px;outline-color:#00ff9c}.zone-next-step p{line-height:1.8;max-width:65ch}.zone-next-step .button-row{margin-top:20px;flex-wrap:wrap}
 .create-layout>.inline-info{grid-column:1/-1}
+
+.mh-pin-label{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);background:#080b0de8;border:1px solid var(--pin-color);color:#f4f7f8;white-space:nowrap;padding:3px 6px;border-radius:4px;font:10px ui-monospace,monospace;pointer-events:none}.mh-pin-old{border-style:dashed;opacity:.75}.mh-pin-live{box-shadow:0 0 0 3px #ff3b4533,0 0 14px #ff3b4588}

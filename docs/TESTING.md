@@ -1,4 +1,16 @@
-# Verifikation — 22.10.2026
+# Verifikation — b.0.69.44 / 24.10.2026
+
+Der aktuelle Produktionsbuild besteht TypeScript und den vollständigen Build. **121 Engine-, API-, Edge-, SQL- und Zonentests** sowie **29 lokale Playwright-Szenarien** sind erfolgreich: 8 Socket.IO-Multiplayer-, 6 Edge-/GPS- und 15 Produktionsbundle-/Auth-Szenarien. `npm audit --omit=dev --audit-level=high` meldet **0 bekannte Schwachstellen** im geprüften Stand.
+
+Neue Regressionstests prüfen Minuten- und Custom-Einstellungen, den ersten Pin nach dem Vorsprung, Pins mit der letzten bekannten Ortung samt Messalter, laufende Hunter-Positionen bei weiterhin privaten Hider-Ortungen, den Zonentimer bei GPS-Aussetzern, zwei notwendige Innenmessungen vor der Rückkehrbestätigung, Standortwiderruf und den eingefrorenen Timer während einer Pause. Mobile Chromium-Tests prüfen die Vollbildwarnung, den gesperrten und danach nutzbaren Swipe, sichtbare Kartenmarker sowie weiterlaufende Ortung in der Notfallpause. Zwei gesonderte Browserfälle prüfen, dass verspätete GPS-Callbacks nach dem Widerruf oder nach dem Verlassen der Spielansicht nichts mehr senden.
+
+Die Browser-Suiten verwenden getrennte Ergebnisverzeichnisse; parallele Läufe löschen keine fremden Trace-Dateien mehr. GPS-Proben und Testidentitäten bleiben ausschließlich in lokalen Testservern. Ein Test mit realem Outdoor-GPS auf iPhone/Android ist damit nicht ersetzt. Externe OSM-Kacheln können im lokalen Chromium wegen der Umgebung nicht per TLS verifiziert werden; die veröffentlichten Seiten werden deshalb zusätzlich im normalen GitHub-Chromium geprüft. TLS-Prüfungen bleiben aktiv.
+
+Die Ergebnisse und Links der Veröffentlichung stehen im Releasebericht. Frühere Verifikationsstände folgen als **historische Dokumentation**, einschließlich damals noch fehlender Dienste.
+
+---
+
+## Historischer Stand — 22.10.2026
 
 Die folgenden Prüfungen wurden in der Entwicklungsumgebung und in GitHub Actions tatsächlich ausgeführt. Kein echter Google-Login, kein reales Outdoor-GPS und keine Render-Bereitstellung werden daraus abgeleitet. Die separat geprüfte echte Supabase-Einrichtung ist unten dokumentiert.
 

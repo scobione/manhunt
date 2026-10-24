@@ -1,14 +1,14 @@
 import { randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { area, booleanPointInPolygon, distance, featureCollection, intersect, lineString, point, pointToLineDistance, polygon, transformScale } from '@turf/turf';
 import type { Feature, Polygon } from 'geojson';
-import { DEFAULT_SETTINGS, type CaptureRequest, type Command, type GameEvent, type Lobby, type LobbyView, type LocationSample, type Player, type Profile, type Settings } from '../shared/types.js';
+import { DEFAULT_SETTINGS, type CaptureRequest, type Command, type GameEvent, type Lobby, type LobbyView, type LocationSample, type Pin, type Player, type Profile, type Settings } from '../shared/types.js';
 import { validateCommand, validateSettings, validateZone } from './validation.js';
 
 export class GameError extends Error {
   constructor(public code:string,message:string,public stateChanged=false,public lobbyId?:string){super(message);this.name='GameError';}
 }
 interface PlayerState {
-  outsideAccumulatedMs:number; lastOutsideAt?:number; outsideFixes:number; lastReliableOutside:boolean;
+  outsideAccumulatedMs:number; insideFixes?:number; insideFirstAt?:number; lastOutsideAt?:number; outsideFixes:number; lastReliableOutside:boolean;
   captureAttempts:number[]; missedPin:boolean; infectionAcknowledged:boolean; unreliableLocation?:boolean; lastLocationAt?:number;
 }
 interface PrivateState {players:Record<string,PlayerState>; phase:number; hunterReleaseAt?:number; lastTick:number; leftIds:string[];}
@@ -34,9 +34,10 @@ export class GameEngine {
     this.lobbies.clear();
     for(const record of clone(lobbies)){
       const lobby=record as EngineLobby;
+      lobby.settings={...clone(DEFAULT_SETTINGS),...lobby.settings};
       lobby._engine??={players:{},phase:0,lastTick:this.now(),leftIds:[]};
       lobby._engine.leftIds??=[];
-      for(const p of lobby.players)lobby._engine.players[p.id]??=metadata();
+      for(const p of lobby.players){lobby._engine.players[p.id]??=metadata();if(lobby.status==='paused')this.freezeOutside(lobby,p,lobby.pausedAt??this.now());}
       this.lobbies.set(lobby.id,lobby);
     }
   }
@@ -85,7 +86,7 @@ export class GameEngine {
     const lobby=this.lobbyFor(userId) as EngineLobby|undefined;if(!lobby)return;
     const p=this.member(lobby,userId);if(p.connected===connected)return lobby;
     p.connected=connected;p.lastSeen=this.now();
-    if(!connected){const meta=lobby._engine.players[userId];meta.lastReliableOutside=false;meta.lastOutsideAt=undefined;meta.outsideFixes=0;delete p.outsideSince;}
+    if(!connected)this.freezeOutside(lobby,p);
     this.event(lobby,connected?'reconnected':'disconnected',`${p.username}: ${connected?'Verbindung wiederhergestellt':'Verbindung unterbrochen'}.`,userId);return this.changed(lobby);
   }
   view(id:string,userId:string):LobbyView{
@@ -104,11 +105,21 @@ export class GameEngine {
       }
       return pin.role==='zombie'&&l.settings.zombieVisible;
     };
-    const pins=l.pins.filter(canSeePin);
+    const pins=l.pins.filter(canSeePin).map(pin=>({...pin,stale:!!pin.stale||now-(pin.observedAt??pin.createdAt)>15_000}));
+    const visibleLocations:Pin[]=[];
+    for(const player of l.players){
+      if(player.id===userId||l._engine.leftIds.includes(player.id)||!player.location||player.locationSharing===false)continue;
+      const safety=l.status==='paused';
+      const live=l.status==='active'&&l.settings.hunterVisible&&player.role==='hunter'&&!player.eliminated&&!self.eliminated&&self.role!=='spectator'&&(l._engine.hunterReleaseAt??0)<=now;
+      if(!safety&&!live)continue;
+      const sample=player.location,observedAt=Math.min(sample.timestamp,l._engine.players[player.id].lastLocationAt??sample.timestamp);
+      if(now-observedAt>l.settings.fallbackPinMaxAgeSeconds*1000)continue;
+      visibleLocations.push({id:`${safety?'safety':'live'}:${player.id}`,playerId:player.id,username:player.username,role:player.role,...sample,observedAt,createdAt:observedAt,expiresAt:observedAt+l.settings.fallbackPinMaxAgeSeconds*1000,stale:now-observedAt>15_000||!!l._engine.players[player.id].unreliableLocation,kind:safety?'safety':'live'});
+    }
     return clone({id:l.id,code:l.code,hostId:l.hostId,status:l.status,
       players:l.players.map(p=>({id:p.id,username:p.username,avatar_url:p.avatar_url,ready:p.ready,role:p.role,team:p.team,connected:p.connected,eliminated:p.eliminated,infectedAt:p.infectedAt,lastSeen:p.lastSeen})),
       settings:l.settings,zone:l.zone,activeZone:l.activeZone,createdAt:l.createdAt,startedAt:l.startedAt,endsAt:l.endsAt,pausedAt:l.pausedAt,previousStatus:l.previousStatus,
-      pins,events:l.events,captures:l.captures.filter(c=>c.targetId===userId||c.hunterId===userId),result:l.result,revision:l.revision,
+      pins,visibleLocations,events:l.events,captures:l.captures.filter(c=>c.targetId===userId||c.hunterId===userId),result:l.result,revision:l.revision,
       self:{...self},serverTime:now});
   }
   command(id:string,userId:string,input:Command):Lobby{
@@ -129,7 +140,9 @@ export class GameEngine {
       case 'kick':{this.host(l,userId);this.waiting(l);if(command.playerId===userId)fail('INVALID_TARGET','Du kannst dich nicht selbst entfernen.');const target=this.member(l,command.playerId);l.players=l.players.filter(p=>p.id!==target.id);delete l._engine.players[target.id];this.event(l,'player_removed',`${target.username} wurde entfernt.`,userId,target.id);break;}
       case 'transfer':this.host(l,userId);if(!this.member(l,command.playerId).connected)fail('DISCONNECTED','Der neue Host muss verbunden sein.');l.hostId=command.playerId;this.event(l,'host_changed','Host übertragen.',userId,command.playerId);break;
       case 'start':this.start(l,userId);break;
-      case 'pause':if(!activeStatuses.has(l.status))fail('NOT_ACTIVE','Das Match läuft nicht.');if(l.status!=='paused'){l.previousStatus=l.status as 'active'|'preparing';l.status='paused';l.pausedAt=now;this.event(l,'emergency_pause',`Notfall-Pause durch ${p.username}. Sicherheit hat Vorrang.`,userId);}break;
+      case 'zone_return_ack':if(p.zoneStatus!=='inside'||!p.location||now-(l._engine.players[p.id].lastLocationAt??0)>15_000)fail('RETURN_UNCONFIRMED','Die Rückkehr muss zuerst durch aktuelle, genaue GPS-Messungen bestätigt werden.');p.returnPending=false;break;
+      case 'stop_location':p.locationSharing=false;delete p.location;l.pins=l.pins.filter(pin=>pin.playerId!==p.id);this.freezeOutside(l,p);if(['active','preparing'].includes(l.status)){l.previousStatus=l.status as 'active'|'preparing';l.status='paused';l.pausedAt=now;for(const player of l.players)this.freezeOutside(l,player);this.event(l,'emergency_pause',`${p.username} hat die Standortfreigabe beendet. Match pausiert.`,userId);}break;
+      case 'pause':if(!activeStatuses.has(l.status))fail('NOT_ACTIVE','Das Match läuft nicht.');if(l.status!=='paused'){l.previousStatus=l.status as 'active'|'preparing';l.status='paused';l.pausedAt=now;for(const player of l.players)this.freezeOutside(l,player);this.event(l,'emergency_pause',`Notfall-Pause durch ${p.username}. Sicherheit hat Vorrang.`,userId);}break;
       case 'resume':this.host(l,userId);this.resume(l);break;
       case 'close':this.host(l,userId);l.status='closed';this.purge(l);this.event(l,'lobby_closed','Lobby geschlossen.',userId);break;
       case 'leave':this.leave(l,p);break;
@@ -171,7 +184,7 @@ export class GameEngine {
     const now=this.now();l.startedAt=now+l.settings.preparationSeconds*1000;l.endsAt=l.startedAt+l.settings.durationSeconds*1000;
     l._engine.hunterReleaseAt=l.startedAt+l.settings.headStartSeconds*1000;
     l.status=l.settings.preparationSeconds?'preparing':'active';l.activeZone=clone(l.zone.feature);l.pins=[];l.captures=[];l._engine.phase=0;
-    for(const p of participants){p.eliminated=false;p.captureCode=this.code();p.nextPinAt=l._engine.hunterReleaseAt+l.settings.pinIntervalSeconds*1000;delete p.location;delete p.outsideSince;delete p.infectedAt;l._engine.players[p.id]=metadata();}
+    for(const p of participants){p.eliminated=false;p.captureCode=this.code();p.nextPinAt=l._engine.hunterReleaseAt;delete p.location;delete p.outsideSince;delete p.infectedAt;delete p.outsideClockAt;p.outsideActive=false;p.returnPending=false;p.outsideElapsed=0;p.locationSharing=false;p.zoneStatus='uncertain';l._engine.players[p.id]=metadata();}
     this.event(l,'match_started','Rollen verteilt. Achte auf deine Umgebung.',userId);
   }
   private resume(l:EngineLobby):void{
@@ -179,7 +192,7 @@ export class GameEngine {
     if(l.players.some(p=>playing(p)&&!p.connected))fail('DISCONNECTED','Alle aktiven Spieler müssen wieder verbunden sein.');
     const now=this.now(),delta=now-(l.pausedAt??now);
     if(l.startedAt!==undefined)l.startedAt+=delta;if(l.endsAt!==undefined)l.endsAt+=delta;if(l._engine.hunterReleaseAt!==undefined)l._engine.hunterReleaseAt+=delta;
-    for(const p of l.players){if(p.nextPinAt!==undefined)p.nextPinAt+=delta;if(p.infectedAt!==undefined)p.infectedAt+=delta;delete p.outsideSince;const meta=l._engine.players[p.id];meta.lastOutsideAt=undefined;meta.lastReliableOutside=false;meta.outsideFixes=0;}
+    for(const p of l.players){if(p.nextPinAt!==undefined)p.nextPinAt+=delta;if(p.infectedAt!==undefined)p.infectedAt+=delta;this.freezeOutside(l,p);const meta=l._engine.players[p.id];meta.insideFixes=0;}
     l.pins=l.pins.filter(pin=>pin.expiresAt>now);
     l.status=l.previousStatus??'active';delete l.pausedAt;delete l.previousStatus;l.captures=[];this.event(l,'match_resumed','Das Match wird fortgesetzt.');
   }
@@ -193,21 +206,41 @@ export class GameEngine {
   }
   private infectionMode(l:Lobby){return l.settings.mode==='zombie'||l.settings.mode==='infection_rush'||l.settings.mode==='custom'&&l.settings.winCondition==='infection';}
   private location(l:EngineLobby,p:Player,loc:LocationSample,_publish:boolean):void{
-    if(!['preparing','active'].includes(l.status)||!playing(p))fail('LOCATION_DISABLED','Standortfreigabe ist nur im laufenden Match möglich.');
+    if(!['preparing','active','paused'].includes(l.status)||!playing(p))fail('LOCATION_DISABLED','Standortfreigabe ist nur im laufenden Match oder in einer Notfallpause möglich.');
     const now=this.now(),meta=l._engine.players[p.id],old=p.location;
     if(Math.abs(now-loc.timestamp)>30_000)fail('STALE_LOCATION','Der GPS-Zeitstempel ist veraltet. Fordere einen neuen Standort an.');
     if(old&&loc.timestamp<=old.timestamp)fail('REPLAYED_LOCATION','Dieser Standort wurde bereits verarbeitet.');
-    if(loc.accuracy>l.settings.maxAccuracyMeters){meta.unreliableLocation=true;meta.lastReliableOutside=false;meta.lastOutsideAt=undefined;meta.outsideFixes=0;delete p.outsideSince;this.reject(l,'GPS_UNCERTAIN','GPS zu ungenau. Keine Eliminierung oder Standortmeldung; gehe sicher ins Freie.');}
-    if(old&&now-old.timestamp<=60_000){const elapsed=Math.max(0,(now-(meta.lastLocationAt??old.timestamp))/1000);const meters=distance([old.longitude,old.latitude],[loc.longitude,loc.latitude],{units:'meters'});if(meters>Math.max(100,elapsed*15+old.accuracy+loc.accuracy)) {this.event(l,'gps_rejected','Auffälliger GPS-Sprung wurde verworfen.',p.id);meta.unreliableLocation=true;meta.lastReliableOutside=false;meta.lastOutsideAt=undefined;meta.outsideFixes=0;delete p.outsideSince;this.reject(l,'GPS_JUMP','Auffälliger GPS-Sprung. Bitte warte auf eine zuverlässige Ortung.');}}
-    // Trust the receipt clock for deadlines. The client timestamp is only freshness/replay evidence.
-    p.location={...loc};p.lastSeen=now;meta.unreliableLocation=false;meta.lastLocationAt=now;
+    if(loc.accuracy>l.settings.maxAccuracyMeters){meta.unreliableLocation=true;this.freezeOutside(l,p);this.reject(l,'GPS_UNCERTAIN','GPS zu ungenau. Der Zonentimer wird angehalten; der letzte genaue Standort bleibt als veraltet erkennbar.');}
+    if(old&&now-old.timestamp<=60_000){const elapsed=Math.max(0,(now-(meta.lastLocationAt??old.timestamp))/1000);const meters=distance([old.longitude,old.latitude],[loc.longitude,loc.latitude],{units:'meters'});if(meters>Math.max(100,elapsed*15+old.accuracy+loc.accuracy)){this.event(l,'gps_rejected','Auffälliger GPS-Sprung wurde verworfen.',p.id);meta.unreliableLocation=true;this.freezeOutside(l,p);this.reject(l,'GPS_JUMP','Auffälliger GPS-Sprung. Bitte warte auf eine zuverlässige Ortung.');}}
+    if(l.status!=='paused')this.accrueOutside(l,p,now);
+    p.location={...loc};p.locationSharing=true;p.lastSeen=now;meta.unreliableLocation=false;meta.lastLocationAt=now;
     if(l.status==='active')this.observeBoundary(l,p,loc);
-    const canPublish=p.role==='hider'||p.role==='zombie'&&l.settings.zombieGps;
-    if(l.status==='active'&&canPublish&&(p.nextPinAt??Infinity)<=now){
-      if(!l.settings.showOldPins)l.pins=l.pins.filter(pin=>pin.playerId!==p.id);
-      l.pins.push({id:randomUUID(),playerId:p.id,username:p.username,role:p.role,latitude:loc.latitude,longitude:loc.longitude,accuracy:loc.accuracy,createdAt:now,expiresAt:now+l.settings.pinLifetimeSeconds*1000});
-      p.nextPinAt=now+l.settings.pinIntervalSeconds*1000;meta.missedPin=false;this.event(l,'pin_published',`${p.username} hat einen GPS-Pin gemeldet.`,p.id);
+    if(l.status==='active')this.publishDuePin(l,p);
+  }
+  private publishDuePin(l:EngineLobby,p:Player):boolean{
+    const now=this.now(),meta=l._engine.players[p.id],sample=p.location;
+    if(!playing(p)||p.locationSharing===false||!(p.role==='hider'||p.role==='zombie'&&l.settings.zombieGps)||(p.nextPinAt??Infinity)>now||!sample)return false;
+    const observedAt=Math.min(sample.timestamp,meta.lastLocationAt??sample.timestamp),age=now-observedAt;
+    const stale=age>15_000||!!meta.unreliableLocation;
+    if(age>l.settings.fallbackPinMaxAgeSeconds*1000||(stale&&!l.settings.fallbackPins))return false;
+    if(!l.settings.showOldPins)l.pins=l.pins.filter(pin=>pin.playerId!==p.id);
+    l.pins.push({id:randomUUID(),playerId:p.id,username:p.username,role:p.role,...sample,observedAt,stale,kind:'scheduled',createdAt:now,expiresAt:now+l.settings.pinLifetimeSeconds*1000});
+    p.nextPinAt=now+l.settings.pinIntervalSeconds*1000;meta.missedPin=false;
+    this.event(l,'pin_published',stale?`${p.username}: letzter bekannter Standort veröffentlicht (keine aktuelle Ortung).`:`${p.username} hat einen GPS-Pin gemeldet.`,p.id);
+    return true;
+  }
+  private accrueOutside(l:EngineLobby,p:Player,now:number):void{
+    const meta=l._engine.players[p.id];
+    if(meta.lastReliableOutside&&meta.lastOutsideAt!==undefined){
+      const until=Math.min(now,(meta.lastLocationAt??meta.lastOutsideAt)+Math.min(15,l.settings.gpsToleranceSeconds)*1000);
+      meta.outsideAccumulatedMs+=Math.max(0,until-meta.lastOutsideAt);
+      meta.lastOutsideAt=Math.max(meta.lastOutsideAt,until);p.outsideElapsed=meta.outsideAccumulatedMs;
     }
+  }
+  private freezeOutside(l:EngineLobby,p:Player,at=this.now()):void{
+    this.accrueOutside(l,p,at);
+    const meta=l._engine.players[p.id];meta.lastReliableOutside=false;meta.lastOutsideAt=undefined;meta.insideFixes=0;delete meta.insideFirstAt;
+    delete p.outsideClockAt;p.zoneStatus='uncertain';delete p.outsideSince;
   }
   private boundary(l:EngineLobby,loc:LocationSample):'inside'|'outside'|'uncertain'{
     if(!l.activeZone)return 'uncertain';const pos=point([loc.longitude,loc.latitude]);
@@ -220,13 +253,19 @@ export class GameEngine {
   private observeBoundary(l:EngineLobby,p:Player,loc:LocationSample):void{
     const now=this.now(),meta=l._engine.players[p.id],state=this.boundary(l,loc);
     if(state==='outside'){
-      if(meta.lastReliableOutside&&meta.lastOutsideAt!==undefined&&now-meta.lastOutsideAt<=l.settings.gpsToleranceSeconds*1000)meta.outsideAccumulatedMs+=now-meta.lastOutsideAt;
-      meta.lastOutsideAt=now;meta.lastReliableOutside=true;meta.outsideFixes++;p.outsideSince=now-meta.outsideAccumulatedMs;p.outsideElapsed=meta.outsideAccumulatedMs;
+      meta.insideFixes=0;delete meta.insideFirstAt;meta.lastOutsideAt=now;meta.lastReliableOutside=true;meta.outsideFixes++;
+      p.outsideActive=true;p.returnPending=false;p.zoneStatus='outside';p.outsideElapsed=meta.outsideAccumulatedMs;p.outsideClockAt=now;p.outsideSince=now-meta.outsideAccumulatedMs;
       if(meta.outsideFixes===1)this.event(l,'zone_warning',`${p.username}: außerhalb der Spielzone. Sicher zurückkehren.`,p.id);
       if(meta.outsideFixes>=2&&meta.outsideAccumulatedMs>=l.settings.outsideGraceSeconds*1000)this.eliminate(l,p,'zone','Toleranzzeit außerhalb der Zone überschritten.');
-    }else{
-      if(state==='inside'&&l.settings.outsideReset)meta.outsideAccumulatedMs=0;
-      meta.lastReliableOutside=false;meta.lastOutsideAt=undefined;meta.outsideFixes=0;delete p.outsideSince;p.outsideElapsed=meta.outsideAccumulatedMs;
+    }else if(state==='uncertain')this.freezeOutside(l,p);
+    else{
+      meta.lastReliableOutside=false;delete meta.lastOutsideAt;delete p.outsideClockAt;
+      meta.insideFixes=(meta.insideFixes??0)+1;meta.insideFirstAt??=now;
+      // One noisy fix must not erase an existing warning or reset its timer.
+      if(p.outsideActive&&(meta.insideFixes<2||now-meta.insideFirstAt<1500)){p.zoneStatus='uncertain';return;}
+      const returning=!!p.outsideActive;p.zoneStatus='inside';p.outsideActive=false;p.returnPending ||= returning;
+      if(l.settings.outsideReset)meta.outsideAccumulatedMs=0;
+      meta.outsideFixes=0;delete p.outsideSince;p.outsideElapsed=meta.outsideAccumulatedMs;
     }
   }
   private canHunt(l:EngineLobby,p:Player):void{
@@ -274,12 +313,12 @@ export class GameEngine {
     }else this.eliminate(l,target,'captured','Gefangen.',actor.id);
   }
   private eliminate(l:EngineLobby,p:Player,reason:string,message:string,actorId?:string):void{
-    if(p.eliminated)return;p.eliminated=true;delete p.location;delete p.captureCode;delete p.outsideSince;delete p.nextPinAt;
+    if(p.eliminated)return;p.eliminated=true;p.outsideActive=false;p.returnPending=false;delete p.outsideClockAt;delete p.location;delete p.captureCode;delete p.outsideSince;delete p.nextPinAt;
     l.pins=l.pins.filter(pin=>pin.playerId!==p.id);l.captures=l.captures.filter(c=>c.targetId!==p.id&&c.hunterId!==p.id);this.event(l,'elimination',`${p.username}: ${message}`,actorId??p.id,p.id);
     // No coordinate or raw GPS evidence enters the public event log.
     if(reason==='zone')this.event(l,'zone_elimination','Zone serverseitig mit mehreren genauen Ortungen geprüft.',undefined,p.id);
   }
-  private purge(l:EngineLobby):void{l.pins=[];l.captures=[];for(const p of l.players){delete p.location;delete p.captureCode;delete p.outsideSince;delete p.nextPinAt;}}
+  private purge(l:EngineLobby):void{l.pins=[];l.captures=[];for(const p of l.players){p.outsideActive=false;p.returnPending=false;delete p.outsideClockAt;delete p.location;delete p.captureCode;delete p.outsideSince;delete p.nextPinAt;}}
   private finish(l:EngineLobby,winner:string,reason:string):void{
     l.result={winner,reason,endedAt:this.now(),survivors:l.players.filter(p=>playing(p)&&p.role==='hider').map(p=>p.id)};l.status='finished';this.purge(l);this.event(l,'match_finished',reason);
   }
@@ -321,19 +360,21 @@ export class GameEngine {
             const scaled=transformScale(clone(l.zone!.feature),l.settings.phases[phase].scale);
             const clipped=intersect(featureCollection([scaled,l.zone!.feature]));
             if(!clipped){l.previousStatus='active';l.status='paused';l.pausedAt=now;this.event(l,'unsafe_zone','Zone konnte nicht sicher verkleinert werden. Match pausiert.');}
-            else{l.activeZone=clipped.geometry.type==='Polygon'?clipped as Feature<Polygon>:clipped.geometry.coordinates.map(c=>polygon(c)).sort((a,b)=>area(b)-area(a))[0];l._engine.phase=phase;this.event(l,'zone_shrunk',`Zone verkleinert: Phase ${phase+1}.`);for(const p of l.players){delete p.outsideSince;const m=l._engine.players[p.id];m.outsideFixes=0;m.lastReliableOutside=false;m.lastOutsideAt=undefined;}}
+            else{l.activeZone=clipped.geometry.type==='Polygon'?clipped as Feature<Polygon>:clipped.geometry.coordinates.map(c=>polygon(c)).sort((a,b)=>area(b)-area(a))[0];l._engine.phase=phase;this.event(l,'zone_shrunk',`Zone verkleinert: Phase ${phase+1}.`);for(const p of l.players)this.freezeOutside(l,p);}
             changed=true;
           }
         }
         for(const p of l.players.filter(playing)){
           const meta=l._engine.players[p.id];
-          if(p.outsideSince!==undefined&&(!p.location||now-Math.min(p.location.timestamp,meta.lastLocationAt??0)>Math.min(15,l.settings.gpsToleranceSeconds)*1000)){delete p.outsideSince;meta.lastReliableOutside=false;meta.lastOutsideAt=undefined;meta.outsideFixes=0;changed=true;}
+          if(meta.lastReliableOutside&&(!p.location||now-Math.min(p.location.timestamp,meta.lastLocationAt??0)>Math.min(15,l.settings.gpsToleranceSeconds)*1000)){this.freezeOutside(l,p);changed=true;}
+          if(this.publishDuePin(l,p))changed=true;
           // Elimination requires a second/current accurate GPS sample in observeBoundary, never a blind timer tick.
           if(p.role==='hider'&&p.nextPinAt!==undefined&&now>p.nextPinAt+l.settings.gpsToleranceSeconds*1000&&!meta.missedPin){meta.missedPin=true;this.event(l,'gps_due',`${p.username}: GPS-Pin überfällig. App im Vordergrund öffnen.`,p.id);changed=true;}
         }
         const pins=l.pins.filter(pin=>pin.expiresAt>now),captures=l.captures.filter(c=>now-c.createdAt<30_000);if(pins.length!==l.pins.length||captures.length!==l.captures.length){l.pins=pins;l.captures=captures;changed=true;}
         const before=l.status;this.evaluate(l);if(l.status!==before)changed=true;
       }
+      if(l.status==='paused')for(const p of l.players)this.freezeOutside(l,p,l.pausedAt??now);
       l._engine.lastTick=now;if(changed)changes.push(this.changed(l));
     }
     return changes;

@@ -42,7 +42,7 @@ test('mobile planned zone continues into a real lobby and both browsers start a 
   await host.page.reload();await expect(host.page.locator('.connection')).toHaveText('VERBUNDEN');
   await expect(host.page.getByRole('heading',{name:'Die Jagd läuft.'})).toBeVisible();
   expect(await host.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await host.page.screenshot({path:'test-results/edge-mobile-match.png',fullPage:true});
+  await host.page.screenshot({path:'test-results-edge/edge-mobile-match.png',fullPage:true});
   const hunter=(await host.page.getByTestId('role-label').innerText())==='HUNTER'?host:guest;
   const hider=hunter===host?guest:host;
   await hunter.page.getByLabel('Hider auswählen').selectOption(hider.id);

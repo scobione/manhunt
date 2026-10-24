@@ -1,5 +1,20 @@
 # Änderungen
 
+## b.0.69.44 — 24.10.2026
+
+- Pin-Intervalle als Minuten-Auswahl oder freier Wert; zusätzliche Host-Regeln für Hunter-Sichtbarkeit, Aktualisierungsintervall und Ersatz-Pins.
+- Erster Pin nach dem Vorsprung; weitere Pins werden serverseitig auch aus der letzten bekannten Ortung veröffentlicht. Alter, Messzeitpunkt und ungenaue/veraltete Daten bleiben sichtbar.
+- Hunter-Positionen auf der Karte, soweit freigegeben und vom Host erlaubt. Hider-Positionen bleiben im laufenden Match an die Pin-Regeln gebunden.
+- Vollbild-Zonenwarnung mit standardmäßig 60 Sekunden Toleranz. Ungenaue GPS-Messungen halten den Timer an, statt ihn zurückzusetzen. Rückkehr benötigt zwei genaue Messungen und lässt sich anschließend per Swipe bestätigen.
+- Vollbild-Notfallpause mit allen verfügbaren, zuletzt freigegebenen Positionen und weiterlaufender Ortung bei bestehender Zustimmung.
+- Verspätete GPS-Rückmeldungen senden nach dem Beenden der Freigabe oder Verlassen der Spielansicht keine Position mehr.
+- Zod und body-parser aktualisiert; npm audit meldet keine bekannten Advisories im geprüften Abhängigkeitsstand.
+
+## b.0.69.43 — 23.10.2026
+
+- Multiplayer-Backend auf Supabase Edge mit dauerhaften Spielständen und HTTPS-Synchronisierung veröffentlicht. Die bestehende Sites-Adresse bleibt erhalten; Render ist nicht erforderlich.
+- Zone-zu-Lobby-Ablauf, Wiederverbindung, Datenbereinigung und konkurrierende Änderungen abgesichert. Details: [Releasebericht](docs/RELEASE-b.0.69.43.md).
+
 ## 0.2.2 — 22.10.2026
 
 - E-Mail-/Passwort-Anmeldung, Registrierung mit E-Mail-Bestätigung, erneute Bestätigungsmail sowie Passwort-Zurücksetzen und Ändern ergänzt. Sitzungen werden weiterhin über Supabase verifiziert. SMTP-Versandfehler werden verständlich angezeigt.

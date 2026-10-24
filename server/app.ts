@@ -12,7 +12,7 @@ import { GameEngine, GameError } from './engine.js';
 import { authenticate, bearer, HttpError, safeMessage, statusCode, testAuthEnabled, uuid, WindowLimiter, type Identity } from './auth.js';
 import { MemoryRepository, SupabaseRepository, type Repository, type Subscription } from './repository.js';
 import type { Command, Lobby, Profile, Settings } from '../shared/types.js';
-import { settingsSchema } from './validation.js';
+import { settingsSchema, partialSettingsSchema } from './validation.js';
 
 export interface BackendOptions { repository?:Repository; supabase?:SupabaseClient|null; engine?:GameEngine; timers?:boolean; }
 interface UserSocketData { identity:Identity; profile:Profile; }
@@ -233,7 +233,7 @@ export async function createBackend(options:BackendOptions={}){
     const sync=async()=>{const lobby=latestLobby();if(!lobby)return null;return engine.view(lobby.id,id);};
     event('lobby:create',async raw=>{
       limiter.take(`create:${id}`,5,60_000);requireReady();
-      const{settings}=z.object({settings:settingsSchema.innerType().partial().optional()}).strict().parse(raw??{});
+      const{settings}=z.object({settings:partialSettingsSchema.optional()}).strict().parse(raw??{});
       const profile=await repo().getProfile(socket.data.identity);
       return commit(()=>{const lobby=engine.create(profile,settings as Partial<Settings>);return{lobby,data:engine.view(lobby.id,id)};});
     });
