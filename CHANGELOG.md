@@ -1,5 +1,12 @@
 # Änderungen
 
+## b.0.69.46 — 25.10.2026
+
+- Gastbeitritt ohne Registrierung, Lobby-QR und kurz gültige QR-Fänge als Standard neuer Lobbys.
+- Google-Button entfernt, E-Mail-Codebestätigung ergänzt und vier gestaltete Mailvorlagen vorbereitet.
+- Web-Push mit serverseitiger Terminierung im Supabase-Edge-Betrieb.
+- [Release und verbleibende Auth-Einrichtung](docs/RELEASE-b.0.69.46.md).
+
 ## b.0.69.45 — 25.10.2026
 
 - Kontolöschung anonymisiert persönliche Siegerkennungen und alte Siegernamen auch in den Matchhistorien der übrigen Teilnehmer; private Engine-Metadaten werden vollständig von den betroffenen Spielerreferenzen bereinigt.

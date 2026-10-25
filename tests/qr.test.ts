@@ -1,0 +1,16 @@
+import {describe,it,expect} from 'vitest';
+import {circle} from '@turf/turf';
+import {GameEngine,GameError} from '../server/engine';
+import {readCaptureQr,readLobbyQr,lobbyQrUrl} from '../shared/qr';
+const profile=(id:string)=>({id,username:`Test_${id}`,avatar_url:null,friend_code:'TESTONLY',show_online:false});
+function match(mode:'normal'|'zombie'='normal'){
+ let now=1800000000000;const engine=new GameEngine({now:()=>now});const l=engine.create(profile('a'),{captureMethod:'qr',mode,randomRoles:false,preparationSeconds:0,headStartSeconds:0});for(const id of ['b','c'])engine.join(l.code,profile(id));engine.command(l.id,'a',{type:'zone',zone:{name:'ISOLATED QR TEST',confirmed:true,excluded:[],feature:circle([13.4,52.5],.6)}});engine.command(l.id,'a',{type:'assign',playerId:'a',role:'hunter',team:'A'});for(const id of ['a','b','c'])engine.command(l.id,id,{type:'ready',ready:true});engine.command(l.id,'a',{type:'start'});return{engine,l,advance:(ms:number)=>{now+=ms;},token:()=>engine.view(l.id,'b').self.captureQr!.token};
+}
+describe('QR join and server-authoritative capture',()=>{
+ it('accepts only a lobby URL on the current app origin',()=>{const origin='https://manhunt.example';expect(readLobbyQr(lobbyQrUrl('ABC234',origin),origin)).toBe('ABC234');for(const url of ['https://evil.example/join?code=ABC234',origin+'/game?code=ABC234','javascript:alert(1)',origin+'/join?code=<script>'])expect(()=>readLobbyQr(url,origin)).toThrow();});
+ it('rejects malformed or wrong-match capture payloads',()=>{const payload={v:1,kind:'manhunt-capture',lobbyId:'test',playerId:'b',token:'a'.repeat(43),expiresAt:1800000000000};expect(readCaptureQr(JSON.stringify(payload),'test').playerId).toBe('b');expect(()=>readCaptureQr(JSON.stringify(payload),'other')).toThrow();expect(()=>readCaptureQr('{}','test')).toThrow();});
+ it('shows only the hiders own short-lived QR and never its signing secret',()=>{const {engine,l,token}=match();const hunter=JSON.stringify(engine.view(l.id,'a'));expect(hunter).not.toContain(token());expect(hunter).not.toContain('captureSecret');expect(JSON.stringify(engine.view(l.id,'b'))).not.toContain('captureSecret');});
+ it('captures instantly without a confirmation request and prevents replay',()=>{const {engine,l,token}=match();const qrToken=token();engine.command(l.id,'a',{type:'capture',targetId:'b',qrToken});expect(l.players[1].eliminated).toBe(true);expect(l.captures).toHaveLength(0);expect(()=>engine.command(l.id,'a',{type:'capture',targetId:'b',qrToken})).toThrow(GameError);});
+ it('rejects expired, forged and wrong-target QR tokens',()=>{const {engine,l,token,advance}=match();const old=token();advance(60000);for(const qrToken of [old,'a'.repeat(43),engine.view(l.id,'c').self.captureQr!.token])expect(()=>engine.command(l.id,'a',{type:'capture',targetId:'b',qrToken})).toThrow(/ungültig oder abgelaufen/);expect(l.players[1].eliminated).toBe(false);});
+ it('still enforces actor role and turns caught hiders into zombies',()=>{const {engine,l,token}=match('zombie');expect(()=>engine.command(l.id,'c',{type:'capture',targetId:'b',qrToken:token()})).toThrow(/Hunter und Zombies/);engine.command(l.id,'a',{type:'capture',targetId:'b',qrToken:token()});expect(l.players[1].role).toBe('zombie');expect(engine.view(l.id,'b').self.captureQr).toBeUndefined();});
+});

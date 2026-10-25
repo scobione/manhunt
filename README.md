@@ -2,13 +2,13 @@
 
 **Deine Stadt. Dein Spielfeld.** Ein quelloffenes GPS-Verfolgungsspiel für private Gruppen — React, TypeScript, Socket.IO, Supabase und MapLibre. MIT-lizenziert.
 
-> **Stand b.0.69.45:** Der Multiplayer-Server läuft als Supabase Edge Function und speichert autoritative Spielstände in PostgreSQL. Die React-App bleibt auf der bestehenden Sites-Adresse. Der Edge-Betrieb synchronisiert per authentifizierten HTTPS-Anfragen im Abstand von etwa zwei Sekunden; das Node-/Socket.IO-Backend bleibt als alternative Betriebsart erhalten. 24 Tabellen verwenden RLS, Profilbilder liegen in privatem Storage. Google und E-Mail/Passwort nutzen Supabase Auth. Echte Google-Anmeldung, Mailzustellung und Geräte-GPS müssen zusätzlich mit eigenen Konten und Geräten geprüft werden. Keine künstlichen Spieler oder simulierten Standorte im Produktivbetrieb.
+> **Stand b.0.69.46:** Der Multiplayer-Server läuft als Supabase Edge Function und speichert autoritative Spielstände in PostgreSQL. Die React-App bleibt auf der bestehenden Sites-Adresse. Der Edge-Betrieb synchronisiert per authentifizierten HTTPS-Anfragen im Abstand von etwa zwei Sekunden; das Node-/Socket.IO-Backend bleibt als alternative Betriebsart erhalten. 27 Tabellen verwenden RLS, Profilbilder liegen in privatem Storage. E-Mail/Passwort und Gastbeitritt nutzen Supabase Auth. Mailzustellung und Profilbilder wurden vom Nutzer bestätigt; physische Kamera-, Push- und GPS-Prüfungen bleiben geräteabhängig. Keine künstlichen Spieler oder simulierten Standorte im Produktivbetrieb.
 
 **Veröffentlichte Oberfläche:** [MANHUNT öffnen](https://manhunt-fieldgame.scobione.chatgpt.site). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Die Zone führt nach dem Speichern zur Lobby-Erstellung. Danach Code teilen, Zone bestätigen, alle bereit melden und Match starten.
 
 ## Funktionen
 
-- **Identität & Crew:** Supabase E-Mail/Passwort und Google OAuth mit PKCE, eindeutige Benutzernamen, private Avatar-Uploads, Freundescodes, Anfragen, Blockieren, Einladungen, Datenschutz bei Online-Status, Benachrichtigungen, Profile und Matchhistorie.
+- **Identität & Crew:** Supabase E-Mail/Passwort mit PKCE, Verifizierungscode und anonyme Gastsitzungen, eindeutige Benutzernamen, private Avatar-Uploads, Freundescodes, Anfragen, Blockieren, Einladungen, Datenschutz bei Online-Status, Benachrichtigungen, Profile und Matchhistorie.
 - **Private Lobbys:** kryptografisch zufällige sechsstellige Codes, Einladungslinks, Bereitschaft, Host-Übertragung, Entfernen, Rollen-/Teamzuweisung, Regeln und gespeicherte Presets.
 - **Autoritative Engine:** serverseitige Rollenauslosung, Vorbereitung und Hider-Vorsprung, periodische Pins, Bestätigungs-/Code-/GPS-Fänge, Infektionen, Ergebnisse und Wiederverbindung.
 - **Acht Modi:** Normal, Zombie, Apokalypse, Hide & Seek, Last Survivor, Team Hunt, Infection Rush und Custom. Team Hunt erfordert mindestens vier Personen, zwei Hunter und je einen Hider pro Team. Last Survivor erfordert mindestens zwei Hider.
@@ -80,7 +80,7 @@ Ein einzelner Node-Prozess ist die Spielautorität. Mehrere Instanzen sind ohne 
 - **Kostenlose Dienste:** Render-Free-Server können einschlafen; Supabase/Render haben Kapazitäts- und Nutzungsgrenzen. Kostenfreiheit ist nur innerhalb der jeweiligen Konditionen möglich, nicht für unbegrenzte öffentliche Nutzung garantiert.
 - **Karten:** sichtbare OSM-Kacheln werden direkt geladen und korrekt attribuiert. Kein Offline-Prefetch. Tile-Verfügbarkeit hängt vom Anbieter ab. Selbst definierte Zonen ersetzen keine Prüfung von Wegen, Verkehr und Betretungsrechten.
 - **Freunde suchen:** per exaktem Freundescode und innerhalb der eigenen Crew; bewusst kein öffentlich durchsuchbares Personenverzeichnis.
-- **Optionale Funktionen:** Fangcode und Bestätigung sind implementiert; QR-Fangscanning ist nicht enthalten. Push benötigt VAPID sowie Browserunterstützung; ein Push signalisiert keine verlässliche Hintergrundortung.
+- **Optionale Funktionen:** QR-Fangscanning, Fangcode und Bestätigung sind implementiert. Der Edge-Server verwaltet VAPID und zeitgesteuerte Web-Push-Zustellung. Browserfreigabe ist erforderlich; ein Push signalisiert keine verlässliche Hintergrundortung.
 - **Sicherheitsstand:** automatisierte Berechtigungs-/RLS-Tests und Abhängigkeitsprüfung sind enthalten. Sie ersetzen keine unabhängige Sicherheitsprüfung und keine Rechtsprüfung der Betreiberangaben.
 
 ## Projektaufbau
@@ -102,3 +102,5 @@ Beiträge: [CONTRIBUTING.md](CONTRIBUTING.md). Sicherheitsmodell: [SECURITY.md](
 ## Aktuelle Veröffentlichung
 
 [Release b.0.69.43](docs/RELEASE-b.0.69.43.md) beschreibt die Bereitstellung, Prüfgrenzen und den vom Nutzer gewünschten späteren Codex-Security-Check. [Edge-Betrieb](docs/EDGE-DEPLOYMENT.md) erklärt Zustandsabgleich, Wiederverbindung und Free-Tier-Grenzen.
+
+Aktuelle Änderungen und Auth-Dashboard-Schritte: [Release b.0.69.46](docs/RELEASE-b.0.69.46.md).

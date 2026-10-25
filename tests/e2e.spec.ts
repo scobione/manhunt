@@ -96,7 +96,7 @@ async function prepareMatch(host: Actor, others: Actor[], mode: Mode = 'normal',
   // visible settings editor; no database writes or test-only game endpoints.
   await command(host, {
     type: 'settings',
-    settings: { ...DEFAULT_SETTINGS, mode, preparationSeconds: 0, headStartSeconds: 0, pinIntervalSeconds: 10, randomRoles: false, infectionDelaySeconds: 0, ...overrides },
+    settings: { ...DEFAULT_SETTINGS,captureMethod:'confirmation', mode, preparationSeconds: 0, headStartSeconds: 0, pinIntervalSeconds: 10, randomRoles: false, infectionDelaySeconds: 0, ...overrides },
   });
   await command(host, {
     type: 'zone',
@@ -124,7 +124,8 @@ test('public app renders on mobile and explicitly marks isolated test authentica
   await expect(page.getByRole('heading', { name:'Raus aus dem Alltag.',exact:true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBeTruthy();
   await page.goto('/login');
-  await expect(page.getByRole('button', { name: /Google/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Google/i })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Mit E-Mail anmelden',exact:true })).toBeVisible();
   await expect(page.getByTestId('test-login')).toBeVisible();
   await page.screenshot({ path: 'test-results/mobile-login.png', fullPage: true });
   expect(errors).toEqual([]);

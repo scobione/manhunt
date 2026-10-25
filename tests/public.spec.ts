@@ -13,16 +13,7 @@ test('production landing, all modes and privacy pages render without browser err
  await expect(page.getByLabel('E-Mail-Adresse',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Mit E-Mail anmelden',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Registrieren',exact:true})).toBeVisible();
- // Inspect the actual PKCE request without signing in or supplying a Google account.
- await page.route('**/auth/v1/authorize?**',route=>route.abort());
- const expectedCallback=new URL('/auth/callback',page.url()).toString();
- const authorization=page.waitForRequest(request=>new URL(request.url()).pathname==='/auth/v1/authorize');
- await page.getByRole('button',{name:'Mit Google fortfahren'}).click();
- const oauth=new URL((await authorization).url());
- expect(oauth.searchParams.get('provider')).toBe('google');
- expect(oauth.searchParams.get('code_challenge_method')).toBe('s256');
- expect(oauth.searchParams.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);
- expect(oauth.searchParams.get('redirect_to')).toBe(expectedCallback);
+ await expect(page.getByRole('button',{name:/Google/})).toHaveCount(0);
  await page.goto('/privacy');await expect(page.getByRole('heading',{name:'Dein Standort gehört dir.'})).toBeVisible();
  await page.goto('/safety');await expect(page.getByRole('heading',{name:'Gutes Spiel. Sicher draußen.'})).toBeVisible();
  expect(errors).toEqual([]);

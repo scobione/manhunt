@@ -1,4 +1,4 @@
-import { randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { area, booleanPointInPolygon, distance, featureCollection, intersect, lineString, point, pointToLineDistance, polygon, transformScale } from '@turf/turf';
 import type { Feature, Polygon } from 'geojson';
 import { DEFAULT_SETTINGS, type CaptureRequest, type Command, type GameEvent, type Lobby, type LobbyView, type LocationSample, type Pin, type Player, type Profile, type Settings } from '../shared/types.js';
@@ -8,6 +8,7 @@ export class GameError extends Error {
   constructor(public code:string,message:string,public stateChanged=false,public lobbyId?:string){super(message);this.name='GameError';}
 }
 interface PlayerState {
+  captureSecret?:string;
   outsideAccumulatedMs:number; insideFixes?:number; insideFirstAt?:number; lastOutsideAt?:number; outsideFixes:number; lastReliableOutside:boolean;
   captureAttempts:number[]; missedPin:boolean; infectionAcknowledged:boolean; unreliableLocation?:boolean; lastLocationAt?:number;
 }
@@ -120,7 +121,7 @@ export class GameEngine {
       players:l.players.map(p=>({id:p.id,username:p.username,avatar_url:p.avatar_url,ready:p.ready,role:p.role,team:p.team,connected:p.connected,eliminated:p.eliminated,infectedAt:p.infectedAt,lastSeen:p.lastSeen})),
       settings:l.settings,zone:l.zone,activeZone:l.activeZone,createdAt:l.createdAt,startedAt:l.startedAt,endsAt:l.endsAt,pausedAt:l.pausedAt,previousStatus:l.previousStatus,
       pins,visibleLocations,events:l.events,captures:l.captures.filter(c=>c.targetId===userId||c.hunterId===userId),result:l.result,revision:l.revision,
-      self:{...self},serverTime:now});
+      self:{...self,...(self.role==='hider'&&!self.eliminated&&l.settings.captureMethod==='qr'&&l._engine.players[self.id].captureSecret?{captureQr:{token:this.qrToken(l,self,Math.floor(now/30000)),expiresAt:(Math.floor(now/30000)+2)*30000}}:{})},serverTime:now});
   }
   command(id:string,userId:string,input:Command):Lobby{
     let command:Command;try{command=validateCommand(input);}catch{fail('INVALID_INPUT','Die Eingabe entspricht nicht den Spielregeln.');}
@@ -147,10 +148,10 @@ export class GameEngine {
       case 'close':this.host(l,userId);l.status='closed';this.purge(l);this.event(l,'lobby_closed','Lobby geschlossen.',userId);break;
       case 'leave':this.leave(l,p);break;
       case 'location':this.location(l,p,command.location,command.publish??false);break;
-      case 'capture':this.capture(l,p,command.targetId,command.code);break;
+      case 'capture':this.capture(l,p,command.targetId,command.code,command.qrToken);break;
       case 'confirm_capture':this.confirmCapture(l,p,command.captureId,command.accept);break;
       case 'infection_ack':if(p.role!=='zombie'||p.infectedAt===undefined)fail('NOT_INFECTED','Du bist nicht infiziert.');l._engine.players[p.id].infectionAcknowledged=true;this.event(l,'infection_ack','Infektion bestätigt.',userId);break;
-      case 'heal':{this.host(l,userId);if(l.status!=='active'||!l.settings.allowHealing||!this.infectionMode(l))fail('HEALING_DISABLED','Heilung ist nicht verfügbar.');const target=this.member(l,command.playerId);if(target.role!=='zombie'||target.eliminated)fail('INVALID_TARGET','Nur aktive Zombies können geheilt werden.');target.role='hider';delete target.infectedAt;target.captureCode=this.code();target.nextPinAt=now+l.settings.pinIntervalSeconds*1000;l.pins=l.pins.filter(pin=>pin.playerId!==target.id);this.event(l,'healed',`${target.username} wurde geheilt.`,userId,target.id);break;}
+      case 'heal':{this.host(l,userId);if(l.status!=='active'||!l.settings.allowHealing||!this.infectionMode(l))fail('HEALING_DISABLED','Heilung ist nicht verfügbar.');const target=this.member(l,command.playerId);if(target.role!=='zombie'||target.eliminated)fail('INVALID_TARGET','Nur aktive Zombies können geheilt werden.');target.role='hider';delete target.infectedAt;target.captureCode=this.code();l._engine.players[target.id].captureSecret=randomBytes(32).toString('base64url');target.nextPinAt=now+l.settings.pinIntervalSeconds*1000;l.pins=l.pins.filter(pin=>pin.playerId!==target.id);this.event(l,'healed',`${target.username} wurde geheilt.`,userId,target.id);break;}
     }
     if(l.status==='active')this.evaluate(l);
     return this.changed(l);
@@ -184,7 +185,7 @@ export class GameEngine {
     const now=this.now();l.startedAt=now+l.settings.preparationSeconds*1000;l.endsAt=l.startedAt+l.settings.durationSeconds*1000;
     l._engine.hunterReleaseAt=l.startedAt+l.settings.headStartSeconds*1000;
     l.status=l.settings.preparationSeconds?'preparing':'active';l.activeZone=clone(l.zone.feature);l.pins=[];l.captures=[];l._engine.phase=0;
-    for(const p of participants){p.eliminated=false;p.captureCode=this.code();p.nextPinAt=l._engine.hunterReleaseAt;delete p.location;delete p.outsideSince;delete p.infectedAt;delete p.outsideClockAt;p.outsideActive=false;p.returnPending=false;p.outsideElapsed=0;p.locationSharing=false;p.zoneStatus='uncertain';l._engine.players[p.id]=metadata();}
+    for(const p of participants){p.eliminated=false;p.captureCode=this.code();p.nextPinAt=l._engine.hunterReleaseAt;delete p.location;delete p.outsideSince;delete p.infectedAt;delete p.outsideClockAt;p.outsideActive=false;p.returnPending=false;p.outsideElapsed=0;p.locationSharing=false;p.zoneStatus='uncertain';l._engine.players[p.id]={...metadata(),captureSecret:randomBytes(32).toString('base64url')};}
     this.event(l,'match_started','Rollen verteilt. Achte auf deine Umgebung.',userId);
   }
   private resume(l:EngineLobby):void{
@@ -199,7 +200,7 @@ export class GameEngine {
   private leave(l:EngineLobby,p:Player):void{
     l.pins=l.pins.filter(pin=>pin.playerId!==p.id);l.captures=l.captures.filter(c=>c.targetId!==p.id&&c.hunterId!==p.id);
     if(l.status==='waiting'||l.status==='finished'){l.players=l.players.filter(x=>x.id!==p.id);delete l._engine.players[p.id];}
-    else{p.eliminated=true;p.connected=false;delete p.location;delete p.captureCode;delete p.outsideSince;l._engine.leftIds.push(p.id);}
+    else{p.eliminated=true;p.connected=false;delete p.location;delete p.captureCode;delete l._engine.players[p.id].captureSecret;delete p.outsideSince;l._engine.leftIds.push(p.id);}
     this.event(l,'player_left',`${p.username} hat die Lobby verlassen.`,p.id);
     if(l.hostId===p.id){const next=l.players.find(x=>x.id!==p.id&&x.connected&&!x.eliminated)??l.players.find(x=>x.id!==p.id&&x.connected);if(next)l.hostId=next.id;else{l.status='closed';this.purge(l);}}
     if(l.status==='paused'&&l.players.every(x=>!playing(x))) {l.status='closed';this.purge(l);}
@@ -275,7 +276,8 @@ export class GameEngine {
     if(!p.connected)fail('DISCONNECTED','Verbinde dich erneut, um zu fangen.');
     if(p.role==='zombie'&&(p.infectedAt??this.now())+l.settings.infectionDelaySeconds*1000>this.now())fail('INFECTION_DELAY','Die Infektionszeit läuft noch.');
   }
-  private capture(l:EngineLobby,actor:Player,targetId:string,code?:string):void{
+  private qrToken(l:EngineLobby,p:Player,slot:number):string{return createHmac('sha256',l._engine.players[p.id].captureSecret??'').update(`${l.id}:${p.id}:${slot}`).digest('base64url');}
+  private capture(l:EngineLobby,actor:Player,targetId:string,code?:string,qrToken?:string):void{
     this.canHunt(l,actor);const target=this.member(l,targetId);this.validTarget(l,actor,target);
     const now=this.now(),meta=l._engine.players[actor.id];meta.captureAttempts=meta.captureAttempts.filter(t=>now-t<60_000);
     if(meta.captureAttempts.length>=6)fail('RATE_LIMIT','Zu viele Fangversuche. Warte eine Minute.');meta.captureAttempts.push(now);
@@ -283,7 +285,10 @@ export class GameEngine {
       if(l.captures.some(c=>c.targetId===targetId&&now-c.createdAt<30_000))this.reject(l,'CAPTURE_PENDING','Für diesen Spieler steht bereits eine Fangbestätigung aus.');
       l.captures.push({id:randomUUID(),hunterId:actor.id,targetId,createdAt:now});this.event(l,'capture_requested',`${actor.username} bittet ${target.username} um Fangbestätigung.`,actor.id,targetId);return;
     }
-    if(l.settings.captureMethod==='code'){
+    if(l.settings.captureMethod==='qr'){
+      const slot=Math.floor(now/30000);
+      if(!l._engine.players[target.id].captureSecret||!qrToken||![slot,slot-1].some(n=>timingSafeEqual(Buffer.from(this.qrToken(l,target,n)),Buffer.from(qrToken))))this.reject(l,'INVALID_CAPTURE_QR','Der Fang-QR-Code ist ungültig oder abgelaufen. Scanne den aktuellen Code des Hiders.');
+    }else if(l.settings.captureMethod==='code'){
       if(!code||!target.captureCode||code.length!==target.captureCode.length||!timingSafeEqual(Buffer.from(code),Buffer.from(target.captureCode)))this.reject(l,'INVALID_CAPTURE_CODE','Der Fangcode ist falsch.');
     }else{
       const a=actor.location,b=target.location;
@@ -305,7 +310,7 @@ export class GameEngine {
     const hunter=this.member(l,request.hunterId);this.canHunt(l,hunter);this.validTarget(l,hunter,p);l.captures.splice(index,1);this.finishCapture(l,hunter,p);
   }
   private finishCapture(l:EngineLobby,actor:Player,target:Player):void{
-    l.captures=l.captures.filter(c=>c.targetId!==target.id);l.pins=l.pins.filter(pin=>pin.playerId!==target.id);delete target.captureCode;
+    l.captures=l.captures.filter(c=>c.targetId!==target.id);l.pins=l.pins.filter(pin=>pin.playerId!==target.id);delete target.captureCode;delete l._engine.players[target.id].captureSecret;
     this.event(l,'capture',`${actor.username} hat ${target.username} gefangen.`,actor.id,target.id);
     if(this.infectionMode(l)){
       target.role='zombie';target.infectedAt=this.now();target.nextPinAt=this.now()+l.settings.pinIntervalSeconds*1000;delete target.outsideSince;
@@ -313,12 +318,12 @@ export class GameEngine {
     }else this.eliminate(l,target,'captured','Gefangen.',actor.id);
   }
   private eliminate(l:EngineLobby,p:Player,reason:string,message:string,actorId?:string):void{
-    if(p.eliminated)return;p.eliminated=true;p.outsideActive=false;p.returnPending=false;delete p.outsideClockAt;delete p.location;delete p.captureCode;delete p.outsideSince;delete p.nextPinAt;
+    if(p.eliminated)return;p.eliminated=true;p.outsideActive=false;p.returnPending=false;delete p.outsideClockAt;delete p.location;delete p.captureCode;delete l._engine.players[p.id].captureSecret;delete p.outsideSince;delete p.nextPinAt;
     l.pins=l.pins.filter(pin=>pin.playerId!==p.id);l.captures=l.captures.filter(c=>c.targetId!==p.id&&c.hunterId!==p.id);this.event(l,'elimination',`${p.username}: ${message}`,actorId??p.id,p.id);
     // No coordinate or raw GPS evidence enters the public event log.
     if(reason==='zone')this.event(l,'zone_elimination','Zone serverseitig mit mehreren genauen Ortungen geprüft.',undefined,p.id);
   }
-  private purge(l:EngineLobby):void{l.pins=[];l.captures=[];for(const p of l.players){p.outsideActive=false;p.returnPending=false;delete p.outsideClockAt;delete p.location;delete p.captureCode;delete p.outsideSince;delete p.nextPinAt;}}
+  private purge(l:EngineLobby):void{l.pins=[];l.captures=[];for(const p of l.players){p.outsideActive=false;p.returnPending=false;delete p.outsideClockAt;delete p.location;delete p.captureCode;delete l._engine.players[p.id].captureSecret;delete p.outsideSince;delete p.nextPinAt;}}
   private finish(l:EngineLobby,winner:string,reason:string):void{
     l.result={winner,reason,endedAt:this.now(),survivors:l.players.filter(p=>playing(p)&&p.role==='hider').map(p=>p.id)};l.status='finished';this.purge(l);this.event(l,'match_finished',reason);
   }

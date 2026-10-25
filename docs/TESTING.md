@@ -1,3 +1,9 @@
+# Verifikation b.0.69.46 / 25.10.2026
+
+143 Unit-/API-/SQL-/Engine-Prüfungen sowie 34 lokale Browserszenarien bestanden. Neue Tests prüfen QR-Gültigkeit, Ziel-/Rollenbindung, Wiederverwendung, echte QR-Bilddekodierung, Gastbeitritt ohne E-Mail/Passwort und Sitzungswiederherstellung, E-Mail-Codebestätigung sowie private Push-Queues, Fristen, Pausen, Widerruf, Leasing und Zugriffsschutz. Testergebnisse der Veröffentlichung werden zusätzlich im GitHub-CI protokolliert. Physische Geräte-Push-Zustellung wird nicht daraus abgeleitet. Details: [Release](RELEASE-b.0.69.46.md).
+
+---
+
 # Verifikation — b.0.69.45 / 25.10.2026
 
 - **126** Engine-, API-, Edge-, SQL- und Zonentests bestanden.

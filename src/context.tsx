@@ -16,17 +16,17 @@ const API_BASE = (import.meta.env.VITE_API_URL || defaults?.apiUrl || '').replac
 interface Config { configured:boolean; authConfigured:boolean; pushPublicKey?:string; transport?:'http'|'socket' }
 interface AppContextValue {
   profile:Profile|null; token:string|null; lobby:LobbyView|null; connected:boolean; loading:boolean; config:Config|null;
-  identity:{id:string;email?:string}|null; authChecking:boolean; authError:string;
+  identity:{id:string;email?:string;isGuest?:boolean}|null; authChecking:boolean; authError:string;
   passwordRecovery:boolean; finishPasswordRecovery:()=>void; clearAuthError:()=>void;
   notice:string; clearNotice:()=>void; notify:(message:string)=>void; api:<T=any>(path:string,options?:RequestInit)=>Promise<T>;
   emit:<T=LobbyView>(event:string,data?:unknown)=>Promise<T>; command:(command:Command)=>Promise<LobbyView>;
-  login:()=>Promise<void>; logout:()=>Promise<void>; refreshProfile:()=>Promise<void>; setTestSession:(id:string,name:string)=>void; socialRevision:number;
+  logout:()=>Promise<void>; refreshProfile:()=>Promise<void>; setTestSession:(id:string,name:string)=>void; socialRevision:number;
 }
 const AppContext=createContext<AppContextValue|null>(null);
 export function AppProvider({children}:{children:ReactNode}) {
  const [profile,setProfile]=useState<Profile|null>(null), [token,setToken]=useState<string|null>(TEST_MODE?sessionStorage.getItem('manhunt:test-token'):null);
  const [lobby,setLobby]=useState<LobbyView|null>(null),[connected,setConnected]=useState(false),[loading,setLoading]=useState(true),[config,setConfig]=useState<Config|null>(null),[notice,setNotice]=useState(''),[socialRevision,setSocialRevision]=useState(0);
- const [identity,setIdentity]=useState<{id:string;email?:string}|null>(null),[authChecking,setAuthChecking]=useState(false),[authError,setAuthError]=useState('');
+ const [identity,setIdentity]=useState<{id:string;email?:string;isGuest?:boolean}|null>(null),[authChecking,setAuthChecking]=useState(false),[authError,setAuthError]=useState('');
  const [passwordRecovery,setPasswordRecovery]=useState(false);
  const socketRef=useRef<Socket|null>(null);const lastEvent=useRef<string|null>(null); const tokenRef=useRef(token); tokenRef.current=token;
  const httpRef=useRef<ReturnType<typeof httpSession>|null>(null);
@@ -63,7 +63,7 @@ export function AppProvider({children}:{children:ReactNode}) {
   supabase.auth.getUser(token).then(({data,error})=>{
    if(!active)return;
    if(error||!data.user){setAuthError('Deine Sitzung konnte nicht bestätigt werden. Bitte melde dich erneut an.');return;}
-   setIdentity({id:data.user.id,email:data.user.email});
+   setIdentity({id:data.user.id,email:data.user.email,isGuest:!!data.user.is_anonymous});
   }).catch(()=>{if(active)setAuthError('Die Sitzung konnte nicht überprüft werden. Prüfe deine Verbindung und versuche es erneut.');}).finally(()=>{if(active)setAuthChecking(false);});
   return()=>{active=false;};
  },[token]);
@@ -104,10 +104,10 @@ export function AppProvider({children}:{children:ReactNode}) {
   });
  }),[]);
  const command=useCallback((command:Command)=>emit<LobbyView>('lobby:command',{command}),[emit]);
- async function login(){if(!supabase)throw new Error('Google-Anmeldung ist noch nicht eingerichtet. Supabase und Google OAuth müssen verbunden werden.');setAuthError('');const {error}=await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:`${window.location.origin}/auth/callback`}});if(error)throw error;}
- async function logout(){if(lobby && lobby.status!=='finished')await command({type:'leave'});if(supabase){const {error}=await supabase.auth.signOut();if(error)throw error;}sessionStorage.removeItem('manhunt:test-token');setToken(null);setIdentity(null);setProfile(null);setLobby(null);setAuthError('');}
+
+ async function logout(){if(tokenRef.current){const {detachPush}=await import('./push-client');await detachPush(api);}if(lobby && lobby.status!=='finished')await command({type:'leave'});if(supabase){const {error}=await supabase.auth.signOut();if(error)throw error;}sessionStorage.removeItem('manhunt:test-token');setToken(null);setIdentity(null);setProfile(null);setLobby(null);setAuthError('');}
  function setTestSession(id:string,name:string){if(!TEST_MODE)return;const value=`test:${id}:${name}`;sessionStorage.setItem('manhunt:test-token',value);setToken(value);}
- return <AppContext.Provider value={{profile,token,lobby,connected,loading,identity,authChecking,authError,passwordRecovery,finishPasswordRecovery:()=>setPasswordRecovery(false),clearAuthError:()=>setAuthError(''),config,notice,clearNotice:()=>setNotice(''),notify,api,emit,command,login,logout,refreshProfile,setTestSession,socialRevision}}>{children}</AppContext.Provider>;
+ return <AppContext.Provider value={{profile,token,lobby,connected,loading,identity,authChecking,authError,passwordRecovery,finishPasswordRecovery:()=>setPasswordRecovery(false),clearAuthError:()=>setAuthError(''),config,notice,clearNotice:()=>setNotice(''),notify,api,emit,command,logout,refreshProfile,setTestSession,socialRevision}}>{children}</AppContext.Provider>;
 }
 export function useApp(){const value=useContext(AppContext);if(!value)throw new Error('AppProvider missing');return value;}
 export function useNow(){const [now,setNow]=useState(Date.now());useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[]);return now;}

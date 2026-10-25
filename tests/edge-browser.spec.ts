@@ -31,7 +31,7 @@ test('mobile planned zone continues into a real lobby and both browsers start a 
   const code=await host.page.getByTestId('lobby-code').innerText();
   await guest.page.goto(`/join?code=${code}`);await guest.page.getByRole('button',{name:'Lobby beitreten',exact:true}).click();
   await expect(host.page.locator('.player-row')).toHaveCount(2);
-  await command(host.page,host.token,{type:'settings',settings:{...DEFAULT_SETTINGS,preparationSeconds:0,headStartSeconds:0}});
+  await command(host.page,host.token,{type:'settings',settings:{...DEFAULT_SETTINGS,captureMethod:'confirmation',preparationSeconds:0,headStartSeconds:0}});
   await host.page.getByRole('button',{name:'Bereit',exact:true}).click();await guest.page.getByRole('button',{name:'Bereit',exact:true}).click();
   await expect(host.page.getByRole('button',{name:'Match starten',exact:true})).toBeEnabled();
   await host.page.getByRole('button',{name:'Match starten',exact:true}).click();
@@ -67,7 +67,7 @@ test('friend requests and invitations appear through edge synchronization',async
 test('deleting a Last Survivor winner anonymizes the result for the remaining browser',async({browser})=>{
  const host=await actor(browser,'EraseHost'),caught=await actor(browser,'EraseCaught'),winner=await actor(browser,'EraseWinner');
  try{
-  const response=await host.page.request.post('http://127.0.0.1:3002/api/events',{headers:{Authorization:`Bearer ${host.token}`},data:{event:'lobby:create',data:{settings:{...DEFAULT_SETTINGS,mode:'last_survivor',winCondition:'last_hider',randomRoles:false,preparationSeconds:0,headStartSeconds:0}}}});
+  const response=await host.page.request.post('http://127.0.0.1:3002/api/events',{headers:{Authorization:`Bearer ${host.token}`},data:{event:'lobby:create',data:{settings:{...DEFAULT_SETTINGS,captureMethod:'confirmation',mode:'last_survivor',winCondition:'last_hider',randomRoles:false,preparationSeconds:0,headStartSeconds:0}}}});
   expect(response.status()).toBe(200);const lobby=(await response.json()).lobby;
   for(const p of [caught,winner]){const joined=await p.page.request.post('http://127.0.0.1:3002/api/events',{headers:{Authorization:`Bearer ${p.token}`},data:{event:'lobby:join',data:{code:lobby.code}}});expect(joined.status()).toBe(200);}
   await command(host.page,host.token,{type:'zone',zone:{feature:circle([13.405,52.52],.6),excluded:[],confirmed:true,name:'ISOLATED ERASURE TEST'}});
@@ -85,4 +85,30 @@ test('deleting a Last Survivor winner anonymizes the result for the remaining br
   const history=await host.page.request.get('http://127.0.0.1:3002/api/history',{headers:{Authorization:`Bearer ${host.token}`}});
   expect(history.status()).toBe(200);const result=await history.text();expect(result).not.toContain(winner.id);expect(result).not.toContain('EraseWinner');
  }finally{for(const p of [host,caught,winner])await p.context.close();}
+});
+
+test('a real lobby QR image joins the private lobby through the browser scanner',async({browser})=>{
+ const host=await actor(browser,'QrHost'),guest=await actor(browser,'QrGuest');
+ try{
+  await host.page.goto('/create');await host.page.getByRole('button',{name:'Lobby erstellen',exact:true}).click();await host.page.getByRole('button',{name:'Lobby-QR anzeigen'}).click();
+  const image=host.page.getByRole('img',{name:'QR-Code zum Beitreten der Lobby'});await expect(image).toBeVisible();await image.evaluate(e=>e.scrollIntoView({block:'center'}));const buffer=await image.screenshot();
+  await guest.page.goto('/join');await guest.page.getByRole('button',{name:'Lobby-QR scannen'}).click();await guest.page.getByLabel('QR-Bild auswählen').setInputFiles({name:'isolated-lobby-qr.png',mimeType:'image/png',buffer});
+  await expect(guest.page).toHaveURL(/\/lobby$/);await expect(host.page.locator('.player-row')).toHaveCount(2);
+  await host.page.screenshot({path:'test-results-edge/lobby-qr-mobile.png',fullPage:true});
+ }finally{await host.context.close();await guest.context.close();}
+});
+
+test('a hunter scans the hiders actual rendered QR and captures without a request',async({browser})=>{
+ const host=await actor(browser,'QrHunter'),guest=await actor(browser,'QrHider');
+ try{
+  const response=await host.page.request.post('http://127.0.0.1:3002/api/events',{headers:{Authorization:`Bearer ${host.token}`},data:{event:'lobby:create',data:{settings:{...DEFAULT_SETTINGS,randomRoles:false,preparationSeconds:0,headStartSeconds:0}}}});expect(response.status()).toBe(200);const l=(await response.json()).lobby;
+  await guest.page.request.post('http://127.0.0.1:3002/api/events',{headers:{Authorization:`Bearer ${guest.token}`},data:{event:'lobby:join',data:{code:l.code}}});
+  await command(host.page,host.token,{type:'zone',zone:{feature:circle([13.405,52.52],.6),excluded:[],confirmed:true,name:'ISOLATED QR TEST'}});await command(host.page,host.token,{type:'assign',playerId:host.id,role:'hunter',team:'A'});
+  for(const p of [host,guest])await command(p.page,p.token,{type:'ready',ready:true});await command(host.page,host.token,{type:'start'});
+  await guest.page.goto('/game');await host.page.goto('/game');await guest.page.getByRole('button',{name:'Fang-QR anzeigen'}).click();
+  const image=guest.page.getByRole('img',{name:'Dein persönlicher Fang-QR-Code'});await expect(image).toBeVisible();await image.evaluate(e=>e.scrollIntoView({block:'center'}));const buffer=await image.screenshot();
+  await host.page.getByRole('button',{name:'Fang-QR scannen',exact:true}).click();await host.page.getByLabel('QR-Bild auswählen').setInputFiles({name:'isolated-capture-qr.png',mimeType:'image/png',buffer});
+  await expect(host.page.getByRole('heading',{name:'DIE HUNTER GEWINNEN'})).toBeVisible();await expect(guest.page.getByRole('heading',{name:'DIE HUNTER GEWINNEN'})).toBeVisible();
+  await expect(guest.page.getByRole('button',{name:'Fang bestätigen'})).toHaveCount(0);
+ }finally{await host.context.close();await guest.context.close();}
 });

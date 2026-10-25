@@ -235,6 +235,7 @@ export async function createBackend(options:BackendOptions={}){
     const latestLobby=()=>engine.lobbyFor(id)??[...engine.lobbies.values()].filter(l=>l.status==='finished'&&l.players.some(p=>p.id===id)).sort((a,b)=>(b.result?.endedAt??b.createdAt)-(a.result?.endedAt??a.createdAt))[0];
     const sync=async()=>{const lobby=latestLobby();if(!lobby)return null;return engine.view(lobby.id,id);};
     event('lobby:create',async raw=>{
+      if(socket.data.identity.isGuest)throw new HttpError(403,'Als Gast kannst du einer Lobby beitreten. Zum Erstellen benötigst du ein E-Mail-Konto.');
       limiter.take(`create:${id}`,5,60_000);requireReady();
       const{settings}=z.object({settings:partialSettingsSchema.optional()}).strict().parse(raw??{});
       const profile=await repo().getProfile(socket.data.identity);

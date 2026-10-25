@@ -11,7 +11,7 @@ const settingsObject = z.object({
   preparationSeconds:boundedInt(0,600), headStartSeconds:boundedInt(0,900), pinIntervalSeconds:boundedInt(10,3600),
   pinLifetimeSeconds:boundedInt(10,7200), pinVisibilitySeconds:boundedInt(5,600), showOldPins:z.boolean(),
   maxAccuracyMeters:z.number().min(3).max(150), gpsToleranceSeconds:boundedInt(10,300),
-  captureMethod:z.enum(['confirmation','code','proximity']), captureRadiusMeters:z.number().min(5).max(100),
+  captureMethod:z.enum(['qr','confirmation','code','proximity']), captureRadiusMeters:z.number().min(5).max(100),
   infectionDelaySeconds:boundedInt(0,300), zombieVisible:z.boolean(), zombieGps:z.boolean(), allowHealing:z.boolean(),
   outsideGraceSeconds:boundedInt(15,600), outsideReset:z.boolean(), spectatorsAllowed:z.boolean(),
   disconnectGraceSeconds:boundedInt(15,900), disconnectBehavior:z.enum(['pause','eliminate']), notifications:z.boolean(),
@@ -36,7 +36,7 @@ export const commandSchema=z.discriminatedUnion('type',[
  z.object({type:z.literal('kick'),playerId:userId}).strict(),z.object({type:z.literal('transfer'),playerId:userId}).strict(),
  ...(['start','leave','close','pause','resume','infection_ack','stop_location','zone_return_ack'] as const).map(type=>z.object({type:z.literal(type)}).strict()),
  z.object({type:z.literal('location'),location:locationSchema,publish:z.boolean().optional()}).strict(),
- z.object({type:z.literal('capture'),targetId:userId,code:z.string().regex(/^[0-9]{6}$/).optional()}).strict(),
+ z.object({type:z.literal('capture'),targetId:userId,code:z.string().regex(/^[0-9]{6}$/).optional(),qrToken:z.string().regex(/^[A-Za-z0-9_-]{43}$/).optional()}).strict(),
  z.object({type:z.literal('confirm_capture'),captureId:userId,accept:z.boolean()}).strict(),
  z.object({type:z.literal('heal'),playerId:userId}).strict(),
 ] as [z.ZodObject<any>,...z.ZodObject<any>[]]);

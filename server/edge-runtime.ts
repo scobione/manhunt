@@ -5,7 +5,9 @@ import { HttpError, safeMessage, statusCode, uuid, type Identity } from './auth'
 import type { Repository } from './repository';
 import type { EdgeStore } from './edge-store';
 import { settingsSchema, partialSettingsSchema } from './validation';
-import { version } from '../package.json';
+import packageInfo from '../package.json' with {type:'json'};
+const {version}=packageInfo;
+import {pushSubscriptionSchema,validPushEndpoint,type PushService} from './push';
 import { randomUUID } from 'node:crypto';
 
 const empty=z.object({}).strict();
@@ -13,7 +15,7 @@ const codeSchema=z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6}$/);
 const eventSchema=z.object({event:z.enum(['lobby:create','lobby:join','lobby:sync','lobby:command']),data:z.unknown().optional()}).strict();
 const commandSchema=z.object({command:z.object({type:z.string()}).passthrough()}).strict();
 const PRESENCE_MS=20_000;
-export interface EdgeOptions {repository:Repository;store:EdgeStore;verify:(token:string)=>Promise<Identity>;origins:string[]}
+export interface EdgeOptions {repository:Repository;store:EdgeStore;verify:(token:string)=>Promise<Identity>;origins:string[];push?:PushService}
 
 async function jsonBody(request:Request){
   if(!request.body)return {};
@@ -27,9 +29,10 @@ async function jsonBody(request:Request){
 /** Request-scoped engine, durable PostgreSQL state, no isolate-local authority.
  * HTTP polling survives the edge worker lifetime without depending on timers.
  */
-export function createEdgeHandler({repository:repo,store,verify,origins}:EdgeOptions){
+export function createEdgeHandler({repository:repo,store,verify,origins,push}:EdgeOptions){
   async function game(identity:Identity,profile:Profile,event:string,raw:unknown){
     const id=identity.id;
+    if(identity.isGuest&&event==='lobby:create')throw new HttpError(403,'Als Gast kannst du einer Lobby beitreten. Zum Erstellen benötigst du ein E-Mail-Konto.');
     const settings=event==='lobby:create'?z.object({settings:partialSettingsSchema.optional()}).strict().parse(raw??{}).settings:undefined;
     const code=event==='lobby:join'?z.object({code:codeSchema}).strict().parse(raw).code:undefined;
     const command=event==='lobby:command'?commandSchema.parse(raw).command as Command:undefined;
@@ -113,9 +116,10 @@ export function createEdgeHandler({repository:repo,store,verify,origins}:EdgeOpt
       if(request.method==='OPTIONS')return new Response(null,{status:204,headers});
       const path=new URL(request.url).pathname.replace(/^.*?\/api(?=\/|$)/,'')||'/';
       const method=request.method;
+      if(path==='/push/dispatch'&&method==='POST'){if(!push||!await push.authorized(request.headers.get('x-manhunt-push-ticket')))throw new HttpError(401,'Nicht berechtigt.');return respond(await push.dispatch());}
       if(method==='GET'&&(path==='/config'||path==='/health')){
         const ready=await store.ready();
-        return respond(path==='/config'?{configured:ready,authConfigured:true,transport:'http',pollIntervalMs:2000}:{status:ready?'ok':'configuration_required',configured:ready,version,transport:'http'},ready?200:503);
+        return respond(path==='/config'?{configured:ready,authConfigured:true,transport:'http',pollIntervalMs:2000,...(push?{pushPublicKey:await push.publicKey()}:{})}:{status:ready?'ok':'configuration_required',configured:ready,version,transport:'http'},ready?200:503);
       }
       const auth=request.headers.get('authorization');
       if(!auth?.startsWith('Bearer '))throw new HttpError(401,'Bitte melde dich an.');
@@ -160,7 +164,8 @@ export function createEdgeHandler({repository:repo,store,verify,origins}:EdgeOpt
         const {name,settings}=z.object({name:z.string().trim().min(1).max(60),settings:settingsSchema}).strict().parse(body);
         if((await repo.presets(id)).length>=20)throw new HttpError(409,'Du kannst bis zu 20 Presets speichern.');result=await repo.savePreset(id,name,settings as Settings);
       }else if(/^\/presets\/[^/]+$/.test(path)&&method==='DELETE')await repo.deletePreset(id,uuid.parse(path.split('/')[2]));
-      else if(path==='/push/subscribe'&&method==='POST')throw new HttpError(503,'Push-Benachrichtigungen sind noch nicht eingerichtet. In-App-Benachrichtigungen sind verfügbar.');
+      else if(path==='/push/subscribe'&&method==='POST'){if(!push)throw new HttpError(503,'Push ist noch nicht eingerichtet.');await store.quota(id,'push-subscribe',10);const subscription=pushSubscriptionSchema.parse(body);if(!validPushEndpoint(subscription.endpoint))throw new HttpError(400,'Dieser Push-Dienst ist nicht zugelassen.');const existing=await repo.subscriptions(id);if(existing.length>=10&&!existing.some(s=>s.endpoint===subscription.endpoint))throw new HttpError(409,'Höchstens zehn Push-Geräte pro Konto.');await repo.subscribe(id,subscription);}
+      else if(path==='/push/test'&&method==='POST'){empty.parse(body);if(!push)throw new HttpError(503,'Push ist noch nicht eingerichtet.');await store.quota(id,'push-test',2);await push.test(id);}
       else if(path==='/push/subscribe'&&method==='DELETE'){const {endpoint}=z.object({endpoint:z.string().url().max(2048)}).strict().parse(body);await repo.unsubscribe(id,endpoint);}
       else throw new HttpError(404,'Diese API-Route existiert nicht.');
       return respond(result);

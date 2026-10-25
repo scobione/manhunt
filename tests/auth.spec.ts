@@ -54,7 +54,8 @@ test('cancelled OAuth returns to a recoverable login screen',async({page})=>{
  await expect(page.getByRole('heading',{name:'Anmeldung abschließen'})).toBeVisible();
  await expect(page.getByRole('alert')).toContainText('Die Google-Anmeldung wurde abgebrochen');
  await page.getByRole('link',{name:'Zur Anmeldung',exact:true}).click();
- await expect(page.getByRole('button',{name:'Mit Google fortfahren'})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Mit E-Mail anmelden',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:/Google/})).toHaveCount(0);
  await expect(page.getByRole('heading',{name:'Anmeldung erfolgreich.'})).toHaveCount(0);
 });
 
@@ -184,4 +185,28 @@ test('recovery callback verifies the session before accepting a new password',as
  await page.getByRole('button',{name:'Neues Passwort speichern',exact:true}).click();
  await expect(page.getByRole('status')).toContainText('Dein Passwort wurde gespeichert');expect(changed).toBe(true);
  await expect(page.getByRole('heading',{name:'Neues Passwort festlegen'})).toHaveCount(0);
+});
+
+
+test('email verification accepts a code inside the installed-app flow without a PKCE verifier',async({page})=>{
+ let checks=0;await page.route(`${origin}/**`,route=>{const url=new URL(route.request().url());if(url.pathname==='/auth/v1/signup')return route.fulfill({status:200,headers:apiHeaders,contentType:'application/json',body:JSON.stringify({...testUser,identities:[]})});if(url.pathname==='/auth/v1/verify'){checks++;expect(route.request().postDataJSON()).toMatchObject({email:'code-test@example.invalid',token:'123456',type:'email'});return route.fulfill({status:200,headers:apiHeaders,contentType:'application/json',body:JSON.stringify(sessionFixture())});}if(url.pathname==='/auth/v1/user')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(testUser)});return route.abort();});
+ await page.goto('/login');await page.getByRole('button',{name:'Registrieren',exact:true}).click();await page.getByLabel('E-Mail-Adresse',{exact:true}).fill('code-test@example.invalid');await page.getByLabel('Passwort',{exact:true}).fill('isolated-password-123');await page.getByLabel('Passwort wiederholen',{exact:true}).fill('isolated-password-123');await page.getByRole('button',{name:'Konto erstellen',exact:true}).click();
+ await page.getByLabel('Verifizierungscode aus der E-Mail').fill('123456');await page.getByRole('button',{name:'E-Mail mit Code bestätigen'}).click();await expect(page.getByRole('heading',{name:'Anmeldung erfolgreich.'})).toBeVisible();expect(checks).toBe(1);
+});
+
+
+test('a guest joins a private lobby without email or password and survives reload',async({page})=>{
+ const {createEdgeHandler}=await import('../server/edge-runtime');const {MemoryRepository}=await import('../server/repository');const {TestEdgeStore}=await import('./edge-fixtures');
+ const store=new TestEdgeStore(),repository=new MemoryRepository();repository.checkpoints=store.lobbies;
+ const guestUser={...testUser,is_anonymous:true,email:undefined,app_metadata:{provider:'anonymous'}};
+ const guestSession={...sessionFixture(),user:guestUser};
+ const hostId='b2222222-2222-4222-8222-222222222222';
+ const handler=createEdgeHandler({store,repository,origins:['http://127.0.0.1:4173'],verify:async token=>({id:token==='isolated-host'?hostId:guestUser.id,username:token==='isolated-host'?'GuestTestHost':'GuestTest',expiresAt:Date.now()+60000,isGuest:token!=='isolated-host'})});
+ const made=await handler(new Request('http://isolated/api/events',{method:'POST',headers:{Authorization:'Bearer isolated-host'},body:JSON.stringify({event:'lobby:create',data:{}})}));const lobby=(await made.json()).lobby;
+ let anonymousRequests=0;
+ await page.route(`${origin}/**`,route=>{const path=new URL(route.request().url()).pathname;if(path==='/auth/v1/signup'){anonymousRequests++;const body=route.request().postDataJSON();expect(body.email).toBeUndefined();expect(body.password).toBeUndefined();return route.fulfill({status:200,headers:apiHeaders,contentType:'application/json',body:JSON.stringify(guestSession)});}if(path==='/auth/v1/user')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(guestUser)});return route.abort();});
+ await page.route('**/api/**',async route=>{store.clock=Date.now();const r=route.request();const response=await handler(new Request(r.url(),{method:r.method(),headers:r.headers(),...(r.postData()?{body:r.postData()}:{} )}));await route.fulfill({status:response.status,headers:Object.fromEntries(response.headers),body:await response.text()});});
+ await page.goto(`/join?code=${lobby.code}`);await expect(page.getByLabel('E-Mail-Adresse',{exact:true})).toHaveCount(0);await page.getByLabel('Dein Gastname').fill('EventGast');await page.getByRole('button',{name:'Als Gast beitreten',exact:true}).click();await expect(page).toHaveURL(/\/lobby$/);await expect(page.locator('.player-row')).toHaveCount(2);await expect(page.locator('.player-row').filter({hasText:'Gast_EventGast_'})).toBeVisible();expect(anonymousRequests).toBe(1);
+ await page.reload();await expect(page.getByTestId('lobby-code')).toHaveText(lobby.code);expect(anonymousRequests).toBe(1);
+ const forbidden=await handler(new Request('http://isolated/api/events',{method:'POST',headers:{Authorization:`Bearer ${guestSession.access_token}`},body:JSON.stringify({event:'lobby:create',data:{}})}));expect(forbidden.status).toBe(403);
 });

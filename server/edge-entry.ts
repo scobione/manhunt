@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { authenticate } from './auth';
 import { SupabaseRepository } from './repository';
 import { SupabaseEdgeStore } from './edge-store';
+import {SupabasePushService} from './push';
 import { createEdgeHandler } from './edge-runtime';
 
 // Supabase injects these secrets into its own Edge runtime. They are never
@@ -14,5 +15,6 @@ const db=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false
 Deno.serve(createEdgeHandler({
   repository:new SupabaseRepository(db),store:new SupabaseEdgeStore(db),
   verify:token=>authenticate(token,db),
+  push:new SupabasePushService(db,'https://manhunt-fieldgame.scobione.chatgpt.site',`${url}/functions/v1/manhunt-api/api/push/dispatch`),
   origins:['https://manhunt-fieldgame.scobione.chatgpt.site'],
 }));

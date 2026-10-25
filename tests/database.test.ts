@@ -31,7 +31,7 @@ function state():Lobby{
 function lastSurvivor():Lobby{
  const engine=new GameEngine();
  const profiles=[a,b,c].map((id,i)=>({id,username:`PrivacyTest${i}`,avatar_url:null,friend_code:`TESTCODE000${i}`,show_online:false}));
- const l=engine.create(profiles[0],{mode:'last_survivor',randomRoles:false,preparationSeconds:0,headStartSeconds:0});
+ const l=engine.create(profiles[0],{mode:'last_survivor',captureMethod:'confirmation',randomRoles:false,preparationSeconds:0,headStartSeconds:0});
  profiles.slice(1).forEach(p=>engine.join(l.code,p));
  engine.command(l.id,a,{type:'zone',zone:{feature:circle([13.405,52.52],.6),excluded:[],name:'ISOLATED ERASURE TEST',confirmed:true}});
  engine.command(l.id,a,{type:'assign',playerId:a,role:'hunter',team:'A'});
@@ -95,7 +95,7 @@ describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
  });
  it('executes the full unchanged migration and enables RLS on every application table',async()=>{
   const tables=await db.query<{tablename:string;rowsecurity:boolean}>("select tablename,rowsecurity from pg_tables where schemaname='public'");
-  expect(tables.rows.length).toBe(24);
+  expect(tables.rows.length).toBe(27);
   expect(tables.rows.every(t=>t.rowsecurity)).toBe(true);
   expect((await db.query('select * from profiles')).rows).toHaveLength(3);
   expect(await friendCode(a)).toMatch(/^[A-Z0-9]{12}$/);
@@ -225,3 +225,35 @@ describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
   expect((await db.query('select * from game_checkpoints')).rows).toHaveLength(0);
  });
 });
+
+// Real SQL outbox tests; no production subscriptions or devices are contacted.
+describe('durable web-push scheduling and privacy',()=>{
+ it('denies clients access to signing keys, queued notifications and claims',async()=>{
+  for(const sql of ['select * from push_config','select * from push_jobs','select claim_push_jobs(40)'])await expect(userRole(a,sql)).rejects.toThrow(/permission denied/);
+ });
+ it('schedules one reminder per deadline and cancels it on pause or location withdrawal',async()=>{
+  const l=state();l.players[1].locationSharing=true;l.players[1].nextPinAt=Date.now()+60000;
+  await rpc('save_game_checkpoint',[JSON.stringify(l)]);l.revision++;await rpc('save_game_checkpoint',[JSON.stringify(l)]);
+  let rows=(await db.query<{status:string;payload:unknown}>('select status,payload from push_jobs where kind=\'pin_due\'')).rows;
+  expect(rows).toHaveLength(1);expect(rows[0].status).toBe('pending');expect(JSON.stringify(rows)).not.toContain('52.52');expect(JSON.stringify(rows)).not.toContain('TestHider');
+  l.status='paused';l.revision++;await rpc('save_game_checkpoint',[JSON.stringify(l)]);expect((await db.query<{status:string}>('select status from push_jobs where kind=\'pin_due\'')).rows[0].status).toBe('cancelled');
+  l.status='active';l.players[1].nextPinAt!+=10000;l.revision++;await rpc('save_game_checkpoint',[JSON.stringify(l)]);l.players[1].locationSharing=false;l.revision++;await rpc('save_game_checkpoint',[JSON.stringify(l)]);expect((await db.query("select * from push_jobs where kind='pin_due' and status='pending'")).rows).toHaveLength(0);
+ });
+ it('notifies hunters about new pins and sends emergency warnings to the crew only once',async()=>{
+  const l=state();l.events=[{id:randomUUID(),type:'emergency_pause',at:Date.now(),message:'PRIVATE TEST NAME'}];await rpc('save_game_checkpoint',[JSON.stringify(l)]);
+  const rows=(await db.query<{user_id:string;kind:string;payload:unknown}>('select user_id,kind,payload from push_jobs')).rows;
+  expect(rows.filter(r=>r.kind==='new_pin').map(r=>r.user_id)).toEqual([a]);expect(rows.filter(r=>r.kind==='emergency_pause')).toHaveLength(2);
+  expect(JSON.stringify(rows)).not.toContain('PRIVATE TEST NAME');l.revision++;await rpc('save_game_checkpoint',[JSON.stringify(l)]);expect((await db.query('select * from push_jobs')).rows).toHaveLength(rows.length);
+ });
+ it('leases due work only once, retries expired leases and cascades account deletion',async()=>{
+  await db.query("insert into push_jobs(user_id,event_key,kind,payload,expires_at) values($1,'test-job','test','{}',now()+interval '5 minutes')",[b]);
+  expect((await rpc('claim_push_jobs',[40])).rows).toHaveLength(1);
+  // SETOF functions are returned as one row per claim by our helper.
+  expect((await rpc('claim_push_jobs',[40])).rows).toHaveLength(0);
+  await db.exec("update push_jobs set locked_until=now()-interval '1 second'");expect((await rpc('claim_push_jobs',[40])).rows).toHaveLength(1);
+  await db.query('delete from auth.users where id=$1',[b]);expect((await db.query('select * from push_jobs')).rows).toHaveLength(0);
+ });
+});
+
+
+it('consumes a push dispatch ticket once and denies clients minting or consuming it',async()=>{const ticket=(await rpc('issue_push_ticket',[])).rows[0].value as string;const hash=(await db.query<{hash:string}>("select encode(sha256(convert_to($1,'UTF8')),'hex') as hash",[ticket])).rows[0].hash;expect((await rpc('consume_push_ticket',[hash])).rows[0].value).toBe(true);expect((await rpc('consume_push_ticket',[hash])).rows[0].value).toBe(false);await expect(userRole(a,'select issue_push_ticket()')).rejects.toThrow(/permission denied/);await expect(userRole(a,'select * from push_dispatch_tickets')).rejects.toThrow(/permission denied/);});

@@ -5,7 +5,7 @@ import { z } from 'zod';
 export class HttpError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
-export interface Identity { id: string; username?: string; avatarUrl?: string | null; expiresAt: number; }
+export interface Identity { id: string; username?: string; avatarUrl?: string | null; expiresAt: number; isGuest?:boolean; }
 export const uuid = z.string().uuid();
 export function testAuthEnabled(): boolean {
   return process.env.NODE_ENV === 'test' && process.env.TEST_AUTH === 'true';
@@ -32,10 +32,9 @@ export async function authenticate(token: unknown, supabase: SupabaseClient | nu
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data.user) throw new HttpError(401, 'Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.');
   const user: User = data.user;
-  if (user.is_anonymous) throw new HttpError(403, 'Für MANHUNT ist ein persönliches Konto erforderlich.');
   const expiresAt = expiry(token);
   if (expiresAt <= Date.now()) throw new HttpError(401, 'Deine Sitzung ist abgelaufen.');
-  return { id: user.id, username: user.user_metadata?.full_name, avatarUrl: user.user_metadata?.avatar_url, expiresAt };
+  return { id: user.id, isGuest:!!user.is_anonymous, username: user.user_metadata?.full_name, avatarUrl: user.user_metadata?.avatar_url, expiresAt };
 }
 
 export function safeMessage(error: unknown): string {

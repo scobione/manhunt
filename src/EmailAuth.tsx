@@ -21,8 +21,9 @@ export function EmailAuthForm(){
  const {clearAuthError}=useApp();
  const [mode,setMode]=useState<'login'|'signup'|'reset'>('login');
  const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[repeat,setRepeat]=useState('');
+ const [otp,setOtp]=useState(''),[verifyEmail,setVerifyEmail]=useState(false);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[registered,setRegistered]=useState(false);
- function switchMode(next:typeof mode){setMode(next);setPassword('');setRepeat('');setError('');setMessage('');setRegistered(false);clearAuthError();}
+ function switchMode(next:typeof mode){setMode(next);setPassword('');setRepeat('');setError('');setMessage('');setRegistered(false);setVerifyEmail(false);setOtp('');clearAuthError();}
  async function submit(event:FormEvent){
   event.preventDefault();if(!supabase||busy)return;
   setError('');setMessage('');clearAuthError();
@@ -41,8 +42,9 @@ export function EmailAuthForm(){
     const {error}=await supabase.auth.resetPasswordForEmail(address,{redirectTo:`${window.location.origin}/auth/callback`});if(error)throw error;
     setMessage('Falls ein Konto zu dieser Adresse besteht, erhältst du eine E-Mail zum Zurücksetzen. Prüfe auch deinen Spam-Ordner. Öffne den Link möglichst in diesem Browser.');
    }
-  }catch(error){setError(errorMessage(error));}finally{setBusy(false);}
+  }catch(error){if(error&&typeof error==='object'&&'code' in error&&error.code==='email_not_confirmed')setVerifyEmail(true);setError(errorMessage(error));}finally{setBusy(false);}
  }
+ async function verifyCode(event:FormEvent){event.preventDefault();if(!supabase||busy)return;setBusy(true);setError('');try{const {error}=await supabase.auth.verifyOtp({email:email.trim(),token:otp.trim(),type:'email'});if(error)throw error;setOtp('');setRegistered(false);setVerifyEmail(false);}catch{setError('Der Code ist ungültig oder abgelaufen. Prüfe ihn oder fordere eine neue Bestätigung an.');}finally{setBusy(false);}}
  async function resend(){
   if(!supabase||busy)return;setBusy(true);setError('');
   try{const {error}=await supabase.auth.resend({type:'signup',email:email.trim(),options:{emailRedirectTo:`${window.location.origin}/auth/callback`}});if(error)throw error;setMessage('Bestätigung erneut angefordert. Bitte prüfe dein Postfach und den Spam-Ordner.');}catch(error){setError(errorMessage(error));}finally{setBusy(false);}
@@ -58,7 +60,8 @@ export function EmailAuthForm(){
    {message&&<p className="auth-feedback" role="status">{message}</p>}
    {!registered&&<button className="button primary" disabled={busy||!supabase}>{busy?'Bitte warten…':mode==='login'?'Mit E-Mail anmelden':mode==='signup'?'Konto erstellen':'Link zum Zurücksetzen anfordern'}</button>}
   </form>
-  {registered&&<div className="auth-mode-buttons"><button className="button" disabled={busy} onClick={resend}>Bestätigung erneut senden</button><button className="button" disabled={busy} onClick={()=>switchMode('login')}>Zur E-Mail-Anmeldung</button></div>}
+  {(registered||verifyEmail)&&<form onSubmit={verifyCode} className="email-code-form"><label>Verifizierungscode aus der E-Mail<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,10}" minLength={6} maxLength={10} required value={otp} onChange={e=>setOtp(e.target.value.replace(/\D/g,''))}/></label><button className="button primary" disabled={busy||otp.length<6}>E-Mail mit Code bestätigen</button><p className="fineprint">Alternativ kannst du den Bestätigungslink aus deiner E-Mail öffnen.</p></form>}
+  {(registered||verifyEmail)&&<div className="auth-mode-buttons"><button className="button" disabled={busy} onClick={resend}>Bestätigung erneut senden</button><button className="button" disabled={busy} onClick={()=>switchMode('login')}>Zur E-Mail-Anmeldung</button></div>}
   {mode==='login'&&<button className="text-link auth-forgot" type="button" disabled={busy} onClick={()=>switchMode('reset')}>Passwort vergessen?</button>}
  </section>;
 }
