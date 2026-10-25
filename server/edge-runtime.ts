@@ -8,7 +8,6 @@ import { settingsSchema, partialSettingsSchema } from './validation';
 import packageInfo from '../package.json' with {type:'json'};
 const {version}=packageInfo;
 import {pushSubscriptionSchema,validPushEndpoint,type PushService} from './push';
-import { randomUUID } from 'node:crypto';
 
 const empty=z.object({}).strict();
 const codeSchema=z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6}$/);
@@ -47,15 +46,8 @@ export function createEdgeHandler({repository:repo,store,verify,origins,push}:Ed
       const changed=new Map<string,Lobby>();
       for(const lobby of engine.lobbies.values()){
         if(['closed','finished'].includes(lobby.status))continue;
-        // If nobody processed the match for a while, pause at the last known
-        // server tick BEFORE catching up deadlines. Returning together must not
-        // turn an unseen outage into a win, shrink or elimination.
-        const lastTick=(lobby as Lobby&{_engine?:{lastTick:number}})._engine?.lastTick;
-        if(['active','preparing'].includes(lobby.status)&&lastTick!==undefined&&snapshot.now-lastTick>30_000){
-          lobby.previousStatus=lobby.status as 'active'|'preparing';lobby.status='paused';lobby.pausedAt=lastTick;lobby.revision++;
-          lobby.events.push({id:randomUUID(),type:'disconnect_pause',at:snapshot.now,message:'Match nach Verbindungsunterbrechung pausiert. Der Host kann es sicher fortsetzen.'});
-          changed.set(lobby.id,lobby);
-        }
+        // Persist legacy-pause recovery even when this request targets another lobby.
+        if(lobby.revision!==snapshot.lobbies.find(saved=>saved.id===lobby.id)?.revision)changed.set(lobby.id,lobby);
         for(const player of lobby.players){
           const seen=snapshot.presence[player.id]??player.lastSeen;
           const connected=snapshot.now-seen<PRESENCE_MS;

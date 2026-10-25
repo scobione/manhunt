@@ -36,6 +36,7 @@ async function setup(page:Page,api:APIRequestContext){
  return {hunterToken,hiderToken};
 }
 async function completeDelayedFix(page:Page){
+ await expect.poll(()=>page.evaluate(()=>!!(window as any).__auditGps?.cleared)).toBe(true);
  await page.evaluate(()=>{
   const fixture=(window as any).__auditGps;
   if(!fixture.cleared||!fixture.pending)throw Error('Expected cleared watch and pending one-shot GPS callback');
@@ -49,12 +50,10 @@ test('does not transmit a delayed GPS callback after leaving the game screen',as
  await completeDelayedFix(page);await page.waitForTimeout(1200);expect(transmitted).toEqual([]);
  const state=await event(request,hiderToken,'lobby:sync');expect(state.self.location).toBeUndefined();
 });
-test('does not transmit a delayed GPS callback after explicit stop and host resume',async({page,request})=>{
+test('does not transmit a delayed GPS callback after explicit stop while the match continues',async({page,request})=>{
  const {hunterToken,hiderToken}=await setup(page,request);
  await page.getByRole('button',{name:'Standortfreigabe beenden',exact:true}).click();
- await expect.poll(async()=> (await event(request,hiderToken,'lobby:sync')).status).toBe('paused');
-  await expect(page.locator('.safety-pause')).toBeVisible();
- await cmd(request,hunterToken,{type:'resume'});
+ await expect.poll(async()=> (await event(request,hiderToken,'lobby:sync')).status).toBe('active');
   await expect(page.locator('.safety-pause')).not.toBeVisible();
  await expect(page.getByRole('heading',{name:'Die Jagd läuft.'})).toBeVisible();
  await expect(page.getByRole('checkbox',{name:/Ich teile meinen Standort/})).not.toBeChecked();

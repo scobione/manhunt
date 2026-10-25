@@ -15,7 +15,6 @@ interface PlayerState {
 interface PrivateState {players:Record<string,PlayerState>; phase:number; hunterReleaseAt?:number; lastTick:number; leftIds:string[];}
 type EngineLobby=Lobby & {_engine:PrivateState};
 const clone=<T>(x:T):T=>structuredClone(x);
-const activeStatuses=new Set(['active','preparing','paused']);
 const playing=(p:Player)=>!p.eliminated&&p.role!=='spectator';
 const hunting=(p:Player)=>!p.eliminated&&(p.role==='hunter'||p.role==='zombie');
 const metadata=():PlayerState=>({outsideAccumulatedMs:0,outsideFixes:0,lastReliableOutside:false,captureAttempts:[],missedPin:false,infectionAcknowledged:false});
@@ -36,9 +35,13 @@ export class GameEngine {
     for(const record of clone(lobbies)){
       const lobby=record as EngineLobby;
       lobby.settings={...clone(DEFAULT_SETTINGS),...lobby.settings};
+      // Old clients/checkpoints may still request the removed pause policy.
+      if((lobby.settings.disconnectBehavior as string)==='pause'){lobby.settings.disconnectBehavior='continue';lobby.revision++;}
       lobby._engine??={players:{},phase:0,lastTick:this.now(),leftIds:[]};
       lobby._engine.leftIds??=[];
       for(const p of lobby.players){lobby._engine.players[p.id]??=metadata();if(lobby.status==='paused')this.freezeOutside(lobby,p,lobby.pausedAt??this.now());}
+      // Upgrade an existing pause once, preserving remaining game deadlines.
+      if(lobby.status==='paused'){this.resumeLegacy(lobby);lobby.revision++;}
       this.lobbies.set(lobby.id,lobby);
     }
   }
@@ -110,12 +113,11 @@ export class GameEngine {
     const visibleLocations:Pin[]=[];
     for(const player of l.players){
       if(player.id===userId||l._engine.leftIds.includes(player.id)||!player.location||player.locationSharing===false)continue;
-      const safety=l.status==='paused';
       const live=l.status==='active'&&l.settings.hunterVisible&&player.role==='hunter'&&!player.eliminated&&!self.eliminated&&self.role!=='spectator'&&(l._engine.hunterReleaseAt??0)<=now;
-      if(!safety&&!live)continue;
+      if(!live)continue;
       const sample=player.location,observedAt=Math.min(sample.timestamp,l._engine.players[player.id].lastLocationAt??sample.timestamp);
       if(now-observedAt>l.settings.fallbackPinMaxAgeSeconds*1000)continue;
-      visibleLocations.push({id:`${safety?'safety':'live'}:${player.id}`,playerId:player.id,username:player.username,role:player.role,...sample,observedAt,createdAt:observedAt,expiresAt:observedAt+l.settings.fallbackPinMaxAgeSeconds*1000,stale:now-observedAt>15_000||!!l._engine.players[player.id].unreliableLocation,kind:safety?'safety':'live'});
+      visibleLocations.push({id:`live:${player.id}`,playerId:player.id,username:player.username,role:player.role,...sample,observedAt,createdAt:observedAt,expiresAt:observedAt+l.settings.fallbackPinMaxAgeSeconds*1000,stale:now-observedAt>15_000||!!l._engine.players[player.id].unreliableLocation,kind:'live'});
     }
     return clone({id:l.id,code:l.code,hostId:l.hostId,status:l.status,
       players:l.players.map(p=>({id:p.id,username:p.username,avatar_url:p.avatar_url,ready:p.ready,role:p.role,team:p.team,connected:p.connected,eliminated:p.eliminated,infectedAt:p.infectedAt,lastSeen:p.lastSeen})),
@@ -142,9 +144,7 @@ export class GameEngine {
       case 'transfer':this.host(l,userId);if(!this.member(l,command.playerId).connected)fail('DISCONNECTED','Der neue Host muss verbunden sein.');l.hostId=command.playerId;this.event(l,'host_changed','Host übertragen.',userId,command.playerId);break;
       case 'start':this.start(l,userId);break;
       case 'zone_return_ack':if(p.zoneStatus!=='inside'||!p.location||now-(l._engine.players[p.id].lastLocationAt??0)>15_000)fail('RETURN_UNCONFIRMED','Die Rückkehr muss zuerst durch aktuelle, genaue GPS-Messungen bestätigt werden.');p.returnPending=false;break;
-      case 'stop_location':p.locationSharing=false;delete p.location;l.pins=l.pins.filter(pin=>pin.playerId!==p.id);this.freezeOutside(l,p);if(['active','preparing'].includes(l.status)){l.previousStatus=l.status as 'active'|'preparing';l.status='paused';l.pausedAt=now;for(const player of l.players)this.freezeOutside(l,player);this.event(l,'emergency_pause',`${p.username} hat die Standortfreigabe beendet. Match pausiert.`,userId);}break;
-      case 'pause':if(!activeStatuses.has(l.status))fail('NOT_ACTIVE','Das Match läuft nicht.');if(l.status!=='paused'){l.previousStatus=l.status as 'active'|'preparing';l.status='paused';l.pausedAt=now;for(const player of l.players)this.freezeOutside(l,player);this.event(l,'emergency_pause',`Notfall-Pause durch ${p.username}. Sicherheit hat Vorrang.`,userId);}break;
-      case 'resume':this.host(l,userId);this.resume(l);break;
+      case 'stop_location':p.locationSharing=false;delete p.location;l.pins=l.pins.filter(pin=>pin.playerId!==p.id);this.freezeOutside(l,p);break;
       case 'close':this.host(l,userId);l.status='closed';this.purge(l);this.event(l,'lobby_closed','Lobby geschlossen.',userId);break;
       case 'leave':this.leave(l,p);break;
       case 'location':this.location(l,p,command.location,command.publish??false);break;
@@ -188,14 +188,12 @@ export class GameEngine {
     for(const p of participants){p.eliminated=false;p.captureCode=this.code();p.nextPinAt=l._engine.hunterReleaseAt;delete p.location;delete p.outsideSince;delete p.infectedAt;delete p.outsideClockAt;p.outsideActive=false;p.returnPending=false;p.outsideElapsed=0;p.locationSharing=false;p.zoneStatus='uncertain';l._engine.players[p.id]={...metadata(),captureSecret:randomBytes(32).toString('base64url')};}
     this.event(l,'match_started','Rollen verteilt. Achte auf deine Umgebung.',userId);
   }
-  private resume(l:EngineLobby):void{
-    if(l.status!=='paused')fail('NOT_PAUSED','Das Match ist nicht pausiert.');
-    if(l.players.some(p=>playing(p)&&!p.connected))fail('DISCONNECTED','Alle aktiven Spieler müssen wieder verbunden sein.');
-    const now=this.now(),delta=now-(l.pausedAt??now);
+  private resumeLegacy(l:EngineLobby):void{
+    const now=this.now(),delta=Math.max(0,now-(l.pausedAt??now));
     if(l.startedAt!==undefined)l.startedAt+=delta;if(l.endsAt!==undefined)l.endsAt+=delta;if(l._engine.hunterReleaseAt!==undefined)l._engine.hunterReleaseAt+=delta;
     for(const p of l.players){if(p.nextPinAt!==undefined)p.nextPinAt+=delta;if(p.infectedAt!==undefined)p.infectedAt+=delta;this.freezeOutside(l,p);const meta=l._engine.players[p.id];meta.insideFixes=0;}
     l.pins=l.pins.filter(pin=>pin.expiresAt>now);
-    l.status=l.previousStatus??'active';delete l.pausedAt;delete l.previousStatus;l.captures=[];this.event(l,'match_resumed','Das Match wird fortgesetzt.');
+    l.status=l.previousStatus??'active';delete l.pausedAt;delete l.previousStatus;l.captures=[];l._engine.lastTick=now;this.event(l,'match_resumed','Das Match wird fortgesetzt.');
   }
   private leave(l:EngineLobby,p:Player):void{
     l.pins=l.pins.filter(pin=>pin.playerId!==p.id);l.captures=l.captures.filter(c=>c.targetId!==p.id&&c.hunterId!==p.id);
@@ -207,7 +205,7 @@ export class GameEngine {
   }
   private infectionMode(l:Lobby){return l.settings.mode==='zombie'||l.settings.mode==='infection_rush'||l.settings.mode==='custom'&&l.settings.winCondition==='infection';}
   private location(l:EngineLobby,p:Player,loc:LocationSample,_publish:boolean):void{
-    if(!['preparing','active','paused'].includes(l.status)||!playing(p))fail('LOCATION_DISABLED','Standortfreigabe ist nur im laufenden Match oder in einer Notfallpause möglich.');
+    if(!['preparing','active','paused'].includes(l.status)||!playing(p))fail('LOCATION_DISABLED','Standortfreigabe ist nur im laufenden Match möglich.');
     const now=this.now(),meta=l._engine.players[p.id],old=p.location;
     if(Math.abs(now-loc.timestamp)>30_000)fail('STALE_LOCATION','Der GPS-Zeitstempel ist veraltet. Fordere einen neuen Standort an.');
     if(old&&loc.timestamp<=old.timestamp)fail('REPLAYED_LOCATION','Dieser Standort wurde bereits verarbeitet.');
@@ -354,8 +352,7 @@ export class GameEngine {
       if(l.status==='preparing'&&now>=(l.startedAt??Infinity)){l.status='active';this.event(l,'match_active','Das Match läuft.');changed=true;}
       if(l.status==='active'||l.status==='preparing'){
         for(const p of l.players.filter(playing))if(!p.connected&&now-p.lastSeen>=l.settings.disconnectGraceSeconds*1000){
-          if(l.settings.disconnectBehavior==='pause'){l.previousStatus=l.status as 'active'|'preparing';l.status='paused';l.pausedAt=now;this.event(l,'disconnect_pause','Match pausiert: Ein Spieler ist nicht erreichbar.',p.id);changed=true;break;}
-          else{this.eliminate(l,p,'disconnect','Verbindung nach Ablauf der Wiederverbindungsfrist getrennt.');changed=true;}
+          if(l.settings.disconnectBehavior==='eliminate'){this.eliminate(l,p,'disconnect','Verbindung nach Ablauf der Wiederverbindungsfrist getrennt.');changed=true;}
         }
       }
       if(l.status==='active'){
@@ -364,7 +361,7 @@ export class GameEngine {
           if(phase!==l._engine.phase){
             const scaled=transformScale(clone(l.zone!.feature),l.settings.phases[phase].scale);
             const clipped=intersect(featureCollection([scaled,l.zone!.feature]));
-            if(!clipped){l.previousStatus='active';l.status='paused';l.pausedAt=now;this.event(l,'unsafe_zone','Zone konnte nicht sicher verkleinert werden. Match pausiert.');}
+            if(!clipped){l._engine.phase=phase;this.event(l,'unsafe_zone','Verkleinerung übersprungen: Die bisherige sichere Zone bleibt bestehen.');}
             else{l.activeZone=clipped.geometry.type==='Polygon'?clipped as Feature<Polygon>:clipped.geometry.coordinates.map(c=>polygon(c)).sort((a,b)=>area(b)-area(a))[0];l._engine.phase=phase;this.event(l,'zone_shrunk',`Zone verkleinert: Phase ${phase+1}.`);for(const p of l.players)this.freezeOutside(l,p);}
             changed=true;
           }

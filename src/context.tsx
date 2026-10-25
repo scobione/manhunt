@@ -75,7 +75,7 @@ export function AppProvider({children}:{children:ReactNode}) {
    let refreshing=false;
    const session=httpSession({request:api,onConnection:setConnected,onSocial:()=>setSocialRevision(v=>v+1),onState:state=>{
     setLobby(state?.status==='closed'?null:state);
-    const latest=state?.events.at(-1);if(latest&&latest.id!==lastEvent.current){if(lastEvent.current&&state?.settings.notifications&&['capture','infection','match_finished','emergency_pause','disconnect_pause'].includes(latest.type))notify(latest.message);lastEvent.current=latest.id;}
+    const latest=state?.events.at(-1);if(latest&&latest.id!==lastEvent.current){if(lastEvent.current&&state?.settings.notifications&&['capture','infection','match_finished'].includes(latest.type))notify(latest.message);lastEvent.current=latest.id;}
    },onExpired:()=>{if(refreshing||!supabase)return;refreshing=true;void supabase.auth.refreshSession().then(({data,error})=>{if(cancelled)return;if(error||!data.session){setToken(null);notify('Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.');}else setToken(data.session.access_token);}).finally(()=>{refreshing=false;});}});
    httpRef.current=session;
    return()=>{cancelled=true;session.close();httpRef.current=null;};
@@ -86,7 +86,7 @@ export function AppProvider({children}:{children:ReactNode}) {
   socket.on('connect_error',(error)=>{setConnected(false);notify(`Verbindung unterbrochen: ${error.message}`);});
   socket.on('auth:expired',()=>{setConnected(false);if(supabase)void supabase.auth.refreshSession().then(({data,error})=>{if(error||!data.session){setToken(null);notify('Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.');}else setToken(data.session.access_token);});else setToken(null);});
   socket.on('account:deleted',()=>{sessionStorage.removeItem('manhunt:test-token');setToken(null);setProfile(null);setLobby(null);});
-  socket.on('lobby:state',(state:LobbyView|null)=>{setLobby(state?.status==='closed'?null:state);const latest=state?.events.at(-1);if(latest&&latest.id!==lastEvent.current){if(lastEvent.current&&state?.settings.notifications&&['capture','infection','match_finished','emergency_pause','disconnect_pause'].includes(latest.type))notify(latest.message);lastEvent.current=latest.id;}});
+  socket.on('lobby:state',(state:LobbyView|null)=>{setLobby(state?.status==='closed'?null:state);const latest=state?.events.at(-1);if(latest&&latest.id!==lastEvent.current){if(lastEvent.current&&state?.settings.notifications&&['capture','infection','match_finished'].includes(latest.type))notify(latest.message);lastEvent.current=latest.id;}});
   socket.on('lobby:left',()=>setLobby(null));
   socket.on('social:changed',()=>setSocialRevision(v=>v+1));
   socket.on('notice',(data:{message:string})=>notify(data.message));

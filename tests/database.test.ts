@@ -239,10 +239,10 @@ describe('durable web-push scheduling and privacy',()=>{
   l.status='paused';l.revision++;await rpc('save_game_checkpoint',[JSON.stringify(l)]);expect((await db.query<{status:string}>('select status from push_jobs where kind=\'pin_due\'')).rows[0].status).toBe('cancelled');
   l.status='active';l.players[1].nextPinAt!+=10000;l.revision++;await rpc('save_game_checkpoint',[JSON.stringify(l)]);l.players[1].locationSharing=false;l.revision++;await rpc('save_game_checkpoint',[JSON.stringify(l)]);expect((await db.query("select * from push_jobs where kind='pin_due' and status='pending'")).rows).toHaveLength(0);
  });
- it('notifies hunters about new pins and sends emergency warnings to the crew only once',async()=>{
+ it('notifies hunters about new pins and ignores retired emergency-pause events',async()=>{
   const l=state();l.events=[{id:randomUUID(),type:'emergency_pause',at:Date.now(),message:'PRIVATE TEST NAME'}];await rpc('save_game_checkpoint',[JSON.stringify(l)]);
   const rows=(await db.query<{user_id:string;kind:string;payload:unknown}>('select user_id,kind,payload from push_jobs')).rows;
-  expect(rows.filter(r=>r.kind==='new_pin').map(r=>r.user_id)).toEqual([a]);expect(rows.filter(r=>r.kind==='emergency_pause')).toHaveLength(2);
+  expect(rows.filter(r=>r.kind==='new_pin').map(r=>r.user_id)).toEqual([a]);expect(rows.filter(r=>r.kind==='emergency_pause')).toHaveLength(0);
   expect(JSON.stringify(rows)).not.toContain('PRIVATE TEST NAME');l.revision++;await rpc('save_game_checkpoint',[JSON.stringify(l)]);expect((await db.query('select * from push_jobs')).rows).toHaveLength(rows.length);
  });
  it('leases due work only once, retries expired leases and cascades account deletion',async()=>{

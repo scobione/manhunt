@@ -99,12 +99,10 @@ export async function createBackend(options:BackendOptions={}){
         for(const p of lobby.players){p.connected=false;p.lastSeen=now;delete p.location;delete p.outsideSince;}
         const internals=(lobby as Lobby&{_engine?:{players?:Record<string,Record<string,unknown>>}})._engine;
         for(const meta of Object.values(internals?.players??{})){delete meta.lastOutsideAt;meta.lastReliableOutside=false;meta.outsideFixes=0;}
-        if(lobby.status==='active'||lobby.status==='preparing'){
-          lobby.previousStatus=lobby.status;lobby.status='paused';lobby.pausedAt=now;lobby.revision+=1;
-        }
+        lobby.revision+=1;
       }
       engine.restore(restored);
-      for(const lobby of restored)if(lobby.status==='paused')await repository.save(lobby);
+      for(const lobby of engine.lobbies.values())await repository.save(lobby);
     }catch{healthy=false;console.error('Database initialization failed; multiplayer startup is blocked.');}
   }
   const requireReady=()=>{repo();if(!healthy)throw new HttpError(503,'Der Spielserver wartet auf eine sichere Datenbankverbindung.');};
@@ -269,13 +267,13 @@ export async function createBackend(options:BackendOptions={}){
     tickTimer=setInterval(()=>{if(!repository||!healthy||shuttingDown)return;void serialize(async()=>{
       const before=engine.snapshot();try{const changed=engine.tick();for(const lobby of changed)await repository.save(lobby);for(const lobby of changed)broadcast(lobby);}catch{engine.restore(before);healthy=false;for(const id of socketsByUser.keys())send(id,'notice',{message:'Datenbankverbindung unterbrochen. Spielaktionen sind pausiert.'});}
     });},1000);tickTimer.unref();
-    cleanupTimer=setInterval(()=>{if(!repository||shuttingDown)return;void serialize(async()=>{try{await repository.cleanup();if(!healthy){const restored=await repository.load();for(const l of restored)if(l.status==='active'||l.status==='preparing'){l.previousStatus=l.status;l.status='paused';l.pausedAt=Date.now();for(const p of l.players)p.connected=socketsByUser.has(p.id);await repository.save(l);}engine.restore(restored);healthy=true;for(const l of restored)broadcast(l);}}catch{healthy=false;}});},60_000);cleanupTimer.unref();
+    cleanupTimer=setInterval(()=>{if(!repository||shuttingDown)return;void serialize(async()=>{try{await repository.cleanup();if(!healthy){const restored=await repository.load();for(const l of restored)if(l.status==='active'||l.status==='preparing'){for(const p of l.players)p.connected=socketsByUser.has(p.id);await repository.save(l);}engine.restore(restored);healthy=true;for(const l of restored)broadcast(l);}}catch{healthy=false;}});},60_000);cleanupTimer.unref();
   }
   async function close(){
     shuttingDown=true;if(tickTimer)clearInterval(tickTimer);if(cleanupTimer)clearInterval(cleanupTimer);for(const timer of timers)clearTimeout(timer);
     await queue;
     if(repository)for(const l of engine.lobbies.values())if(l.status==='active'||l.status==='preparing'){
-      try{engine.command(l.id,l.hostId,{type:'pause'});await repository.save(l);}catch{/* Restoration is fail-safe and always paused. */}
+      try{await repository.save(l);}catch{/* Persisted checkpoints remain recoverable. */}
     }
     await new Promise<void>(resolve=>io.close(()=>resolve()));
     if(httpServer.listening)await new Promise<void>((resolve,reject)=>httpServer.close(e=>e?reject(e):resolve()));

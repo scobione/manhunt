@@ -14,7 +14,7 @@ const settingsObject = z.object({
   captureMethod:z.enum(['qr','confirmation','code','proximity']), captureRadiusMeters:z.number().min(5).max(100),
   infectionDelaySeconds:boundedInt(0,300), zombieVisible:z.boolean(), zombieGps:z.boolean(), allowHealing:z.boolean(),
   outsideGraceSeconds:boundedInt(15,600), outsideReset:z.boolean(), spectatorsAllowed:z.boolean(),
-  disconnectGraceSeconds:boundedInt(15,900), disconnectBehavior:z.enum(['pause','eliminate']), notifications:z.boolean(),
+  disconnectGraceSeconds:boundedInt(15,900), disconnectBehavior:z.enum(['continue','pause','eliminate']).transform(value=>value==='pause'?'continue':value), notifications:z.boolean(),
   phases:z.array(z.object({afterSeconds:boundedInt(0,21600),scale:z.number().min(.05).max(1)}).strict()).min(1).max(20),
   winCondition:z.enum(['survival','last_hider','infection']),
 }).strict();
@@ -34,7 +34,7 @@ export const commandSchema=z.discriminatedUnion('type',[
  z.object({type:z.literal('ready'),ready:z.boolean()}).strict(),z.object({type:z.literal('settings'),settings:settingsSchema}).strict(),
  z.object({type:z.literal('zone'),zone:zoneSchema}).strict(),z.object({type:z.literal('assign'),playerId:userId,role:z.enum(['hunter','hider','zombie','spectator']),team:z.enum(['A','B'])}).strict(),
  z.object({type:z.literal('kick'),playerId:userId}).strict(),z.object({type:z.literal('transfer'),playerId:userId}).strict(),
- ...(['start','leave','close','pause','resume','infection_ack','stop_location','zone_return_ack'] as const).map(type=>z.object({type:z.literal(type)}).strict()),
+ ...(['start','leave','close','infection_ack','stop_location','zone_return_ack'] as const).map(type=>z.object({type:z.literal(type)}).strict()),
  z.object({type:z.literal('location'),location:locationSchema,publish:z.boolean().optional()}).strict(),
  z.object({type:z.literal('capture'),targetId:userId,code:z.string().regex(/^[0-9]{6}$/).optional(),qrToken:z.string().regex(/^[A-Za-z0-9_-]{43}$/).optional()}).strict(),
  z.object({type:z.literal('confirm_capture'),captureId:userId,accept:z.boolean()}).strict(),

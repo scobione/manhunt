@@ -21,7 +21,7 @@ test('host saves minute-based and custom visibility settings',async({page,reques
  await page.getByRole('button',{name:'Regeln speichern'}).click();await expect(page.getByTestId('lobby-code')).toBeVisible();
  const lobby=await event(request,token,'lobby:sync');expect(lobby.settings.pinIntervalSeconds).toBe(90);expect(lobby.settings.hunterVisible).toBe(false);expect(lobby.settings.mode).toBe('custom');expect(lobby.settings.outsideGraceSeconds).toBe(60);
 });
-test('mobile warning stays full screen, return swipe needs GPS, pause shows all known locations',async({page,request})=>{
+test('mobile warning stays full screen, return swipe needs GPS, no emergency pause controls remain',async({page,request})=>{
  await page.setViewportSize({width:390,height:844});
  const host=randomUUID(),hider=randomUUID(),other=randomUUID(),ht=`test:${host}:SafetyHunter`,pt=`test:${hider}:SafetyHider`,ot=`test:${other}:SafetyOther`;
  const lobby=await event(request,ht,'lobby:create',{settings:{...DEFAULT_SETTINGS,preparationSeconds:0,headStartSeconds:0,randomRoles:false,pinIntervalSeconds:60}});
@@ -53,11 +53,8 @@ test('mobile warning stays full screen, return swipe needs GPS, pause shows all 
  await page.waitForTimeout(3300);expect(await fix(13.405)).toBe(200);await expect(page.getByLabel('Rückkehr bestätigen')).toBeDisabled();
  await page.waitForTimeout(3300);expect(await fix(13.405)).toBe(200);await expect(page.getByLabel('Rückkehr bestätigen')).toBeEnabled();
  await page.getByLabel('Rückkehr bestätigen').focus();await page.keyboard.press('End');await expect(warning).not.toBeVisible();
- await page.getByRole('button',{name:'Notfall-Pause',exact:true}).click();
- const pause=page.getByRole('dialog',{name:'NOTFALL-PAUSE'});await expect(pause).toBeVisible();
- await expect(pause.locator('[data-testid="map-player-pin"]')).toHaveCount(2);await expect(pause.locator('.safety-roster').getByText('SafetyOther',{exact:true})).toBeVisible();
- await page.screenshot({path:'test-results-edge/gps-pause-mobile.png'});
- await page.waitForTimeout(3300);expect(await fix(13.4051)).toBe(200);
- const pausedPlayer=await event(request,pt,'lobby:sync');expect(pausedPlayer.self.location.longitude).toBe(13.4051);expect(pausedPlayer.status).toBe('paused');
- const hostView=await event(request,ht,'lobby:sync');expect(hostView.visibleLocations.map((p:any)=>p.playerId).sort()).toEqual([hider,other].sort());
+ await expect(page.getByRole('button',{name:'Notfall-Pause',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('dialog',{name:'NOTFALL-PAUSE'})).toHaveCount(0);
+ const continued=await event(request,pt,'lobby:sync');expect(continued.status).toBe('active');
+
 });

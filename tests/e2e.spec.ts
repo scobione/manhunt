@@ -238,10 +238,8 @@ test('apocalypse shrinks safely and uncertain GPS never blindly eliminates a bro
     await expect(command(guest, { type: 'location', location: { ...outside, accuracy: 500, timestamp: Date.now() + 1 } })).rejects.toThrow();
     await expect.poll(async () => (await view(guest)).self.outsideSince, { timeout: 20_000 }).toBeUndefined();
     expect((await view(guest)).self.eliminated).toBe(false);
-    await command(guest, { type: 'pause' });
-    expect((await view(host)).status).toBe('paused');
-    await expect(command(guest, { type: 'resume' })).rejects.toThrow();
-    await command(host, { type: 'resume' });
+    await expect(command(guest, { type: 'pause' } as unknown as Command)).rejects.toThrow();
+    expect((await view(host)).status).toBe('active');
     expect((await view(guest)).status).toBe('active');
     await guest.page.screenshot({ path: 'test-results/apocalypse-mobile.png', fullPage: true });
   } finally { await dispose(host, guest); }
@@ -301,7 +299,7 @@ test('mobile app shows offline state and browser reconnect synchronizes the acti
 });
 
 
-test('browser GPS starts only after consent and stopping sharing pauses the match',async({browser})=>{
+test('browser GPS starts only after consent and stopping sharing keeps the match running',async({browser})=>{
  const host=await actor(browser,'E2E_GpsHunter');const guest=await actor(browser,'E2E_GpsHider',true);
  try{
   await prepareMatch(host,[guest]);
@@ -312,7 +310,7 @@ test('browser GPS starts only after consent and stopping sharing pauses the matc
   await expect.poll(async()=>(await view(guest)).self.location?.latitude).toBe(TEST_GPS.latitude);
   await expect(guest.page.getByText('FREIGABE AKTIV',{exact:true})).toBeVisible();
   await guest.page.getByRole('button',{name:'Standortfreigabe beenden',exact:true}).click();
-  await expect.poll(async()=>(await view(host)).status).toBe('paused');
+  await expect.poll(async()=>(await view(host)).status).toBe('active');
   await expect(guest.page.getByText('FREIGABE AKTIV',{exact:true})).toHaveCount(0);
  }finally{await dispose(host,guest);}
 });

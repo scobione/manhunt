@@ -91,7 +91,7 @@ test('a real lobby QR image joins the private lobby through the browser scanner'
  const host=await actor(browser,'QrHost'),guest=await actor(browser,'QrGuest');
  try{
   await host.page.goto('/create');await host.page.getByRole('button',{name:'Lobby erstellen',exact:true}).click();await host.page.getByRole('button',{name:'Lobby-QR anzeigen'}).click();
-  const image=host.page.getByRole('img',{name:'QR-Code zum Beitreten der Lobby'});await expect(image).toBeVisible();await image.evaluate(e=>e.scrollIntoView({block:'center'}));const buffer=await image.screenshot();
+  const image=host.page.getByRole('img',{name:'QR-Code zum Beitreten der Lobby'});await expect(image).toBeVisible();await image.evaluate(async e=>{await (e as HTMLImageElement).decode();e.scrollIntoView({block:'center'});});const buffer=await image.screenshot({animations:'disabled'});await test.info().attach('rendered-qr',{body:buffer,contentType:'image/png'});
   await guest.page.goto('/join');await guest.page.getByRole('button',{name:'Lobby-QR scannen'}).click();await guest.page.getByLabel('QR-Bild auswählen').setInputFiles({name:'isolated-lobby-qr.png',mimeType:'image/png',buffer});
   await expect(guest.page).toHaveURL(/\/lobby$/);await expect(host.page.locator('.player-row')).toHaveCount(2);
   await host.page.screenshot({path:'test-results-edge/lobby-qr-mobile.png',fullPage:true});
@@ -106,7 +106,7 @@ test('a hunter scans the hiders actual rendered QR and captures without a reques
   await command(host.page,host.token,{type:'zone',zone:{feature:circle([13.405,52.52],.6),excluded:[],confirmed:true,name:'ISOLATED QR TEST'}});await command(host.page,host.token,{type:'assign',playerId:host.id,role:'hunter',team:'A'});
   for(const p of [host,guest])await command(p.page,p.token,{type:'ready',ready:true});await command(host.page,host.token,{type:'start'});
   await guest.page.goto('/game');await host.page.goto('/game');await guest.page.getByRole('button',{name:'Fang-QR anzeigen'}).click();
-  const image=guest.page.getByRole('img',{name:'Dein persönlicher Fang-QR-Code'});await expect(image).toBeVisible();await image.evaluate(e=>e.scrollIntoView({block:'center'}));const buffer=await image.screenshot();
+  const image=guest.page.getByRole('img',{name:'Dein persönlicher Fang-QR-Code'});await expect(image).toBeVisible();await image.evaluate(async e=>{await (e as HTMLImageElement).decode();e.scrollIntoView({block:'center'});});const buffer=await image.screenshot({animations:'disabled'});await test.info().attach('rendered-qr',{body:buffer,contentType:'image/png'});
   await host.page.getByRole('button',{name:'Fang-QR scannen',exact:true}).click();await host.page.getByLabel('QR-Bild auswählen').setInputFiles({name:'isolated-capture-qr.png',mimeType:'image/png',buffer});
   await expect(host.page.getByRole('heading',{name:'DIE HUNTER GEWINNEN'})).toBeVisible();await expect(guest.page.getByRole('heading',{name:'DIE HUNTER GEWINNEN'})).toBeVisible();
   await expect(guest.page.getByRole('button',{name:'Fang bestätigen'})).toHaveCount(0);

@@ -1,3 +1,9 @@
+# Aktuell: b.0.69.47
+
+146 Unit-/API-/SQL-/Engine-Tests und 34 lokale Browserfälle bestanden. Die neuen Regressionen prüfen die einmalige Wiederaufnahme alter Pausen mit Restzeit und Rollen, konkurrierende Edge-Speicherungen, Weiterlaufen bei Verbindungsabbruch, Standortwiderruf ohne Matchpause und die Entfernung der Pausen-Pushmeldungen. [Release](RELEASE-b.0.69.47.md).
+
+Die folgenden Abschnitte dokumentieren frühere Versionen:
+
 # Verifikation b.0.69.46 / 25.10.2026
 
 143 Unit-/API-/SQL-/Engine-Prüfungen sowie 34 lokale Browserszenarien bestanden. Neue Tests prüfen QR-Gültigkeit, Ziel-/Rollenbindung, Wiederverwendung, echte QR-Bilddekodierung, Gastbeitritt ohne E-Mail/Passwort und Sitzungswiederherstellung, E-Mail-Codebestätigung sowie private Push-Queues, Fristen, Pausen, Widerruf, Leasing und Zugriffsschutz. Testergebnisse der Veröffentlichung werden zusätzlich im GitHub-CI protokolliert. Physische Geräte-Push-Zustellung wird nicht daraus abgeleitet. Details: [Release](RELEASE-b.0.69.46.md).

@@ -55,7 +55,7 @@ GitHub Actions prüft TypeScript, Engine/API, Build, Bibliotheks-Advisories und 
 - Standortfreigabe bewusst erlauben. Tatsächliche Geräte-GPS-Funktion draußen prüfen; simulierte Playwright-Koordinaten ersetzen diesen Schritt nicht.
 - Normal-Fang mit Bestätigung, Zombie-Wechsel und Apokalypse-Zonenwechsel prüfen.
 - App in Hintergrund schicken und zurückholen; Warnhinweis und Synchronisierung prüfen.
-- Freigabe stoppen, Notfallpause, Verlassen, Konto- und Standortdatenlöschung prüfen.
+- Freigabe stoppen, Weiterlaufen nach Verbindungsabbruch, Verlassen, Konto- und Standortdatenlöschung prüfen.
 - iPhone Safari/Home-Screen und Android Chrome/Home-Screen getrennt prüfen.
 
 ## Grenzen kostenloser Dienste — geprüft am 20.10.2026

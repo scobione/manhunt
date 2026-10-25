@@ -2,7 +2,7 @@
 
 **Deine Stadt. Dein Spielfeld.** Ein quelloffenes GPS-Verfolgungsspiel für private Gruppen — React, TypeScript, Socket.IO, Supabase und MapLibre. MIT-lizenziert.
 
-> **Stand b.0.69.46:** Der Multiplayer-Server läuft als Supabase Edge Function und speichert autoritative Spielstände in PostgreSQL. Die React-App bleibt auf der bestehenden Sites-Adresse. Der Edge-Betrieb synchronisiert per authentifizierten HTTPS-Anfragen im Abstand von etwa zwei Sekunden; das Node-/Socket.IO-Backend bleibt als alternative Betriebsart erhalten. 27 Tabellen verwenden RLS, Profilbilder liegen in privatem Storage. E-Mail/Passwort und Gastbeitritt nutzen Supabase Auth. Mailzustellung und Profilbilder wurden vom Nutzer bestätigt; physische Kamera-, Push- und GPS-Prüfungen bleiben geräteabhängig. Keine künstlichen Spieler oder simulierten Standorte im Produktivbetrieb.
+> **Stand b.0.69.47:** Der Multiplayer-Server läuft als Supabase Edge Function und speichert autoritative Spielstände in PostgreSQL. Die React-App bleibt auf der bestehenden Sites-Adresse. Der Edge-Betrieb synchronisiert per authentifizierten HTTPS-Anfragen im Abstand von etwa zwei Sekunden; das Node-/Socket.IO-Backend bleibt als alternative Betriebsart erhalten. 27 Tabellen verwenden RLS, Profilbilder liegen in privatem Storage. E-Mail/Passwort und Gastbeitritt nutzen Supabase Auth. Mailzustellung und Profilbilder wurden vom Nutzer bestätigt; physische Kamera-, Push- und GPS-Prüfungen bleiben geräteabhängig. Keine künstlichen Spieler oder simulierten Standorte im Produktivbetrieb.
 
 **Veröffentlichte Oberfläche:** [MANHUNT öffnen](https://manhunt-fieldgame.scobione.chatgpt.site). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Die Zone führt nach dem Speichern zur Lobby-Erstellung. Danach Code teilen, Zone bestätigen, alle bereit melden und Match starten.
 
@@ -14,7 +14,7 @@
 - **Acht Modi:** Normal, Zombie, Apokalypse, Hide & Seek, Last Survivor, Team Hunt, Infection Rush und Custom. Team Hunt erfordert mindestens vier Personen, zwei Hunter und je einen Hider pro Team. Last Survivor erfordert mindestens zwei Hider.
 - **Karte & Zonen:** MapLibre, GeoJSON und Turf; Kreis, Viereck, Achteck; verschiebbare Eckpunkte, Radius, Rotation, Sperrbereiche, Sicherheitsbestätigung, lokale Zonen, GeoJSON-Export und validierter Import mit erneuter Sicherheitsbestätigung. Schrumpfende Zonen werden auf das bestätigte Gebiet begrenzt.
 - **GPS-Regeln:** Pin-Intervalle in Minuten oder frei konfigurierbar, erste Meldung nach dem Vorsprung, auf Wunsch laufend aktualisierte Hunter-Positionen und deutlich markierte Ersatz-Pins mit dem Alter der letzten Ortung.
-- **Outdoor-Sicherheit:** ausdrückliche GPS-Freigabe, Stoppen der Freigabe, Vollbild-Zonenwarnung mit GPS-geprüfter Rückkehr per Swipe und standardmäßig 60 Sekunden Toleranz, stabiler Countdown bei GPS-Aussetzern, Notfallpause mit Standortkarte für alle Spieler, Host-Wiederaufnahme, sicheres Verlassen, Genauigkeitsprüfung, Sprungerkennung und keine blinde Eliminierung bei ausbleibenden GPS-Proben.
+- **Outdoor-Sicherheit:** ausdrückliche GPS-Freigabe, Stoppen der Freigabe, Vollbild-Zonenwarnung mit GPS-geprüfter Rückkehr per Swipe und standardmäßig 60 Sekunden Toleranz, stabiler Countdown bei GPS-Aussetzern, Weiterlaufen bei Verbindungsabbrüchen, sicheres Verlassen, Genauigkeitsprüfung, Sprungerkennung und keine blinde Eliminierung bei ausbleibenden GPS-Proben.
 - **Mobil:** responsive Oberfläche, PWA-Manifest, Symbole, Service Worker mit Offline-Hinweis, Infektions-Swipe, reduzierte Bewegung und optionale Web-Push-Einladungen.
 - **Schutz & Betrieb:** validierte APIs/Sockets, Rate Limits, gefilterte Zustände pro Spieler, RLS, private Storage-Policies, atomare Datenbank-Checkpoints, Wiederaufnahme nach Neustart, Löschroutinen und Audit-Logs ohne GPS-/Tokeninhalte.
 
@@ -71,7 +71,7 @@ Details und tatsächlich ausgeführte Ergebnisse: [Testbericht](docs/TESTING.md)
 
 Die vollständige Anleitung steht in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). `render.yaml` definiert genau einen Free-Node-Service und eine kostenlose Static Site. Die Supabase-Migration liegt unter [supabase/migrations](supabase/migrations). GitHub Actions führt Build und Tests aus; Render kann nach erfolgreichen Checks deployen.
 
-Ein einzelner Node-Prozess ist die Spielautorität. Mehrere Instanzen sind ohne zusätzliche verteilte Sperren und Socket-Adapter nicht unterstützt. Der Server speichert Zustände vor erfolgreicher Bestätigung einer Aktion; nach einem Neustart werden laufende Matches sicher pausiert wiederhergestellt.
+Ein einzelner Node-Prozess ist die Spielautorität. Mehrere Instanzen sind ohne zusätzliche verteilte Sperren und Socket-Adapter nicht unterstützt. Der Server speichert Zustände vor erfolgreicher Bestätigung einer Aktion; nach einem Neustart bleiben laufende Matches und ihre Restzeiten erhalten. Zonenprüfungen benötigen weiterhin aktuelle GPS-Messungen.
 
 ## Grenzen
 
@@ -103,4 +103,4 @@ Beiträge: [CONTRIBUTING.md](CONTRIBUTING.md). Sicherheitsmodell: [SECURITY.md](
 
 [Release b.0.69.43](docs/RELEASE-b.0.69.43.md) beschreibt die Bereitstellung, Prüfgrenzen und den vom Nutzer gewünschten späteren Codex-Security-Check. [Edge-Betrieb](docs/EDGE-DEPLOYMENT.md) erklärt Zustandsabgleich, Wiederverbindung und Free-Tier-Grenzen.
 
-Aktuelle Änderungen und Auth-Dashboard-Schritte: [Release b.0.69.46](docs/RELEASE-b.0.69.46.md).
+Aktuelle Änderungen und Auth-Dashboard-Schritte: [Release b.0.69.47](docs/RELEASE-b.0.69.47.md).

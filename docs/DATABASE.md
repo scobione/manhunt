@@ -54,7 +54,7 @@ For account erasure: stop/leave the player's live match while holding the backen
 
 Free hosts can sleep. Retention runs when the backend is next awake, so the wall-clock cleanup deadline is not guaranteed while hosting is suspended. For a stricter retention deadline, configure Supabase's own available scheduler under the selected plan; no paid scheduler is created by this repository.
 
-Checkpoint recovery does not imply uninterrupted outdoor tracking. The backend must restore into a safe paused state after a process restart, mark participants disconnected, and demand fresh location samples before resuming zone enforcement. A stale point must not cause an unchecked elimination.
+Checkpoint recovery does not imply uninterrupted outdoor tracking. The backend preserves the match clock after a process restart, marks participants disconnected, and demands fresh location samples before resuming zone enforcement. Legacy paused checkpoints resume once with the remaining game time preserved. A stale point must not cause an unchecked elimination.
 
 ## Validation scope
 

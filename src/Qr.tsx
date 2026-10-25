@@ -4,7 +4,7 @@ import type {IScannerControls} from '@zxing/browser';
 
 export function QrCode({value,label}:{value:string;label:string}) {
   const [source,setSource]=useState(''),[error,setError]=useState('');
-  useEffect(()=>{let live=true;setSource('');setError('');void import('qrcode').then(q=>q.toDataURL(value,{width:320,margin:4,errorCorrectionLevel:'M',color:{dark:'#080B0D',light:'#FFFFFF'}})).then(url=>{if(live)setSource(url);}).catch(()=>{if(live)setError('QR-Code konnte nicht geladen werden. Bitte erneut öffnen.');});return()=>{live=false;};},[value]);
+  useEffect(()=>{let live=true;setSource('');setError('');void import('qrcode').then(q=>q.toDataURL(value,{width:640,margin:4,errorCorrectionLevel:'M',color:{dark:'#080B0D',light:'#FFFFFF'}})).then(url=>{if(live)setSource(url);}).catch(()=>{if(live)setError('QR-Code konnte nicht geladen werden. Bitte erneut öffnen.');});return()=>{live=false;};},[value]);
   return <div className="qr-code">{source?<img src={source} alt={label} width="320" height="320"/>:<p role="status">{error||'QR-Code wird erstellt…'}</p>}</div>;
 }
 

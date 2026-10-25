@@ -183,7 +183,7 @@ export default function MapView({ zone, activeZone, pins = [], location, role = 
       const detail = document.createElement('p');
       detail.textContent = `${time} · ± ${Math.round(pin.accuracy)} m`;
       const caveat = document.createElement('small');
-      caveat.textContent = stale?`Letzter bekannter Standort · vor ${Math.max(0,Math.floor((now-observedAt)/1000))} s`:pin.kind==='live'?'Neueste Hunter-Position':pin.kind==='safety'?'Standort während der Notfallpause':'Intervall-Pin';
+      caveat.textContent = stale?`Letzter bekannter Standort · vor ${Math.max(0,Math.floor((now-observedAt)/1000))} s`:pin.kind==='live'?'Neueste Hunter-Position':'Intervall-Pin';
       const label=document.createElement('span');label.className='mh-pin-label';label.textContent=`${pin.username}${stale?' · ALT':pin.kind==='live'?' · LIVE':''}`;element.append(label);
       popup.append(name, detail, caveat);
       if (location) {
