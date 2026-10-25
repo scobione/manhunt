@@ -6,7 +6,7 @@ import {DEFAULT_SETTINGS} from '../shared/types';
 async function actor(browser:Browser,name:string){
  const id=randomUUID(),token=`test:${id}:${name}_${id.slice(0,4)}`;
  const context=await browser.newContext({viewport:{width:390,height:844}});
- await context.addInitScript(token=>sessionStorage.setItem('manhunt:test-token',token),token);
+ await context.addInitScript(token=>{if(!sessionStorage.getItem('manhunt:test-fixture-seeded')){sessionStorage.setItem('manhunt:test-token',token);sessionStorage.setItem('manhunt:test-fixture-seeded','1');}},token);
  const page=await context.newPage();await page.goto('/');await expect(page.locator('.connection')).toHaveText('VERBUNDEN');
  return {id,token,context,page};
 }
@@ -62,4 +62,27 @@ test('friend requests and invitations appear through edge synchronization',async
   await bob.page.getByRole('button',{name:'Annehmen',exact:true}).click();
   await expect(alice.page.locator('.friend-row').first()).toBeVisible();
  }finally{await alice.context.close();await bob.context.close();}
+});
+
+test('deleting a Last Survivor winner anonymizes the result for the remaining browser',async({browser})=>{
+ const host=await actor(browser,'EraseHost'),caught=await actor(browser,'EraseCaught'),winner=await actor(browser,'EraseWinner');
+ try{
+  const response=await host.page.request.post('http://127.0.0.1:3002/api/events',{headers:{Authorization:`Bearer ${host.token}`},data:{event:'lobby:create',data:{settings:{...DEFAULT_SETTINGS,mode:'last_survivor',winCondition:'last_hider',randomRoles:false,preparationSeconds:0,headStartSeconds:0}}}});
+  expect(response.status()).toBe(200);const lobby=(await response.json()).lobby;
+  for(const p of [caught,winner]){const joined=await p.page.request.post('http://127.0.0.1:3002/api/events',{headers:{Authorization:`Bearer ${p.token}`},data:{event:'lobby:join',data:{code:lobby.code}}});expect(joined.status()).toBe(200);}
+  await command(host.page,host.token,{type:'zone',zone:{feature:circle([13.405,52.52],.6),excluded:[],confirmed:true,name:'ISOLATED ERASURE TEST'}});
+  await command(host.page,host.token,{type:'assign',playerId:host.id,role:'hunter',team:'A'});
+  for(const p of [host,caught,winner])await command(p.page,p.token,{type:'ready',ready:true});await command(host.page,host.token,{type:'start'});
+  const requested=await command(host.page,host.token,{type:'capture',targetId:caught.id});await command(caught.page,caught.token,{type:'confirm_capture',captureId:requested.captures[0].id,accept:true});
+  await host.page.goto('/game');await expect(host.page.getByRole('heading',{name:'Die Jagd ist vorbei.'})).toBeVisible();
+  await winner.page.goto('/settings');await winner.page.getByText('Konto dauerhaft löschen',{exact:true}).click();
+  await winner.page.getByLabel('Zur Bestätigung LÖSCHEN eingeben').fill('LÖSCHEN');
+  await winner.page.getByRole('button',{name:'Konto endgültig löschen',exact:true}).click();await expect(winner.page).toHaveURL(/\/$/);
+  await expect(host.page.getByRole('heading',{name:'DER SIEGER HAT SEIN KONTO GELÖSCHT',exact:true})).toBeVisible();
+  expect(await winner.page.evaluate(()=>sessionStorage.getItem('manhunt:test-token'))).toBeNull();
+  await host.page.goto('/history');await host.page.getByRole('button',{name:/LAST SURVIVOR/}).click();
+  await expect(host.page.locator('.history-detail')).toContainText('Der Sieger hat sein Konto gelöscht.');
+  const history=await host.page.request.get('http://127.0.0.1:3002/api/history',{headers:{Authorization:`Bearer ${host.token}`}});
+  expect(history.status()).toBe(200);const result=await history.text();expect(result).not.toContain(winner.id);expect(result).not.toContain('EraseWinner');
+ }finally{for(const p of [host,caught,winner])await p.context.close();}
 });

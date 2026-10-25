@@ -172,7 +172,15 @@ export class MemoryRepository implements Repository {
   async deletePreset(id:string,presetId:string){if(this.savedPresets.get(presetId)?.userId===id)this.savedPresets.delete(presetId);}
   async save(lobby:Lobby){this.checkpoints.set(lobby.id,structuredClone(lobby));}
   async load(){return structuredClone([...this.checkpoints.values()]);}
-  async deleteAccount(id:string){this.profiles.delete(id);for(const key of this.friendships)if(key.includes(id))this.friendships.delete(key);for(const[key,r]of this.requests)if(r.sender===id||r.receiver===id)this.requests.delete(key);for(const key of this.blocks)if(key.includes(id))this.blocks.delete(key);this.notices.delete(id);for(const[key,p]of this.savedPresets)if(p.userId===id)this.savedPresets.delete(key);for(const[key,p]of this.subs)if(p.userId===id)this.subs.delete(key);for(const[key,l]of this.checkpoints){if(l.players.some(p=>p.id===id))this.checkpoints.delete(key);}}
+  async deleteAccount(id:string){this.profiles.delete(id);for(const key of this.friendships)if(key.includes(id))this.friendships.delete(key);for(const[key,r]of this.requests)if(r.sender===id||r.receiver===id)this.requests.delete(key);for(const key of this.blocks)if(key.includes(id))this.blocks.delete(key);this.notices.delete(id);for(const[key,p]of this.savedPresets)if(p.userId===id)this.savedPresets.delete(key);for(const[key,p]of this.subs)if(p.userId===id)this.subs.delete(key);for(const[key,l]of this.checkpoints){
+    if(!JSON.stringify(l).includes(id))continue;
+    if(l.hostId===id){this.checkpoints.delete(key);continue;}
+    l.players=l.players.filter(p=>p.id!==id).map(p=>{delete p.location;delete p.captureCode;return p;});
+    l.pins=[];l.events=[];l.captures=[];l.revision++;
+    if(l.result){l.result.survivors=l.result.survivors.filter(v=>v!==id);if(l.result.winner===id){l.result.winner='deleted_player';l.result.reason='Der Sieger hat sein Konto gelöscht.';}}
+    const meta=(l as Lobby&{_engine?:{players:Record<string,unknown>;leftIds:string[]}})._engine;
+    if(meta){delete meta.players[id];meta.leftIds=meta.leftIds.filter(v=>v!==id);}
+  }}
   async audit(actorId:string|null,action:string,metadata:Record<string,unknown>={}){this.audits.push({actorId,action,metadata});}
   async cleanup(){}
   async subscribe(id:string,subscription:Subscription){this.subs.set(subscription.endpoint,{...subscription,userId:id});}

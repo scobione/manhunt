@@ -55,7 +55,7 @@ test('mobile warning stays full screen, return swipe needs GPS, pause shows all 
  await page.getByLabel('Rückkehr bestätigen').focus();await page.keyboard.press('End');await expect(warning).not.toBeVisible();
  await page.getByRole('button',{name:'Notfall-Pause',exact:true}).click();
  const pause=page.getByRole('dialog',{name:'NOTFALL-PAUSE'});await expect(pause).toBeVisible();
- await expect(pause.locator('[data-testid="map-player-pin"]')).toHaveCount(2);await expect(pause.getByText('SafetyOther',{exact:true})).toBeVisible();
+ await expect(pause.locator('[data-testid="map-player-pin"]')).toHaveCount(2);await expect(pause.locator('.safety-roster').getByText('SafetyOther',{exact:true})).toBeVisible();
  await page.screenshot({path:'test-results-edge/gps-pause-mobile.png'});
  await page.waitForTimeout(3300);expect(await fix(13.4051)).toBe(200);
  const pausedPlayer=await event(request,pt,'lobby:sync');expect(pausedPlayer.self.location.longitude).toBe(13.4051);expect(pausedPlayer.status).toBe('paused');

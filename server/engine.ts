@@ -333,7 +333,7 @@ export class GameEngine {
       return;
     }
     if(!hiders.length){this.finish(l,this.infectionMode(l)?'infected':'hunters',this.infectionMode(l)?'Alle Hider wurden infiziert oder sind ausgeschieden.':'Alle Hider wurden gefangen oder sind ausgeschieden.');return;}
-    if((l.settings.mode==='last_survivor'||l.settings.mode==='custom'&&l.settings.winCondition==='last_hider')&&hiders.length===1){this.finish(l,hiders[0].id,`${hiders[0].username} ist der letzte Hider.`);return;}
+    if((l.settings.mode==='last_survivor'||l.settings.mode==='custom'&&l.settings.winCondition==='last_hider')&&hiders.length===1){this.finish(l,hiders[0].id,'Der letzte Hider gewinnt.');return;}
     if(!hunters.length){this.finish(l,'hiders','Keine aktiven Hunter mehr. Die Hider gewinnen.');return;}
     if(timeout)this.finish(l,'hiders','Zeitlimit erreicht. Die verbliebenen Hider gewinnen.');
   }

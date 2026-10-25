@@ -112,6 +112,19 @@ describe('authenticated API and Socket.IO transport',()=>{
   expect(backend.engine.lobbyFor(alice.id)).toBeUndefined();
   await request(backend.app).get('/api/health').expect(503);
  });
+ it('reloads scrubbed completed matches without discarding other players history',async()=>{
+  const {a,b,lobby}=await match();const code=(await ack(b,'lobby:sync')).self.captureCode;
+  await send(a,{type:'capture',targetId:bob.id,code});
+  const stored=backend.engine.lobbies.get(lobby.id)!;
+  // A synthetic legacy personal-winner result exercises transport erasure.
+  stored.result={winner:bob.id,reason:'API_Bob ist der letzte Hider.',survivors:[bob.id],endedAt:Date.now()};
+  await repository.save(stored);
+  await request(backend.app).delete('/api/profile').set(auth(bob)).expect(200);
+  const remaining=await ack(a,'lobby:sync');expect(remaining.result?.winner).toBe('deleted_player');expect(remaining.players).toHaveLength(1);
+  expect(JSON.stringify(backend.engine.snapshot())).not.toContain(bob.id);
+  const history=(await request(backend.app).get('/api/history').set(auth())).body;
+  expect(history).toHaveLength(1);expect(JSON.stringify(history)).not.toContain('API_Bob');expect(JSON.stringify(history)).not.toContain(bob.id);
+ });
  it('removes the account’s in-memory records and disconnects its sockets on deletion',async()=>{
   await profiles();const a=await connect();await ack(a,'lobby:create',{});
   await request(backend.app).delete('/api/profile').set(auth()).expect(200);

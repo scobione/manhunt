@@ -1,12 +1,12 @@
 # Database and access model
 
-Apply `supabase/migrations/202610200001_initial.sql` using the Supabase CLI migration runner (`supabase db push`) or the project's SQL editor. The migration is transactional. It requires the standard Supabase `auth` and `storage` schemas and roles. It does not create an external project or enable Google OAuth. Use a European project region and the Free plan; do not enable paid upgrades.
+Apply all SQL files in `supabase/migrations/` in filename order using the Supabase CLI migration runner (`supabase db push`) or the project's SQL editor. The migration is transactional. It requires the standard Supabase `auth` and `storage` schemas and roles. It does not create an external project or enable Google OAuth. Use a European project region and the Free plan; do not enable paid upgrades.
 
 ## Data model
 
 The 18 requested application tables are present: `profiles`, `friendships`, `friend_requests`, `blocked_users`, `lobbies`, `lobby_members`, `lobby_invites`, `game_sessions`, `game_participants`, `game_settings`, `game_zones`, `location_pins`, `capture_events`, `infection_events`, `zone_events`, `match_results`, `notifications`, and `audit_logs`.
 
-Additional tables are `game_checkpoints`, `presets`, and `push_subscriptions`. All tables enable Row Level Security. All foreign keys, unique keys, and relevant lookup/retention indexes are declared in the migration. Profile usernames are unique without regard to case. Profile friend codes are 12 random uppercase hexadecimal characters, unrelated to the six-character lobby code. Friendships store one canonical pair (`user_id < friend_id`), not duplicate directed rows.
+Additional tables are `game_checkpoints`, `presets`, `push_subscriptions`, `edge_runtime`, `edge_presence`, and `edge_quotas` (24 application tables in total). All tables enable Row Level Security. All foreign keys, unique keys, and relevant lookup/retention indexes are declared in the migration. Profile usernames are unique without regard to case. Profile friend codes are 12 random uppercase hexadecimal characters, unrelated to the six-character lobby code. Friendships store one canonical pair (`user_id < friend_id`), not duplicate directed rows.
 
 A successful Supabase Auth signup creates a profile through a database trigger. The generated `player_<16 hex>` name is unique; the user can rename it through the API. The avatar can be taken from Google's HTTPS avatar URL. Online status sharing is off by default.
 
@@ -22,7 +22,7 @@ RLS is a second boundary, not a replacement for API permissions. Supabase's serv
 
 ## Server RPC contract
 
-All mutating functions revoke default `PUBLIC`, `anon`, and `authenticated` execution. Only `service_role` can call them. Security-definer functions fix an empty `search_path` and fully qualify application tables.
+All mutating functions revoke default `PUBLIC`, `anon`, and `authenticated` execution. Only `service_role` can call them. The erasure functions use `SECURITY INVOKER`; they need no elevated function owner privileges. Existing security-definer functions fix an empty `search_path` and fully qualify application tables.
 
 | RPC | Arguments | Behavior |
 | --- | --- | --- |
@@ -46,7 +46,7 @@ A checkpoint's `id` is the lobby ID. A match's session ID uses the same UUID bec
 
 The API should issue expiring signed URLs for the requesting user's own, accepted friends', or current lobby members' avatar objects. Do not persist a short-lived signed URL as the canonical uploaded avatar reference. If Google's hosted avatar is used, its HTTPS URL may be stored directly. The backend must validate upload ownership before associating an object with a profile. Storage policy ownership checks also apply to upserts.
 
-For account erasure: stop/leave the player's live match while holding the backend persistence queue; list and remove their avatar objects using the Storage API; call `delete_account` to scrub checkpoint references; then call `supabase.auth.admin.deleteUser`. Deleting Storage metadata through SQL is insufficient because it can orphan the underlying bytes. Auth deletion cascades account-owned profile/social/notification/preset/push rows. Match results for other users retain their own result but remove the deleted user's survivor ID. Audit entries for the deleted actor are erased. A restored checkpoint must never reintroduce a deleted identity.
+For account erasure: stop/leave the player's live match while holding the backend persistence queue; list and remove their avatar objects using the Storage API; call `delete_account` to scrub checkpoint references; then call `supabase.auth.admin.deleteUser`. Deleting Storage metadata through SQL is insufficient because it can orphan the underlying bytes. Auth deletion cascades account-owned profile/social/notification/preset/push rows. Match results for other users retain their own outcome, but remove the deleted user's survivor ID and replace a personal winner ID/name with the neutral `deleted_player` result. Internal `_engine.players` and `_engine.leftIds` references are removed as well. The erasure RPC increments global and affected per-lobby revisions to reject old snapshots. The Node server reloads the scrubbed canonical states so unaffected participants keep their match/history. The migration also repairs orphan references left by older erasure routines; new personal-win reasons contain no embedded username. Audit entries for the deleted actor are erased. A restored checkpoint must never reintroduce a deleted identity.
 
 ## Retention and recovery
 

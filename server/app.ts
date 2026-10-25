@@ -154,7 +154,10 @@ export async function createBackend(options:BackendOptions={}){
       }
       await repo().deleteAccount(id);
       // Drop old private snapshots containing this identity so they cannot be written back.
-      for(const [lobbyId,l]of engine.lobbies)if(l.players.some(p=>p.id===id))engine.lobbies.delete(lobbyId);
+      for(const [lobbyId,l]of engine.lobbies)if(JSON.stringify(l).includes(id))engine.lobbies.delete(lobbyId);
+      // Reload the scrubbed canonical states so other players retain their match.
+      engine.restore(await repo().load());
+      for(const remaining of engine.lobbies.values())broadcast(remaining);
       send(id,'account:deleted',{});io.in(`user:${id}`).disconnectSockets(true);
     });
     res.json({ok:true});

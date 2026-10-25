@@ -3,6 +3,8 @@ import { PGlite } from '@electric-sql/pglite';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import {circle} from '@turf/turf';
+import {GameEngine} from '../server/engine';
 import { DEFAULT_SETTINGS, type Lobby } from '../shared/types';
 
 // All IDs, profiles and GPS coordinates below are isolated automated TEST fixtures.
@@ -24,6 +26,18 @@ async function befriend(){const request=await rpc('request_friend',[a,await frie
 function state():Lobby{
  const now=Date.now();
  return {id:randomUUID(),code:'ABC123',hostId:a,status:'active',players:[a,b].map((id,i)=>({id,username:i?'TestHider':'TestHunter',avatar_url:null,ready:true,role:i?'hider':'hunter',team:'A',connected:true,eliminated:false,lastSeen:now,captureCode:'123456',location:{latitude:52.52,longitude:13.405,accuracy:5,timestamp:now}})),settings:{...DEFAULT_SETTINGS},zone:null,createdAt:now,startedAt:now,endsAt:now+1800000,pins:[{id:randomUUID(),playerId:b,username:'TestHider',role:'hider',latitude:52.52,longitude:13.405,accuracy:5,createdAt:now,expiresAt:now+60000}],events:[],captures:[],revision:1};
+}
+
+function lastSurvivor():Lobby{
+ const engine=new GameEngine();
+ const profiles=[a,b,c].map((id,i)=>({id,username:`PrivacyTest${i}`,avatar_url:null,friend_code:`TESTCODE000${i}`,show_online:false}));
+ const l=engine.create(profiles[0],{mode:'last_survivor',randomRoles:false,preparationSeconds:0,headStartSeconds:0});
+ profiles.slice(1).forEach(p=>engine.join(l.code,p));
+ engine.command(l.id,a,{type:'zone',zone:{feature:circle([13.405,52.52],.6),excluded:[],name:'ISOLATED ERASURE TEST',confirmed:true}});
+ engine.command(l.id,a,{type:'assign',playerId:a,role:'hunter',team:'A'});
+ [a,b,c].forEach(id=>engine.command(l.id,id,{type:'ready',ready:true}));engine.command(l.id,a,{type:'start'});
+ engine.command(l.id,a,{type:'capture',targetId:b});engine.command(l.id,b,{type:'confirm_capture',captureId:l.captures[0].id,accept:true});
+ expect(l.result?.winner).toBe(c);return l;
 }
 
 beforeAll(async()=>{
@@ -154,6 +168,52 @@ describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
   expect((await userRole(b,'select * from storage.objects')).rows).toHaveLength(0);
   expect((await userRole(a,'select * from storage.objects')).rows).toHaveLength(1);
  });
+ it('erases a Last Survivor winner from other users histories and private engine metadata',async()=>{
+  const l=lastSurvivor();expect(l.result!.reason).not.toContain('PrivacyTest2');
+  // A pre-update record can contain the old name even after a later profile rename.
+  l.result!.reason='OldWinnerName ist der letzte Hider.';
+  (l as any)._engine.leftIds=[c];
+  await rpc('save_game_checkpoint',[l]);
+  await rpc('delete_account',[c]);await db.query('delete from auth.users where id=$1',[c]);
+  const history=(await userRole(a,'select result from match_results where session_id=$1',[l.id])).rows[0] as {result:Lobby['result']};
+  expect(history.result!.winner).toBe('deleted_player');expect(history.result!.reason).toBe('Der Sieger hat sein Konto gelöscht.');
+  expect(JSON.stringify(history)).not.toContain(c);expect(JSON.stringify(history)).not.toContain('OldWinnerName');
+  const saved=(await db.query<{state:Lobby}>('select state from game_checkpoints where id=$1',[l.id])).rows[0].state;
+  expect(JSON.stringify(saved)).not.toContain(c);expect(JSON.stringify(saved)).not.toContain('OldWinnerName');
+  expect(saved.players.map(p=>p.id)).toEqual([a,b]);expect((saved as any)._engine.players[a]).toBeDefined();
+  expect((await userRole(b,'select * from match_results where session_id=$1',[l.id])).rows).toHaveLength(1);
+ });
+ it('keeps other winners and history when a non-winner deletes their account',async()=>{
+  const l=lastSurvivor();await rpc('save_game_checkpoint',[l]);await rpc('delete_account',[b]);await db.query('delete from auth.users where id=$1',[b]);
+  const saved=(await db.query<{state:Lobby}>('select state from game_checkpoints where id=$1',[l.id])).rows[0].state;
+  expect(JSON.stringify(saved)).not.toContain(b);expect(saved.result!.winner).toBe(c);expect(saved.result!.survivors).toEqual([c]);
+  expect((await userRole(c,'select * from match_results')).rows).toHaveLength(1);
+ });
+ it('rejects stale per-lobby writes and client erasure RPCs after account deletion',async()=>{
+  const l=lastSurvivor();await rpc('save_game_checkpoint',[l]);await rpc('delete_account',[c]);
+  await expect(rpc('save_game_checkpoint',[l])).rejects.toThrow(/Stale checkpoint/);
+  for(const sql of ['select delete_account($1::uuid)',"select erase_result_identity('{}'::jsonb,$1::uuid)"]){
+   await expect(userRole(a,sql,[b])).rejects.toThrow(/permission denied/);
+   await db.exec('set role anon');try{await expect(db.query(sql,[b])).rejects.toThrow(/permission denied/);}finally{await db.exec('reset role');}
+  }
+ });
+ it('repairs previously deleted winner references when upgrading an existing database',async()=>{
+  const old=new PGlite({extensions:{pgcrypto}});
+  try{
+   await old.exec(await readFile('supabase/tests/bootstrap.sql','utf8'));
+   const files=(await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')).sort();
+   const upgrade=files.find(f=>f.endsWith('_complete_account_erasure.sql'))!;
+   for(const f of files.filter(f=>f<upgrade))await old.exec(await readFile(`supabase/migrations/${f}`,'utf8'));
+   for(const id of [a,b,c])await old.query('insert into auth.users(id) values($1)',[id]);
+   const l=lastSurvivor();l.result!.reason='OldDeletedWinner ist der letzte Hider.';
+   await old.query('select save_game_checkpoint($1)',[l]);await old.query('select delete_account($1)',[c]);await old.query('delete from auth.users where id=$1',[c]);
+   expect((await old.query<{result:any}>('select result from match_results where user_id=$1',[a])).rows[0].result.winner).toBe(c);
+   await old.exec(await readFile(`supabase/migrations/${upgrade}`,'utf8'));
+   const rows=await old.query('select result from match_results');expect(JSON.stringify(rows.rows)).not.toContain(c);expect(JSON.stringify(rows.rows)).not.toContain('OldDeletedWinner');
+   const saved=await old.query('select state from game_checkpoints');expect(JSON.stringify(saved.rows)).not.toContain(c);
+   expect((await old.query('select id from profiles')).rows).toHaveLength(2);
+  }finally{await old.close();}
+ },30000);
  it('erases account references and purges expired GPS checkpoints',async()=>{
   const s=state();await rpc('save_game_checkpoint',[s]);
   await rpc('delete_account',[b]);

@@ -1,5 +1,12 @@
 # Änderungen
 
+## b.0.69.45 — 25.10.2026
+
+- Kontolöschung anonymisiert persönliche Siegerkennungen und alte Siegernamen auch in den Matchhistorien der übrigen Teilnehmer; private Engine-Metadaten werden vollständig von den betroffenen Spielerreferenzen bereinigt.
+- Neue Datenbankmigration korrigiert Altbestände, schützt gegen veraltete Checkpoint-Schreibvorgänge und erhält die Ergebnisse anderer Spieler.
+- Last-Survivor-Ergebnisgründe enthalten künftig keinen eingebetteten Benutzernamen. Die Oberfläche erklärt anonymisierte Sieger und die Folgen der Kontolöschung.
+- Zusätzliche PostgreSQL-/API-Regressionstests und ein Browserablauf für Ergebnis → Kontolöschung → anonymisierte fremde Historie.
+
 ## b.0.69.44 — 24.10.2026
 
 - Pin-Intervalle als Minuten-Auswahl oder freier Wert; zusätzliche Host-Regeln für Hunter-Sichtbarkeit, Aktualisierungsintervall und Ersatz-Pins.

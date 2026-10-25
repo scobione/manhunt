@@ -1,4 +1,17 @@
-# Verifikation — b.0.69.44 / 24.10.2026
+# Verifikation — b.0.69.45 / 25.10.2026
+
+- **126** Engine-, API-, Edge-, SQL- und Zonentests bestanden.
+- **30** lokale Browser-Szenarien bestanden: 8 Socket.IO, 7 Edge/GPS einschließlich Kontolöschung, 15 Produktionsbundle/Auth. Der GPS-Pausentest verwendet eine eindeutige Auswahl der Teilnehmerliste, weil der Name zusätzlich am Kartenpin erscheint.
+- TypeScript und Produktionsbuild erfolgreich; `npm audit --omit=dev --audit-level=high`: 0 bekannte Advisories.
+- Migration `20261025104714_complete_account_erasure` auf dem tatsächlichen Supabase-Projekt angewendet. Die vorhandenen Konten bleiben erhalten. Vor und nach der Migration wurden keine verwaisten Siegerreferenzen in den vorhandenen Historien gefunden.
+- Die neue Funktion wurde per reiner SQL-Auswertung ohne gespeichertes Testkonto geprüft. `anon` und `authenticated` dürfen weder die Löschfunktion noch ihre Hilfsfunktion ausführen; `service_role` darf beide ausführen. Beide Funktionen verwenden `SECURITY INVOKER`.
+- Supabase-Advisor nach der Migration: keine neuen Sicherheitsmeldungen. Der vorhandene Hinweis auf deaktivierten Schutz gegen geleakte Passwörter und die absichtlich fehlenden Client-Policies auf neun ausschließlich serverseitigen Tabellen bleiben unverändert.
+
+Neue Regressionen decken die Anonymisierung persönlicher Sieger in fremden Ergebnissen, den Erhalt fremder Historien, private Engine-Metadaten, gelöschte Nichtgewinner, veraltete Schreibstände, fehlende Client-Rechte und die nachträgliche Migration eines tatsächlich betroffenen Altbestands ab. Browserprüfungen bedienen die Kontolöschung und öffnen anschließend die anonymisierte Ergebnisansicht und Matchhistorie eines anderen Spielers. Alle Konten und GPS-Proben dafür sind lokale Testfixtures; es wurden keine echten Konten zu Testzwecken gelöscht.
+
+---
+
+## Historischer Stand — b.0.69.44 / 24.10.2026
 
 Der aktuelle Produktionsbuild besteht TypeScript und den vollständigen Build. **121 Engine-, API-, Edge-, SQL- und Zonentests** sowie **29 lokale Playwright-Szenarien** sind erfolgreich: 8 Socket.IO-Multiplayer-, 6 Edge-/GPS- und 15 Produktionsbundle-/Auth-Szenarien. `npm audit --omit=dev --audit-level=high` meldet **0 bekannte Schwachstellen** im geprüften Stand.
 
