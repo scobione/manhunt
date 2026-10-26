@@ -1,10 +1,13 @@
 import { z } from 'zod';
+import {isOctagon,validShrinkTarget} from '../shared/zones.js';
 import { area, booleanWithin, kinks, polygon } from '@turf/turf';
 import type { Feature, Polygon } from 'geojson';
 import type { Settings, Zone, Command } from '../shared/types.js';
 
 const boundedInt = (min:number,max:number) => z.number().int().min(min).max(max);
 const settingsObject = z.object({
+  rules:z.object({zombie:z.boolean(),apocalypse:z.boolean(),xpHunt:z.boolean()}).strict().optional(),
+  xp:z.object({target:boundedInt(1,100),radiusMeters:boundedInt(15,100),minDistanceMeters:boundedInt(10,2000),boundaryBufferMeters:boundedInt(5,200),exclusionBufferMeters:boundedInt(5,200),goal:z.enum(['team','individual']),timeout:z.enum(['draw','hiders','hunters'])}).strict().optional(),
   mode:z.enum(['normal','zombie','apocalypse','hide_seek','last_survivor','team_hunt','infection_rush','custom']),
   hunterVisible:z.boolean().default(true), hunterUpdateSeconds:boundedInt(3,30).default(3), fallbackPins:z.boolean().default(true), fallbackPinMaxAgeSeconds:boundedInt(30,3600).default(600),
   durationSeconds:boundedInt(60,21600), maxPlayers:boundedInt(2,40), hunterCount:boundedInt(1,20), randomRoles:z.boolean(),
@@ -20,6 +23,8 @@ const settingsObject = z.object({
 }).strict();
 export const partialSettingsSchema=settingsObject.partial();
 export const settingsSchema=settingsObject.superRefine((s,ctx)=>{
+  if(s.rules&&!['normal','custom'].includes(s.mode))ctx.addIssue({code:'custom',message:'Zusatzmodule benötigen Normal oder Custom als Grundlage.',path:['rules']});
+  if(s.rules?.xpHunt&&s.winCondition==='last_hider')ctx.addIssue({code:'custom',message:'XP-Jagd und Last Survivor haben widersprüchliche Siegbedingungen.',path:['winCondition']});
   if(s.hunterCount>=s.maxPlayers)ctx.addIssue({code:'custom',message:'Mindestens ein Platz muss für Hider frei bleiben.',path:['hunterCount']});
   if(s.phases[0].afterSeconds!==0||s.phases[0].scale!==1)ctx.addIssue({code:'custom',message:'Die erste Phase beginnt bei 0 mit Größe 100 %.',path:['phases']});
   for(let i=1;i<s.phases.length;i++)if(s.phases[i].afterSeconds<=s.phases[i-1].afterSeconds||s.phases[i].scale>=s.phases[i-1].scale)
@@ -28,13 +33,17 @@ export const settingsSchema=settingsObject.superRefine((s,ctx)=>{
 const coordinate=z.tuple([z.number().finite().min(-180).max(180),z.number().finite().min(-85).max(85)]);
 const polygonSchema=z.object({type:z.literal('Feature'),properties:z.record(z.string(),z.unknown()).nullable().optional(),geometry:z.object({type:z.literal('Polygon'),coordinates:z.array(z.array(coordinate).min(4).max(130)).min(1).max(10)}).strict()}).strip();
 export const locationSchema=z.object({latitude:z.number().finite().min(-85).max(85),longitude:z.number().finite().min(-180).max(180),accuracy:z.number().finite().positive().max(10000),timestamp:z.number().finite().positive()}).strict();
-export const zoneSchema=z.object({feature:polygonSchema,excluded:z.array(polygonSchema).max(12),confirmed:z.boolean(),name:z.string().trim().min(1).max(60)}).strict();
+export const zoneSchema=z.object({feature:polygonSchema,excluded:z.array(polygonSchema).max(30),disabledExcluded:z.array(boundedInt(0,29)).max(30).optional(),confirmed:z.boolean(),name:z.string().trim().min(1).max(60),shrinkTarget:coordinate.optional(),randomCorners:z.boolean().optional()}).strict();
 const userId=z.string().min(1).max(80);
 export const commandSchema=z.discriminatedUnion('type',[
+ z.object({type:z.literal('chat'),channel:z.enum(['all','team']),text:z.string().trim().min(1).max(500).refine(v=>!/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(v))}).strict(),
+ z.object({type:z.literal('mute'),playerId:userId,muted:z.boolean()}).strict(),
+ z.object({type:z.literal('xp_collect'),pointId:z.string().uuid()}).strict(),
+ z.object({type:z.literal('xp_confirm'),pointId:z.string().uuid()}).strict(),
  z.object({type:z.literal('ready'),ready:z.boolean()}).strict(),z.object({type:z.literal('settings'),settings:settingsSchema}).strict(),
  z.object({type:z.literal('zone'),zone:zoneSchema}).strict(),z.object({type:z.literal('assign'),playerId:userId,role:z.enum(['hunter','hider','zombie','spectator']),team:z.enum(['A','B'])}).strict(),
  z.object({type:z.literal('kick'),playerId:userId}).strict(),z.object({type:z.literal('transfer'),playerId:userId}).strict(),
- ...(['start','leave','close','infection_ack','stop_location','zone_return_ack'] as const).map(type=>z.object({type:z.literal(type)}).strict()),
+ ...(['start','leave','close','infection_ack','stop_location','zone_return_ack','pause','resume','end','draw_teams','xp_regenerate'] as const).map(type=>z.object({type:z.literal(type)}).strict()),
  z.object({type:z.literal('location'),location:locationSchema,publish:z.boolean().optional()}).strict(),
  z.object({type:z.literal('capture'),targetId:userId,code:z.string().regex(/^[0-9]{6}$/).optional(),qrToken:z.string().regex(/^[A-Za-z0-9_-]{43}$/).optional()}).strict(),
  z.object({type:z.literal('confirm_capture'),captureId:userId,accept:z.boolean()}).strict(),
@@ -60,5 +69,8 @@ export function validateZone(value:unknown):Zone {
   data.feature.properties={};data.excluded.forEach(x=>{x.properties={};});
   validPolygon(data.feature,100);
   for(const exclusion of data.excluded){validPolygon(exclusion,1);if(!booleanWithin(exclusion,data.feature))throw new Error('Sperrbereiche müssen vollständig innerhalb der Spielzone liegen.');}
+  if(data.disabledExcluded?.some(i=>i>=data.excluded.length)||new Set(data.disabledExcluded).size!==(data.disabledExcluded?.length??0))throw new Error('Ungültige Sperrbereich-Auswahl.');
+  if(data.shrinkTarget&&!validShrinkTarget(data,data.shrinkTarget))throw new Error('Der Schrumpfpunkt muss innerhalb der Spielzone und außerhalb der Sperrbereiche liegen.');
+  if(data.randomCorners&&!isOctagon(data.feature))throw new Error('Zufällige Schrumpfecken benötigen eine Achteckzone.');
   return data;
 }

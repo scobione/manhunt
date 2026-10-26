@@ -6,7 +6,7 @@ create role service_role nologin bypassrls;
 create schema auth;
 create schema storage;
 grant usage on schema public,auth,storage to anon,authenticated,service_role;
-create table auth.users(id uuid primary key, raw_user_meta_data jsonb not null default '{}'::jsonb);
+create table auth.users(id uuid primary key, is_anonymous boolean not null default false, raw_user_meta_data jsonb not null default '{}'::jsonb);
 create function auth.uid() returns uuid language sql stable as $$
  select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid;
 $$;

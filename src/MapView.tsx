@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import {activeExclusions} from '../shared/rules';
+import type {XpPoint} from '../shared/types';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 // Explicitly bundle the matching worker; MapLibre 6's default sibling URL is not valid after Vite chunking.
@@ -7,6 +9,7 @@ import type { GeoJSONSource, StyleSpecification } from 'maplibre-gl';
 import { bbox, circle, distance, featureCollection } from '@turf/turf';
 import type { Feature, Polygon } from 'geojson';
 import { Crosshair, Expand, LocateFixed, Radio, WifiOff } from 'lucide-react';
+import {endZone} from '../shared/zones';
 import type { LocationSample, Pin, Role, Zone } from '../shared/types';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './maps.css';
@@ -14,7 +17,10 @@ import './maps.css';
 export interface MapViewProps {
   zone?: Zone | null;
   activeZone?: Feature<Polygon>;
+  finalScale?: number;
+  showEndZone?: boolean;
   pins?: Pin[];
+  xpPoint?:XpPoint;
   location?: LocationSample | null;
   className?: string;
   role?: Role;
@@ -42,7 +48,8 @@ function formatDistance(meters: number) {
   return meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(1)} km`;
 }
 
-export default function MapView({ zone, activeZone, pins = [], location, role = 'hider', className = '', onLocationRequest }: MapViewProps) {
+export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=true, pins = [], xpPoint, location, role = 'hider', className = '', onLocationRequest }: MapViewProps) {
+  const finalZone=useMemo(()=>{if(!showEndZone||!zone||!zone.shrinkTarget&&!zone.randomCorners)return null;try{return endZone(zone,finalScale);}catch{return null;}},[zone,finalScale,showEndZone]);
   const hostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
@@ -92,15 +99,19 @@ export default function MapView({ zone, activeZone, pins = [], location, role = 
       });
       map.on('idle', () => { if (navigator.onLine && map.areTilesLoaded()) setMapError(''); });
       map.on('style.load', () => {
-        for (const name of ['safe-zone', 'active-zone', 'excluded', 'accuracy']) {
+        for (const name of ['safe-zone', 'active-zone', 'end-zone', 'excluded', 'accuracy', 'xp-radius']) {
           map.addSource(name, { type: 'geojson', data: featureCollection([]) });
         }
         map.addLayer({ id: 'safe-zone-fill', type: 'fill', source: 'safe-zone', paint: { 'fill-color': '#00FF9C', 'fill-opacity': 0.08 } });
         map.addLayer({ id: 'safe-zone-line', type: 'line', source: 'safe-zone', paint: { 'line-color': '#00FF9C', 'line-width': 2, 'line-dasharray': [3, 2] } });
         map.addLayer({ id: 'active-zone-fill', type: 'fill', source: 'active-zone', paint: { 'fill-color': '#00FF9C', 'fill-opacity': 0.1 } });
         map.addLayer({ id: 'active-zone-line', type: 'line', source: 'active-zone', paint: { 'line-color': '#00FF9C', 'line-width': 3 } });
+        map.addLayer({id:'end-zone-fill',type:'fill',source:'end-zone',paint:{'fill-color':'#00B8FF','fill-opacity':.16}});
+        map.addLayer({id:'end-zone-line',type:'line',source:'end-zone',paint:{'line-color':'#00B8FF','line-width':2,'line-dasharray':[2,1]}});
         map.addLayer({ id: 'excluded-fill', type: 'fill', source: 'excluded', paint: { 'fill-color': '#FF3B45', 'fill-opacity': 0.3 } });
         map.addLayer({ id: 'excluded-line', type: 'line', source: 'excluded', paint: { 'line-color': '#FF3B45', 'line-width': 2 } });
+        map.addLayer({id:'xp-radius-fill',type:'fill',source:'xp-radius',paint:{'fill-color':'#00b8ff','fill-opacity':.2}});
+        map.addLayer({id:'xp-radius-line',type:'line',source:'xp-radius',paint:{'line-color':'#00b8ff','line-width':2}});
         map.addLayer({ id: 'accuracy-fill', type: 'fill', source: 'accuracy', paint: { 'fill-color': '#00B8FF', 'fill-opacity': 0.12 } });
         map.addLayer({ id: 'accuracy-line', type: 'line', source: 'accuracy', paint: { 'line-color': '#00B8FF', 'line-width': 1, 'line-opacity': 0.5 } });
         setLoaded(true);
@@ -131,14 +142,15 @@ export default function MapView({ zone, activeZone, pins = [], location, role = 
     if (!loaded || !map) return;
     (map.getSource('safe-zone') as GeoJSONSource)?.setData(zone?.feature ?? featureCollection([]));
     (map.getSource('active-zone') as GeoJSONSource)?.setData(activeZone ?? featureCollection([]));
-    (map.getSource('excluded') as GeoJSONSource)?.setData(featureCollection(zone?.excluded ?? []));
+    (map.getSource('end-zone') as GeoJSONSource)?.setData(finalZone??featureCollection([]));
+    (map.getSource('excluded') as GeoJSONSource)?.setData(featureCollection(activeExclusions(zone)));
     const currentZone = activeZone ?? zone?.feature;
     if (currentZone && !initiallyFitted.current) {
       const bounds = bbox(currentZone);
       map.fitBounds([[bounds[0], bounds[1]], [bounds[2], bounds[3]]], { padding: 48, maxZoom: 17, duration: 0 });
       initiallyFitted.current = true;
     }
-  }, [loaded, zone, activeZone]);
+  }, [loaded, zone, activeZone, finalZone]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -155,6 +167,8 @@ export default function MapView({ zone, activeZone, pins = [], location, role = 
     if (!loaded || !map) return;
     markersRef.current.forEach(marker => marker.remove());
     markersRef.current = [];
+    (map.getSource('xp-radius') as GeoJSONSource)?.setData(xpPoint?circle([xpPoint.longitude,xpPoint.latitude],xpPoint.radiusMeters/1000):featureCollection([]));
+    if(xpPoint){const el=document.createElement('div');el.className='mh-xp-pin';el.textContent=xpPoint.confirmed?'XP':'?';el.setAttribute('aria-label',`XP-Punkt ${xpPoint.id}`);markersRef.current.push(new maplibregl.Marker({element:el}).setLngLat([xpPoint.longitude,xpPoint.latitude]).addTo(map));}
     if (location) {
       const element = document.createElement('div');
       element.className = `mh-pin mh-pin-own mh-pin-${role}`;
@@ -183,8 +197,9 @@ export default function MapView({ zone, activeZone, pins = [], location, role = 
       const detail = document.createElement('p');
       detail.textContent = `${time} · ± ${Math.round(pin.accuracy)} m`;
       const caveat = document.createElement('small');
-      caveat.textContent = stale?`Letzter bekannter Standort · vor ${Math.max(0,Math.floor((now-observedAt)/1000))} s`:pin.kind==='live'?'Neueste Hunter-Position':'Intervall-Pin';
+      caveat.textContent = stale?`Letzter bekannter Standort · vor ${Math.max(0,Math.floor((now-observedAt)/1000))} s`:pin.kind==='live'?'Neueste Team-Position':'Intervall-Pin';
       const label=document.createElement('span');label.className='mh-pin-label';label.textContent=`${pin.username}${stale?' · ALT':pin.kind==='live'?' · LIVE':''}`;element.append(label);
+      if(pin.avatar_url){const img=document.createElement('img');img.src=pin.avatar_url;img.alt='';img.referrerPolicy='no-referrer';img.width=30;img.height=30;img.style.borderRadius='50%';element.append(img);}
       popup.append(name, detail, caveat);
       if (location) {
         const range = document.createElement('p');
@@ -196,7 +211,7 @@ export default function MapView({ zone, activeZone, pins = [], location, role = 
       markersRef.current.push(marker);
     }
   // Rebuild only when pin membership/data or own GPS changes, not once every second.
-  }, [loaded, pins, location, role, Math.floor(now / 30_000)]);
+  }, [loaded, pins, xpPoint, location, role, Math.floor(now / 30_000)]);
 
   useEffect(() => {
     if (following && location && mapRef.current) {
@@ -220,7 +235,7 @@ export default function MapView({ zone, activeZone, pins = [], location, role = 
       <button type="button" title="Spielzone anzeigen" aria-label="Spielzone anzeigen" disabled={!zone && !activeZone} onClick={fitZone}><Expand size={18} /></button>
       <button type="button" title={following ? 'Automatische Zentrierung beenden' : 'Eigenen Standort zentrieren'} aria-label={following ? 'Automatische Zentrierung beenden' : 'Eigenen Standort zentrieren'} aria-pressed={following} onClick={() => location ? setFollowing(value => !value) : onLocationRequest?.()} disabled={!location && !onLocationRequest}>{following ? <LocateFixed size={18} /> : <Crosshair size={18} />}</button>
     </div>
-    <div className="mh-map-legend"><span><i className="mh-legend-dot own" />DU</span><span><i className="mh-legend-dot hider" />HIDER</span><span><i className="mh-legend-dot hunter" />HUNTER</span><span><i className="mh-legend-dot zombie" />ZOMBIE</span></div>
+    <div className="mh-map-legend"><span><i className="mh-legend-dot own" />DU</span><span><i className="mh-legend-dot hider" />HIDER</span><span><i className="mh-legend-dot hunter" />HUNTER</span><span><i className="mh-legend-dot zombie" />ZOMBIE</span>{finalZone&&<span><i className="mh-legend-dot end"/>ENDZONE</span>}</div>
     {(!online || mapError) && <div className="mh-map-error" role="status"><WifiOff size={16} />{!online ? 'Offline. Karten, Standortmeldungen und Spielstand werden erst nach Wiederverbindung aktualisiert.' : mapError}</div>}
   </section>;
 }

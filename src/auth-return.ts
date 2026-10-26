@@ -14,8 +14,8 @@ export function readAuthReturn(href:string):AuthReturn {
 }
 
 export function authInitializationMessage(result:AuthReturn,error:unknown,hasSession:boolean):string {
- if(result.problem==='provider')return 'Google konnte die Anmeldung nicht abschließen. Die Google-Verbindung muss vom Betreiber geprüft werden.';
- if(result.problem==='cancelled')return 'Die Google-Anmeldung wurde abgebrochen. Du kannst sie erneut starten.';
+ if(result.problem==='provider')return 'Diese externe Anmeldung ist nicht verfügbar. Melde dich mit deiner bisherigen E-Mail-Adresse an.';
+ if(result.problem==='cancelled')return 'Die Anmeldung wurde abgebrochen. Melde dich mit deiner E-Mail-Adresse an.';
  if(result.problem==='other')return 'Die Anmeldung konnte nicht abgeschlossen werden. Bitte starte sie erneut oder fordere einen neuen Bestätigungslink an.';
  const code=error&&typeof error==='object'&&'code' in error?error.code:null;
  if(['flow_state_expired','flow_state_not_found','bad_code_verifier'].includes(String(code)))return 'Dieser Anmeldeversuch ist abgelaufen oder nicht mehr gültig. Bitte starte die Anmeldung erneut im selben Browser.';

@@ -1,3 +1,5 @@
+import {rules} from '../shared/rules.js';
+import {loadXpPaths} from './xp-paths.js';
 import express, { type ErrorRequestHandler, type RequestHandler } from 'express';
 import { createServer } from 'node:http';
 import { isIP } from 'node:net';
@@ -251,6 +253,7 @@ export async function createBackend(options:BackendOptions={}){
       requireReady();const{command}=commandEnvelope.parse(raw);const lobby=engine.lobbyFor(id)??(['leave','close'].includes(command.type)?latestLobby():undefined);if(!lobby)throw new HttpError(404,'Du bist in keiner Lobby.');
       if(command.type==='location')limiter.take(`gps:${id}`,30,60_000);
       if(command.type==='capture'||command.type==='confirm_capture')limiter.take(`capture:${id}`,20,60_000);
+      if(['start','xp_regenerate'].includes(command.type)&&lobby.hostId===id&&lobby.zone&&rules(lobby.settings).xpHunt){limiter.take(`xp-paths:${id}`,3,60000);engine.prepareXp(lobby.id,await loadXpPaths(lobby.zone).catch(()=>[]));}
       const oldPlayers=lobby.players.map(p=>p.id);
       const view=await commit(()=>{const next=engine.command(lobby.id,id,command as Command);let data=null;try{data=engine.view(next.id,id);}catch{}return{lobby:next,data};});
       for(const userId of oldPlayers){if(command.type==='close'||!engine.lobbies.get(lobby.id)?.players.some(p=>p.id===userId)||command.type==='leave'&&userId===id)send(userId,'lobby:left',{});}

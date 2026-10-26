@@ -36,7 +36,7 @@ export interface Repository {
   subscriptions(id:string):Promise<Subscription[]>;
 }
 function didWin(result:any,role:string|undefined,team:string|undefined,id:string):boolean{
-  if(!result||role==='spectator')return false;
+  if(!result||role==='spectator'||result.winner==='draw'||result.winner==='aborted')return false;
   if(result.winner==='hiders')return role==='hider'&&result.survivors?.includes(id);
   if(result.winner==='hunters'||result.winner==='infected')return role==='hunter'||role==='zombie';
   if(result.winner===id)return true;
@@ -90,7 +90,7 @@ export class SupabaseRepository implements Repository {
   }
   async getProfile(identity:Identity):Promise<Profile> {
     const {data,error}=await this.db.from('profiles').select(profileColumns).eq('id',identity.id).maybeSingle();check(error);
-    if(data) return this.withAvatar(data as Profile);
+    if(data){const progress=await this.db.from('account_progress').select('total_xp,games,wins,losses,draws,captures,survivals,hunt_points').eq('user_id',identity.id).maybeSingle();check(progress.error);return this.withAvatar({...data,...(progress.data?{progress:progress.data}:{})} as Profile);}
     // Covers externally provisioned accounts as well as auth-trigger bootstrap.
     const base=(identity.username ?? 'spieler').normalize('NFKD').replace(/[^a-zA-Z0-9_]/g,'').slice(0,16) || 'spieler';
     const avatar = typeof identity.avatarUrl==='string' && /^https:\/\/[^/]*googleusercontent\.com\//.test(identity.avatarUrl) ? identity.avatarUrl : null;
@@ -179,7 +179,7 @@ export class MemoryRepository implements Repository {
     l.pins=[];l.events=[];l.captures=[];l.revision++;
     if(l.result){l.result.survivors=l.result.survivors.filter(v=>v!==id);if(l.result.winner===id){l.result.winner='deleted_player';l.result.reason='Der Sieger hat sein Konto gelöscht.';}}
     const meta=(l as Lobby&{_engine?:{players:Record<string,unknown>;leftIds:string[]}})._engine;
-    if(meta){delete meta.players[id];meta.leftIds=meta.leftIds.filter(v=>v!==id);}
+    if(meta){delete meta.players[id];meta.leftIds=meta.leftIds.filter(v=>v!==id);const privateState=meta as any;if(privateState.stats)delete privateState.stats[id];if(privateState.chatRate)delete privateState.chatRate[id];privateState.chat=[];}if(l.xpHunt){delete l.xpHunt.byPlayer[id];delete l.xpHunt.lastCollector;}
   }}
   async audit(actorId:string|null,action:string,metadata:Record<string,unknown>={}){this.audits.push({actorId,action,metadata});}
   async cleanup(){}

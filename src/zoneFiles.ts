@@ -1,5 +1,6 @@
 import { area, booleanWithin, featureCollection, kinks } from '@turf/turf';
 import type { Feature, Polygon } from 'geojson';
+import {isOctagon,validShrinkTarget} from '../shared/zones';
 import type { Zone } from '../shared/types';
 
 export const MAX_ZONE_FILE_BYTES = 256 * 1024;
@@ -21,15 +22,18 @@ export function validZone(value: unknown): value is Zone {
   const zone = value as Zone;
   try {
     return typeof zone.name === 'string' && zone.name.trim().length > 0 && zone.name.length <= 60
-      && validPolygon(zone.feature) && Array.isArray(zone.excluded) && zone.excluded.length <= 12
-      && zone.excluded.every(exclusion => validPolygon(exclusion) && booleanWithin(exclusion, zone.feature));
+      && validPolygon(zone.feature) && Array.isArray(zone.excluded) && zone.excluded.length <= 30
+      && zone.excluded.every(exclusion => validPolygon(exclusion) && booleanWithin(exclusion, zone.feature))
+      && (zone.disabledExcluded===undefined||Array.isArray(zone.disabledExcluded)&&zone.disabledExcluded.every(i=>Number.isInteger(i)&&i>=0&&i<zone.excluded.length)&&new Set(zone.disabledExcluded).size===zone.disabledExcluded.length)
+      && (zone.shrinkTarget===undefined||validShrinkTarget(zone,zone.shrinkTarget))
+      && (zone.randomCorners===undefined||typeof zone.randomCorners==='boolean'&&(!zone.randomCorners||isOctagon(zone.feature)));
   } catch { return false; }
 }
 
 export function serializeZone(zone: Zone): string {
   if (!validZone(zone)) throw new Error('Bitte korrigiere zuerst die Zonengrenze.');
-  return JSON.stringify(featureCollection([
-    { ...zone.feature, properties: { name: zone.name, kind: 'safe-zone' } },
+  return JSON.stringify(featureCollection<Polygon,Record<string,unknown>>([
+    { ...zone.feature, properties: { name: zone.name, kind: 'safe-zone', disabledExcluded:zone.disabledExcluded??[], ...(zone.shrinkTarget?{shrinkTarget:zone.shrinkTarget}:{}), ...(zone.randomCorners!==undefined?{randomCorners:zone.randomCorners}:{}) } },
     ...zone.excluded.map(feature => ({ ...feature, properties: { name: '', kind: 'excluded' } })),
   ]), null, 2);
 }
@@ -40,12 +44,12 @@ export function parseZoneFile(content: string): Zone {
   try { data = JSON.parse(content); } catch { throw new Error('Die Datei enthält kein gültiges GeoJSON.'); }
   const features: unknown[] | null = data?.type === 'Feature' ? [data]
     : data?.type === 'FeatureCollection' && Array.isArray(data.features) ? data.features : null;
-  if (!features || features.length === 0 || features.length > 13 || !features.every(validPolygon)) throw new Error('Erwartet wird eine Spielzone mit höchstens zwölf Sperrbereichen, ohne gekreuzte Linien oder Löcher.');
+  if (!features || features.length === 0 || features.length > 31 || !features.every(validPolygon)) throw new Error('Erwartet wird eine Spielzone mit höchstens dreißig Sperrbereichen, ohne gekreuzte Linien oder Löcher.');
   const safe = features.filter(feature => feature.properties?.kind !== 'excluded');
   const excluded = features.filter(feature => feature.properties?.kind === 'excluded');
   if (safe.length !== 1 || features.some(feature => feature.properties?.kind && !['safe-zone', 'excluded'].includes(feature.properties.kind))) throw new Error('Die Datei muss genau eine Spielzone enthalten. Sperrbereiche benötigen kind: excluded.');
   const clean = (feature: Feature<Polygon>): Feature<Polygon> => ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: feature.geometry.coordinates } });
-  const zone: Zone = { name: typeof safe[0].properties?.name === 'string' ? safe[0].properties.name.trim() : 'Importiertes Revier', feature: clean(safe[0]), excluded: excluded.map(clean), confirmed: false };
-  if (!validZone(zone)) throw new Error('Ungültige Zone: Der Name darf 1–60 Zeichen enthalten. Alle Sperrbereiche müssen vollständig in der Spielzone liegen.');
+  const zone: Zone = { name: typeof safe[0].properties?.name === 'string' ? safe[0].properties.name.trim() : 'Importiertes Revier', feature: clean(safe[0]), excluded: excluded.map(clean), confirmed: false, disabledExcluded:safe[0].properties?.disabledExcluded??[], ...(safe[0].properties?.shrinkTarget!==undefined?{shrinkTarget:safe[0].properties.shrinkTarget}:{}), ...(safe[0].properties?.randomCorners!==undefined?{randomCorners:safe[0].properties.randomCorners}:{}) };
+  if (!validZone(zone)) throw new Error('Ungültige Zone: Der Name darf 1–60 Zeichen enthalten. Alle Sperrbereiche müssen vollständig in der Spielzone liegen; der Schrumpfpunkt muss außerhalb der Sperrbereiche liegen.');
   return zone;
 }

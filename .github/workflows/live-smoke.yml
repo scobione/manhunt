@@ -27,7 +27,7 @@ jobs:
         run: npx playwright install chromium
       - name: Open the published frontend in Chromium
         env:
-          PUBLIC_URL: https://manhunt-fieldgame.scobione.chatgpt.site
+          PUBLIC_URL: https://manhunt-pwa.vercel.app
         run: |
           export PLAYWRIGHT_CHROMIUM_PATH=$(node --input-type=module -e "import { chromium } from '@playwright/test'; console.log(chromium.executablePath())")
           npm run test:public

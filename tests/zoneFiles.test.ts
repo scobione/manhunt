@@ -40,3 +40,13 @@ describe('portable zone files', () => {
     expect(() => parseZoneFile(JSON.stringify(data))).toThrow(/vollständig/);
   });
 });
+
+describe('portable shrink targets and random-corner rules',()=>{
+ it('keeps the selected point and random rule across export/import and local planning',()=>{
+  const z:Zone={name:'Endzone',confirmed:true,feature:circle([13.4,52.5],.5,{steps:8}),excluded:[],shrinkTarget:[13.401,52.501],randomCorners:true};
+  const imported=parseZoneFile(serializeZone(z));expect(imported.shrinkTarget).toEqual(z.shrinkTarget);expect(imported.randomCorners).toBe(true);expect(imported.confirmed).toBe(false);
+ });
+ it('rejects invalid or excluded targets instead of silently dropping them',()=>{
+  const data=JSON.parse(serializeZone(zone()));data.features[0].properties.shrinkTarget=[13.4,52.5];expect(()=>parseZoneFile(JSON.stringify(data))).toThrow();data.features[0].properties.shrinkTarget='unsafe';expect(()=>parseZoneFile(JSON.stringify(data))).toThrow();
+ });
+});

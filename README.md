@@ -2,18 +2,21 @@
 
 **Deine Stadt. Dein Spielfeld.** Ein quelloffenes GPS-Verfolgungsspiel für private Gruppen — React, TypeScript, Socket.IO, Supabase und MapLibre. MIT-lizenziert.
 
-> **Stand b.0.69.47:** Der Multiplayer-Server läuft als Supabase Edge Function und speichert autoritative Spielstände in PostgreSQL. Die React-App bleibt auf der bestehenden Sites-Adresse. Der Edge-Betrieb synchronisiert per authentifizierten HTTPS-Anfragen im Abstand von etwa zwei Sekunden; das Node-/Socket.IO-Backend bleibt als alternative Betriebsart erhalten. 27 Tabellen verwenden RLS, Profilbilder liegen in privatem Storage. E-Mail/Passwort und Gastbeitritt nutzen Supabase Auth. Mailzustellung und Profilbilder wurden vom Nutzer bestätigt; physische Kamera-, Push- und GPS-Prüfungen bleiben geräteabhängig. Keine künstlichen Spieler oder simulierten Standorte im Produktivbetrieb.
+> **Stand b.0.69.48:** Die Migration zu Vercel wird vorbereitet. Die Spiellogik läuft weiterhin in Supabase Edge Functions mit atomaren PostgreSQL-Checkpoints und authentifizierter Synchronisierung etwa alle zwei Sekunden. Accounts und Daten bleiben im bestehenden Supabase-Projekt. Google ist abgeschaltet; E-Mail und Gastzugang bleiben erhalten. Den nachgewiesenen Veröffentlichungsstand dokumentiert [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-**Veröffentlichte Oberfläche:** [MANHUNT öffnen](https://manhunt-fieldgame.scobione.chatgpt.site). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Die Zone führt nach dem Speichern zur Lobby-Erstellung. Danach Code teilen, Zone bestätigen, alle bereit melden und Match starten.
+**Vercel-Adresse:** [MANHUNT](https://manhunt-pwa.vercel.app). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Die bisherige Sites-Adresse wird erst nach erfolgreichem Live-Test umgeleitet.
 
 ## Funktionen
 
 - **Identität & Crew:** Supabase E-Mail/Passwort mit PKCE, Verifizierungscode und anonyme Gastsitzungen, eindeutige Benutzernamen, private Avatar-Uploads, Freundescodes, Anfragen, Blockieren, Einladungen, Datenschutz bei Online-Status, Benachrichtigungen, Profile und Matchhistorie.
 - **Private Lobbys:** kryptografisch zufällige sechsstellige Codes, Einladungslinks, Bereitschaft, Host-Übertragung, Entfernen, Rollen-/Teamzuweisung, Regeln und gespeicherte Presets.
 - **Autoritative Engine:** serverseitige Rollenauslosung, Vorbereitung und Hider-Vorsprung, periodische Pins, Bestätigungs-/Code-/GPS-Fänge, Infektionen, Ergebnisse und Wiederverbindung.
-- **Acht Modi:** Normal, Zombie, Apokalypse, Hide & Seek, Last Survivor, Team Hunt, Infection Rush und Custom. Team Hunt erfordert mindestens vier Personen, zwei Hunter und je einen Hider pro Team. Last Survivor erfordert mindestens zwei Hider.
-- **Karte & Zonen:** MapLibre, GeoJSON und Turf; Kreis, Viereck, Achteck; verschiebbare Eckpunkte, Radius, Rotation, Sperrbereiche, Sicherheitsbestätigung, lokale Zonen, GeoJSON-Export und validierter Import mit erneuter Sicherheitsbestätigung. Schrumpfende Zonen werden auf das bestätigte Gebiet begrenzt.
-- **GPS-Regeln:** Pin-Intervalle in Minuten oder frei konfigurierbar, erste Meldung nach dem Vorsprung, auf Wunsch laufend aktualisierte Hunter-Positionen und deutlich markierte Ersatz-Pins mit dem Alter der letzten Ortung.
+- **Kombinierbare Regeln:** Normal als Grundlage, Zombie, Apokalypse und XP-Jagd unabhängig aktivierbar. Private Teamchats und All-Chat, Host-Moderation, zufällige und manuelle Teamverteilung. Host-Pause friert Spielzeit ein und gibt keine Gegnerstandorte frei.
+- **XP-Jagd:** OSM-Fußwegkandidaten mit Sicherheitsabständen und Sperrzonenprüfung; jeder Punkt benötigt zusätzlich die Bestätigung des Hosts vor Ort. Nur aktuelle, ausreichend genaue Hider-Ortung innerhalb des Sammelradius zählt. Bei fehlenden Wegdaten erscheint eine Fehlermeldung statt ungeprüfter Koordinaten.
+- **Account-Level:** Separate, serverseitige XP-Buchungen mit einzigartigem Match-/Account-Schlüssel, Mindestspieldauer und Tageslimits. Gäste erhalten keine dauerhaften XP.
+- **Weitere Modi:** Normal, Zombie, Apokalypse, Hide & Seek, Last Survivor, Team Hunt, Infection Rush und Custom. Team Hunt erfordert mindestens vier Personen, zwei Hunter und je einen Hider pro Team. Last Survivor erfordert mindestens zwei Hider.
+- **Karte & Zonen:** MapLibre, GeoJSON und Turf; Kreis, Viereck, Achteck; verschiebbare Eckpunkte, Radius, Rotation, bis zu 30 nummerierte Sperrbereiche (Kreis, Viereck, Polygon) mit Aktivierung und Verschieben, wählbare Endzone und zufällige Achteck-Ecken pro Schrumpfphase, Sicherheitsbestätigung, lokale Zonen, GeoJSON-Export und validierter Import mit erneuter Sicherheitsbestätigung. Schrumpfende Zonen werden auf das bestätigte Gebiet begrenzt.
+- **GPS-Regeln:** Pin-Intervalle in Minuten oder frei konfigurierbar, erste Meldung nach dem Vorsprung, laufend aktualisierte eigene Teammitglieder und deutlich markierte Ersatz-Pins mit dem Alter der letzten Ortung.
 - **Outdoor-Sicherheit:** ausdrückliche GPS-Freigabe, Stoppen der Freigabe, Vollbild-Zonenwarnung mit GPS-geprüfter Rückkehr per Swipe und standardmäßig 60 Sekunden Toleranz, stabiler Countdown bei GPS-Aussetzern, Weiterlaufen bei Verbindungsabbrüchen, sicheres Verlassen, Genauigkeitsprüfung, Sprungerkennung und keine blinde Eliminierung bei ausbleibenden GPS-Proben.
 - **Mobil:** responsive Oberfläche, PWA-Manifest, Symbole, Service Worker mit Offline-Hinweis, Infektions-Swipe, reduzierte Bewegung und optionale Web-Push-Einladungen.
 - **Schutz & Betrieb:** validierte APIs/Sockets, Rate Limits, gefilterte Zustände pro Spieler, RLS, private Storage-Policies, atomare Datenbank-Checkpoints, Wiederaufnahme nach Neustart, Löschroutinen und Audit-Logs ohne GPS-/Tokeninhalte.
@@ -45,7 +48,7 @@ Frontend: `http://localhost:5173`. API: `http://localhost:3001`. Vite leitet `/a
 | `VITE_OPERATOR_NAME/ADDRESS/EMAIL` | Frontend | tatsächliche Betreiberangaben |
 | `VAPID_PUBLIC_KEY/PRIVATE_KEY/SUBJECT` | Backend | optionale eigene Web-Push-Konfiguration |
 
-Die Google-OAuth-Client-ID und das Client-Secret werden bei Supabase hinterlegt. Das Secret gehört weder in dieses Repository noch in eine `VITE_`-Variable. `src/public-config.json` enthält ausschließlich Projekt-URL und Publishable-Key: Dieser Schlüssel ist ausdrücklich für Browser vorgesehen und erlaubt keine privilegierten Serverzugriffe. Service-Role- und OAuth-Secrets sind dort verboten.
+Google OAuth bleibt im Supabase-Provider deaktiviert. Bestehende Nutzer können ihre bisherige verifizierte E-Mail-Adresse über die E-Mail-Anmeldung bzw. den kostenlosen Passwort-Reset weiterverwenden; der Account wird nicht gelöscht. `src/public-config.json` enthält ausschließlich Projekt-URL und Publishable-Key: Dieser Schlüssel ist ausdrücklich für Browser vorgesehen und erlaubt keine privilegierten Serverzugriffe. Service-Role- und OAuth-Secrets sind dort verboten.
 
 ## Tests
 
@@ -63,13 +66,13 @@ Unter Linux wird standardmäßig `/usr/bin/chromium` genutzt; `PLAYWRIGHT_CHROMI
 
 **Testidentitäten und simulierte GPS-Koordinaten existieren ausschließlich in automatisierten Tests.** Der Backend-Bypass setzt gleichzeitig `NODE_ENV=test` und `TEST_AUTH=true` voraus. Im Frontend sind zusätzlich der Vite-Modus `test` und `VITE_TEST_AUTH=true` notwendig. Ein Produktionsserver verweigert den Start mit aktiviertem `TEST_AUTH`.
 
-Die SQL-Regressionstests führen alle eingecheckten Migrationen unverändert in echtem PostgreSQL als WASM (PGlite) aus. Minimale Auth-/Storage-Testschemas bilden ausschließlich die Plattformverträge ab. Google OAuth, Supabase Storage-Bytes, reale Geräteortung und der Betrieb auf Render benötigen zusätzliche Tests nach Einrichtung der echten Dienste.
+Die SQL-Regressionstests führen alle eingecheckten Migrationen unverändert in echtem PostgreSQL als WASM (PGlite) aus. Minimale Auth-/Storage-Testschemas bilden ausschließlich die Plattformverträge ab. Die echte E-Mail-Zustellung, eine vollständige Anmeldung am eigenen Account, GPS auf realen Geräten und Push-Zustellung benötigen ergänzende Live-Prüfungen; lokale Auth-Tests verwenden ausdrücklich Testantworten.
 
 Details und tatsächlich ausgeführte Ergebnisse: [Testbericht](docs/TESTING.md).
 
 ## Deployment
 
-Die vollständige Anleitung steht in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). `render.yaml` definiert genau einen Free-Node-Service und eine kostenlose Static Site. Die Supabase-Migration liegt unter [supabase/migrations](supabase/migrations). GitHub Actions führt Build und Tests aus; Render kann nach erfolgreichen Checks deployen.
+Die vollständige Anleitung steht in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). `vercel.json` konfiguriert die Vite-PWA. Supabase bleibt der externe Echtzeit- und Datenbankdienst. `render.yaml` bleibt als alternative Node-Betriebsart erhalten. Die Supabase-Migration liegt unter [supabase/migrations](supabase/migrations). GitHub Actions führt Build und Tests aus. Die Vercel-GitHub-Verbindung baut Änderungen automatisch; freigegebene Änderungen an main veröffentlichen die Produktionsseite.
 
 Ein einzelner Node-Prozess ist die Spielautorität. Mehrere Instanzen sind ohne zusätzliche verteilte Sperren und Socket-Adapter nicht unterstützt. Der Server speichert Zustände vor erfolgreicher Bestätigung einer Aktion; nach einem Neustart bleiben laufende Matches und ihre Restzeiten erhalten. Zonenprüfungen benötigen weiterhin aktuelle GPS-Messungen.
 
@@ -77,7 +80,7 @@ Ein einzelner Node-Prozess ist die Spielautorität. Mehrere Instanzen sind ohne 
 
 - **Hintergrund-GPS:** iOS und Android können eine PWA im Hintergrund anhalten. Während eines Matches muss die App im Vordergrund bleiben. Das ist keine native Hintergrundortungs-App.
 - **GPS-Spoofing:** Koordinaten aus einem Browser sind kein fälschungssicherer Beweis. Fangbestätigung oder persönlicher Fangcode sind die empfohlenen Regeln. Standortausfälle führen nicht automatisch zu einer Zoneneliminierung.
-- **Kostenlose Dienste:** Render-Free-Server können einschlafen; Supabase/Render haben Kapazitäts- und Nutzungsgrenzen. Kostenfreiheit ist nur innerhalb der jeweiligen Konditionen möglich, nicht für unbegrenzte öffentliche Nutzung garantiert.
+- **Kostenlose Dienste:** Vercel Hobby ist für persönliche, nicht kommerzielle Nutzung gedacht. Supabase Free und öffentliche OSM-Dienste haben Kapazitäts- und Nutzungsgrenzen; alternative Render-Free-Server können einschlafen. Kostenfreiheit ist nur innerhalb der jeweiligen Konditionen möglich, nicht für unbegrenzte öffentliche Nutzung garantiert.
 - **Karten:** sichtbare OSM-Kacheln werden direkt geladen und korrekt attribuiert. Kein Offline-Prefetch. Tile-Verfügbarkeit hängt vom Anbieter ab. Selbst definierte Zonen ersetzen keine Prüfung von Wegen, Verkehr und Betretungsrechten.
 - **Freunde suchen:** per exaktem Freundescode und innerhalb der eigenen Crew; bewusst kein öffentlich durchsuchbares Personenverzeichnis.
 - **Optionale Funktionen:** QR-Fangscanning, Fangcode und Bestätigung sind implementiert. Der Edge-Server verwaltet VAPID und zeitgesteuerte Web-Push-Zustellung. Browserfreigabe ist erforderlich; ein Push signalisiert keine verlässliche Hintergrundortung.

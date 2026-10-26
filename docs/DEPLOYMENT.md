@@ -1,91 +1,43 @@
-# Deployment
+# Deployment: Vercel und Supabase
 
-**Aktuell, b.0.69.43:** Der Multiplayer-Server wurde auf dem vorhandenen Supabase-Projekt eingerichtet. Die bisherige Sites-Adresse bleibt erhalten. Für diese Betriebsart ist kein Render-Zugang erforderlich. Die folgenden Render-Abschnitte beschreiben eine alternative Node-/Socket.IO-Installation; historische Hinweise zum fehlenden Server sind damit überholt. Siehe [Edge-Deployment](EDGE-DEPLOYMENT.md) und [Release-Status](RELEASE-b.0.69.43.md).
+Stand: 26.10.2026, Freigabeprüfung läuft. Dies ist keine Zusage einer vollständig bestandenen Abnahme.
 
-Die Quellen sind für Render (ein Node-Webservice und eine Static Site) und Supabase vorbereitet. Kein Testmodus auf einem öffentlich erreichbaren Server. Konfigurationswerte in `.env.example` sind bewusst leer; keine erfundenen Zugangsdaten.
+- Produktionsdomain: https://manhunt-pwa.vercel.app
+- Vercel-Projekt: `manhunt-pwa`, Hobby; GitHub `scobione/manhunt`, Produktion `main`.
+- Bestehende Datenbank und Auth: Supabase `dxoleuqmhcnqnjyqdqvw`, Frankfurt, Free.
+- API: https://dxoleuqmhcnqnjyqdqvw.supabase.co/functions/v1/manhunt-api
+- Bisherige Website: https://manhunt-fieldgame.scobione.chatgpt.site
 
-## Bereits eingerichtet — 22.10.2026
+Die erste Vercel-Bereitstellung enthält noch b.0.69.47. b.0.69.48 wird zunächst auf einem separaten Branch getestet. Die alte Seite bleibt bis zum bestandenen Vercel-Live-Test unverändert. Veröffentlichte Versionen und Testergebnisse werden nach der Bereitstellung ergänzt.
 
-[MANHUNT auf Supabase](https://supabase.com/dashboard/project/dxoleuqmhcnqnjyqdqvw) läuft im Free-Tarif in Frankfurt (`eu-central-1`). Beide Migrationen sind angewendet, alle 21 Tabellen verwenden RLS, der Bucket `avatars` ist privat (2 MB, JPEG/PNG/WebP). Der Auth-Einstellungsendpunkt bestätigt jetzt `google: true`. Der OAuth-Start antwortet mit HTTP 302 zu Google und dem korrekten Supabase-Callback. Ein vollständiger Login mit einem echten Google-Konto muss noch vom Kontoinhaber bestätigt werden. Keine echten Konten oder Standortdaten wurden für die Einrichtung angelegt.
+## Konfiguration
 
-Die bestehende Website-Adresse kann bleiben. Sites liefert derzeit den statischen React-Build; der vorhandene Node-/Express-/Socket.IO-Prozess läuft dort nicht. Render ist optional: Ein anderer geeigneter Node-Host mit WebSockets funktioniert ebenfalls. Für Sites wäre ein eigener Worker-Transport samt dauerhaft koordinierter Spielzustände erforderlich; die lokale Entwicklungsumgebung ist kein Produktionshost. Supabase Edge Functions sind kein unveränderter Ersatz für diesen Prozess: Im Free-Tarif endet ein Worker spätestens nach 150 Sekunden ([Laufzeitgrenzen](https://supabase.com/docs/guides/functions/limits)). Für die vorhandene Site wird kein zweites Frontend benötigt.
+Vercel verwendet Node 22, `npm ci`, `npm run build` und `dist`. `vercel.json` enthält SPA-Routing und Sicherheitsheader. Keine dauerhaft laufenden Prozesse oder WebSockets auf Vercel erforderlich: der bestehende Supabase-Server übernimmt autoritative Spielzustände und HTTPS-Synchronisierung. Das alternative Node-/Socket.IO-Backend bleibt im Repository.
 
-## Aktueller Google-Fehler — 22.10.2026
+`src/public-config.json` enthält ausschließlich Supabase-URL, API-URL und den öffentlichen Publishable-Key. Service-Role und VAPID-Private-Key bleiben in Supabase; keine Geheimnisse werden zu Vercel oder in den Browser kopiert.
 
-Die echte Google-Rückleitung schlägt derzeit mit `invalid_client` / `The provided client secret is invalid` fehl. Unter [Google OAuth Clients](https://console.cloud.google.com/auth/clients) den vorhandenen Webclient öffnen und seine Client-ID mit dem zugehörigen gültigen Secret unter [Supabase → Google](https://supabase.com/dashboard/project/dxoleuqmhcnqnjyqdqvw/auth/providers) speichern. Falls das Secret nicht mehr verfügbar ist, beim selben Google-Client ein neues erstellen. Geheimnisse nie in Repository, Chat oder Frontend übernehmen. Die Site URL und die erlaubte Callback-URL sind bereits bestätigt; sie müssen dafür nicht erneut geändert werden. Danach einen vollständigen Login prüfen.
+Supabase-Migrationen in `supabase/migrations/` sind mit dem Live-Projekt abgeglichen. RLS ist auf allen Anwendungstabellen aktiv. Account-XP können nur serverseitig vergeben werden. Das Produktionsbundle entfernt die ausschließlich in Tests erlaubte Authentifizierungsabkürzung.
 
-## 1. Supabase für eine eigene Installation
+## E-Mail und Gäste
 
-1. Ein **Free**-Projekt in einer europäischen Region erstellen. Kein kostenpflichtiges Upgrade wählen.
-2. Alle Dateien unter `supabase/migrations/` in Reihenfolge mit der Supabase CLI `supabase db push` anwenden. Im bereits eingerichteten MANHUNT-Projekt nicht erneut ausführen. Die Migrationen aktivieren RLS, Profil-Trigger, private Avatarablage und serverseitige RPCs. Die SQL-Tests unter `tests/database.test.ts` erläutern die Invarianten.
-3. Projekt-URL und Publishable-/Anon-Key im Frontend konfigurieren. Den Service-Role-Key ausschließlich beim Backend hinterlegen.
-4. Unter Auth → URL Configuration die echte HTTPS-Adresse der Frontend-Site als Site URL und erlaubte Redirect URL konfigurieren. Bei lokaler Entwicklung `http://localhost:5173` explizit ergänzen. Keine Wildcard für fremde Domains.
-5. Unter Auth → Providers → Google aktivieren. Den OAuth-Client im eigenen Google-Cloud-Projekt erstellen. Die von Supabase angegebene `https://<project-ref>.supabase.co/auth/v1/callback`-Adresse als erlaubte Google-Redirect-URI eintragen. Client-ID und Client-Secret nur in Supabase speichern. Für externe Nutzer gegebenenfalls den Consent-Screen veröffentlichen; bei Google-Testbetrieb Testnutzer hinzufügen.
+Google ist serverseitig deaktiviert; direkte OAuth-Starts werden abgelehnt. Keine bestehenden Benutzer wurden gelöscht. Ehemalige Google-Nutzer verwenden dieselbe E-Mail-Adresse und können über „Passwort vergessen“ ein Passwort setzen; Bestätigung erfolgt ausschließlich im eigenen Postfach.
 
-Offizielle Anleitung: [Supabase Google OAuth](https://supabase.com/docs/guides/auth/social-login/auth-google).
+[Supabase URL Configuration](https://supabase.com/dashboard/project/dxoleuqmhcnqnjyqdqvw/auth/url-configuration): Site URL `https://manhunt-pwa.vercel.app`, Redirect `https://manhunt-pwa.vercel.app/auth/callback`. Alten Redirect während des Umzugs behalten. Der Nutzer hat die Änderung am 26.10.2026 bestätigt. Die Integrationswerkzeuge können die private Auth-Konfiguration nicht lesen oder bearbeiten. Passwort-Reset und Verifizierungslinks sind erst nach tatsächlicher Zustellung und Einlösung abschließend geprüft.
 
-## 2. Render Free
+## Veröffentlichung
 
-Das Repository `https://github.com/scobione/manhunt` in Render als **Blueprint** verbinden. `render.yaml` legt ausschließlich einen Free-Webservice und eine kostenlose Static Site an. Beim Bestätigen nochmals kontrollieren, dass keine kostenpflichtige Ressource hinzugefügt wird.
+1. `npm test`, `npm run build`, Socket-, Edge- und öffentliche Playwright-Tests ausführen.
+2. Quellcode auf einen Vorschau-Branch pushen und über das Vercel-Plugin bereitstellen.
+3. Nur die tatsächlich zugewiesenen Domains verwenden; exakte Preview-Origin im Backend erlauben. Vorschauen bleiben durch Vercel Authentication geschützt.
+4. Supabase-Edge-Bundle bereitstellen; bestehende Checkpoints/Accounts nicht löschen.
+5. Vorschau mit echten, eigens angelegten Test-Gastsitzungen prüfen und anschließend diese Testkonten löschen. Simuliertes GPS ausschließlich in ausdrücklich gekennzeichneten automatisierten Tests.
+6. Geprüften Commit nach main übernehmen, Produktionsbereitstellung und Live-Tests prüfen.
+7. Erst danach Sites-Weiterleitungsartefakt mit Zehn-Sekunden-Countdown veröffentlichen.
 
-Backend-Konfiguration:
+## Betriebsgrenzen
 
-- `SUPABASE_URL`: Projekt-URL.
-- `SUPABASE_SERVICE_ROLE_KEY`: ausschließlich serverseitiger Schlüssel.
-- `FRONTEND_URL`: exakte Origin der tatsächlich verwendeten Frontend-Site (inklusive `https://`, ohne abschließenden Pfad).
-- `NODE_ENV=production`; niemals `TEST_AUTH=true`.
+PWAs können im Hintergrund angehalten werden. Push benötigt die ausdrückliche Freigabe auf jedem Gerät; auf iOS zusätzlich eine installierte Webapp. Neue Domain bedeutet neue Browserfreigaben und erneute Anmeldung. Gastsitzungen sind an den Browserursprung gebunden und lassen sich nicht automatisch zwischen Sites und Vercel übertragen.
 
-Frontend-Konfiguration:
+Die Wegdatenprüfung kann bei Ausfall oder Ablehnung des öffentlichen Overpass-Dienstes keinen XP-Punkt liefern. Es gibt keinen ungeprüften Ersatzpunkt. OSM ist keine verbindliche Auskunft über aktuelle Gefahren oder Betretungsrechte; jeder Kandidat muss vor Ort vom Host bestätigt werden.
 
-- `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`: öffentliche Supabase-Konfiguration.
-- `VITE_API_URL`: HTTPS-Origin des Render-Backends, ohne `/api` am Ende.
-- `VITE_OPERATOR_NAME`, `VITE_OPERATOR_ADDRESS`, `VITE_OPERATOR_EMAIL`: tatsächliche Betreiberinformationen.
-
-`VITE_`-Werte werden beim Build eingebettet. Nach Änderungen neu deployen. Die vom Blueprint erzeugten URLs können je nach Namensverfügbarkeit abweichen; keine angenommene `onrender.com`-Adresse verwenden. Erst nach Erzeugung die tatsächlichen Adressen in CORS und OAuth-Allowlist übernehmen.
-
-Push ist optional. Eigene VAPID-Schlüssel erzeugen (`npx web-push generate-vapid-keys`) und `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT=mailto:<Betreiberkontakt>` nur im Backend konfigurieren. Schlüssel nicht committen. Ohne VAPID bleiben In-App-Benachrichtigungen verfügbar.
-
-GitHub Actions prüft TypeScript, Engine/API, Build, Bibliotheks-Advisories und isolierte Chromium-E2E-Tests. Render ist auf Deployments nach erfolgreichen Checks eingestellt. Die Verbindung zwischen Render und GitHub muss vom Kontoinhaber einmal freigegeben werden.
-
-## 3. Funktion nach der Einrichtung wirklich prüfen
-
-- Zwei echte Google-Konten auf getrennten Geräten anmelden.
-- Profilbild ändern, Freundescode senden, Anfrage annehmen, Lobby-Einladung öffnen.
-- Mit zwei Geräten dieselbe Lobby betreten, Zone bestätigen, bereit melden, starten.
-- Standortfreigabe bewusst erlauben. Tatsächliche Geräte-GPS-Funktion draußen prüfen; simulierte Playwright-Koordinaten ersetzen diesen Schritt nicht.
-- Normal-Fang mit Bestätigung, Zombie-Wechsel und Apokalypse-Zonenwechsel prüfen.
-- App in Hintergrund schicken und zurückholen; Warnhinweis und Synchronisierung prüfen.
-- Freigabe stoppen, Weiterlaufen nach Verbindungsabbruch, Verlassen, Konto- und Standortdatenlöschung prüfen.
-- iPhone Safari/Home-Screen und Android Chrome/Home-Screen getrennt prüfen.
-
-## Grenzen kostenloser Dienste — geprüft am 20.10.2026
-
-Render-Free-Webservices schlafen nach 15 Minuten ohne eingehenden Verkehr ein; ein Workspace erhält 750 Free-Instanzstunden pro Monat. Ein Neustart kann Wartezeit verursachen. Dateisystemänderungen sind nicht dauerhaft. Die App speichert Spielzustände in Supabase und braucht nach Unterbrechungen eine sichere Wiederaufnahme. Es wird kein künstlicher Keepalive-Dienst eingesetzt. Render weist auf zusätzliche Gebühren bei Überschreitung bestimmter Bandbreitenkontingente hin: vor Aktivierung die aktuellen Workspace-Limits und Abrechnungseinstellungen prüfen. Eine Zusage „unter allen Umständen kostenlos“ wäre falsch. [Render Free](https://render.com/docs/free)
-
-Supabase Free umfasst derzeit 500 MB Datenbank und 1 GB Dateiablage. Nutzung und aktuelle Limits im Dashboard beobachten; keinen kostenpflichtigen Tarif automatisch aktivieren. [Supabase Billing](https://supabase.com/docs/guides/platform/billing-on-supabase)
-
-OSM-Kacheln benötigen dauerhaft sichtbare Attribution. Kein Offline-Kachelpaket und kein Massen-Prefetch. Für größere öffentliche Nutzung einen geeigneten Tile-Anbieter oder selbst gehostete Kacheln wählen. [OSM Tile Policy](https://operations.osmfoundation.org/policies/tiles/)
-
-## Sites-Veröffentlichung
-
-Die Static Site unter [manhunt-fieldgame.scobione.chatgpt.site](https://manhunt-fieldgame.scobione.chatgpt.site) wurde am 21.10.2026 veröffentlicht und enthält dieselbe React-Oberfläche. Google-Anmeldung ist ab Version 0.2.1 verbunden. Nach der Rückleitung verifiziert die App die Sitzung über Supabase und bietet Abmelden an. Ohne Node-Backend bleiben Spielprofile, Freunde, Lobbys und Online-Spiele noch nicht verfügbar. Das ist kein Ersatz für das vollständige Render/Supabase-Deployment. Der Zonenplaner und die öffentlichen Informationsseiten funktionieren ohne Konto. Es werden keine Spieler, Statistiken oder GPS-Signale simuliert.
-
-Der GitHub-Workflow **Published frontend smoke** öffnet diese HTTPS-Adresse mit Chromium und speichert Screenshots. Er lässt sich unter Actions erneut starten. Seine Prüfungen umfassen die öffentlichen Seiten und den Beginn des PKCE-Anmeldewegs. Dafür wird der Autorisierungsrequest im Browser geprüft, ohne eine Google-Sitzung zu simulieren. Authentifizierte Live-Prüfungen mit echten Konten bleiben erforderlich. Lokale, ausdrücklich simulierte Sitzungstests laufen nur in `auth.spec.ts`, niemals gegen die öffentliche Website.
-
-## Noch notwendige externe Einrichtung
-
-Die vorhandene Supabase-Verbindung erlaubt Tabellen, Migrationen, Storage und Prüfungen. Sie bietet hier kein Werkzeug zum Bearbeiten der Google-Providerkonfiguration; ein Google-Cloud-Zugang und ein Node-Hosting-Zugang sind ebenfalls nicht verbunden. Deshalb bleiben genau diese Einrichtungsschritte offen:
-
-1. Google ist bereits aktiviert. Für spätere Änderungen oder weitere Testnutzer: Eigenen Google-OAuth-Webclient erstellen und unter [Supabase Auth Providers](https://supabase.com/dashboard/project/dxoleuqmhcnqnjyqdqvw/auth/providers) konfigurieren. Google-Redirect-URI: `https://dxoleuqmhcnqnjyqdqvw.supabase.co/auth/v1/callback`. Unter Supabase URL Configuration die Site `https://manhunt-fieldgame.scobione.chatgpt.site` und Redirect `https://manhunt-fieldgame.scobione.chatgpt.site/auth/callback` erlauben.
-2. Geeigneten Node-Host verbinden; den serverseitigen Supabase-Schlüssel ausschließlich als Server-Umgebungsvariable setzen. Backend-URL danach im Frontend konfigurieren und neu veröffentlichen. Der öffentliche Supabase-Schlüssel kann über die vorhandene Verbindung gelesen werden.
-3. Tatsächliche Betreiberangaben hinterlegen und Anmeldung/Multiplayer mit realen Konten und mobilen Geräten prüfen.
-
-Die Dateien der ersten Migration wurden auf die tatsächlich auf Supabase gespeicherte Version `20261022061735` umbenannt; ihr SQL-Inhalt blieb identisch. Die Performance-Migration ist `20261022062300`. Bereits früher mit der alten lokalen Versionsnummer eingerichtete Fremdinstallationen müssen ihren Migrationsverlauf abgleichen, bevor `db push` läuft; die erste Migration nicht doppelt anwenden.
-
-Die öffentliche Supabase-Projektkonfiguration ist unter `src/public-config.json` hinterlegt und wird nur in Produktionsbuilds als Vorgabe verwendet. Die privaten Server-/OAuth-Schlüssel bleiben vollständig außerhalb des Frontends.
-
-## E-Mail und Passwort
-
-Ab Version 0.2.2 stehen unter `/login` Anmelden, Registrieren und Passwort vergessen zur Verfügung. Supabase bestätigt E-Mail als aktivierten Provider; neue Konten müssen ihre Adresse bestätigen. Registrierung und Recovery verwenden die bereits erlaubte `/auth/callback`-Adresse. Ein in einem anderen Browser geöffneter Bestätigungslink kann den lokalen PKCE-Nachweis nicht übernehmen; nach bestätigter Adresse ist eine normale E-Mail-/Passwort-Anmeldung möglich.
-
-Für öffentliche Bestätigungs- und Reset-Mails unter [Supabase SMTP](https://supabase.com/dashboard/project/dxoleuqmhcnqnjyqdqvw/auth/smtp) einen eigenen SMTP-Dienst konfigurieren. Der Supabase-Standardversand ist auf Projektmitglieder und ein kleines Kontingent begrenzt ([Dokumentation](https://supabase.com/docs/guides/auth/auth-smtp)). SMTP-Zugangsdaten nur dort speichern; keine kostenpflichtigen Dienste ohne Freigabe. Die Bestätigungspflicht bleibt aktiviert. Telefonnummern-Anmeldung ist nicht aktiviert und würde einen zusätzlichen SMS-Anbieter benötigen.
+Keine kostenpflichtigen Ressourcen wurden für diese Migration beauftragt. Es gelten die jeweils aktuellen Kontingente der Anbieter; Lasttests im großen Maßstab wurden nicht auf den kostenlosen Produktionsdiensten durchgeführt.

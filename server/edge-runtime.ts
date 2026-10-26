@@ -1,3 +1,5 @@
+import {rules} from '../shared/rules';
+import {loadXpPaths,type PathCandidate} from './xp-paths';
 import { z } from 'zod';
 import type { Command, Lobby, Profile, Settings } from '../shared/types';
 import { GameEngine, GameError } from './engine';
@@ -14,7 +16,7 @@ const codeSchema=z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6}$/);
 const eventSchema=z.object({event:z.enum(['lobby:create','lobby:join','lobby:sync','lobby:command']),data:z.unknown().optional()}).strict();
 const commandSchema=z.object({command:z.object({type:z.string()}).passthrough()}).strict();
 const PRESENCE_MS=20_000;
-export interface EdgeOptions {repository:Repository;store:EdgeStore;verify:(token:string)=>Promise<Identity>;origins:string[];push?:PushService}
+export interface EdgeOptions {repository:Repository;store:EdgeStore;verify:(token:string)=>Promise<Identity>;origins:string[];push?:PushService;pathLoader?:typeof loadXpPaths}
 
 async function jsonBody(request:Request){
   if(!request.body)return {};
@@ -28,7 +30,7 @@ async function jsonBody(request:Request){
 /** Request-scoped engine, durable PostgreSQL state, no isolate-local authority.
  * HTTP polling survives the edge worker lifetime without depending on timers.
  */
-export function createEdgeHandler({repository:repo,store,verify,origins,push}:EdgeOptions){
+export function createEdgeHandler({repository:repo,store,verify,origins,push,pathLoader=loadXpPaths}:EdgeOptions){
   async function game(identity:Identity,profile:Profile,event:string,raw:unknown){
     const id=identity.id;
     if(identity.isGuest&&event==='lobby:create')throw new HttpError(403,'Als Gast kannst du einer Lobby beitreten. Zum Erstellen benötigst du ein E-Mail-Konto.');
@@ -40,6 +42,11 @@ export function createEdgeHandler({repository:repo,store,verify,origins,push}:Ed
     if(event==='lobby:join')await store.quota(id,'join',12);
     if(command?.type==='location')await store.quota(id,'gps',30);
     if(command&&['capture','confirm_capture'].includes(command.type))await store.quota(id,'capture',20);
+    let pathData:{zone:string;candidates:PathCandidate[]}|undefined;
+    if(command&&['start','xp_regenerate'].includes(command.type)){
+      const before=await store.snapshot(),current=before.lobbies.find(l=>l.hostId===id&&l.players.some(p=>p.id===id)&&!['closed','finished'].includes(l.status));
+      if(current?.zone&&rules(current.settings).xpHunt){await store.quota(id,'xp-paths',3);try{pathData={zone:JSON.stringify(current.zone),candidates:await pathLoader(current.zone)};}catch{pathData={zone:JSON.stringify(current.zone),candidates:[]};}}
+    }
     for(let attempt=0;attempt<8;attempt++){
       const snapshot=await store.snapshot();
       const engine=new GameEngine({initial:snapshot.lobbies,now:()=>snapshot.now});
@@ -70,6 +77,7 @@ export function createEdgeHandler({repository:repo,store,verify,origins,push}:Ed
         }else if(command){
           lobby??=[...engine.lobbies.values()].find(l=>l.status==='finished'&&l.players.some(p=>p.id===id));
           if(!lobby)throw new HttpError(404,'Du bist in keiner Lobby.');
+          if(pathData){if(JSON.stringify(lobby.zone)!==pathData.zone)throw new HttpError(409,'Die Zone wurde während der Wegprüfung verändert. Bitte erneut starten.');engine.prepareXp(lobby.id,pathData.candidates);}
           lobby=engine.command(lobby.id,id,command);
         }
         if(lobby&&event!=='lobby:sync')changed.set(lobby.id,lobby);

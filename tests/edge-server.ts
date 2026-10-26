@@ -7,7 +7,7 @@ import { authenticate } from '../server/auth';
 import { TestEdgeStore } from './edge-fixtures';
 if(process.env.NODE_ENV!=='test'||process.env.TEST_AUTH!=='true')throw new Error('Isolated test environment required');
 const repo=new MemoryRepository(),store=new TestEdgeStore();repo.checkpoints=store.lobbies;
-const handler=createEdgeHandler({repository:repo,store,verify:token=>authenticate(token,null),origins:['http://127.0.0.1:5174']});
+const handler=createEdgeHandler({repository:repo,store,verify:token=>authenticate(token,null),origins:['http://127.0.0.1:5174'],pathLoader:async()=>[{longitude:13.405,latitude:52.52,pathId:'isolated-test-way',label:'AUTOMATED TEST PATH'},{longitude:13.408,latitude:52.52,pathId:'isolated-test-way2',label:'AUTOMATED TEST PATH 2'}]});
 createServer(async(req,res)=>{
  try{
   store.clock=Date.now();const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(Buffer.from(chunk));

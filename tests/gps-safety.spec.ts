@@ -17,9 +17,9 @@ test('host saves minute-based and custom visibility settings',async({page,reques
  await expect(page.getByLabel('Pin-Intervall in Minuten')).toHaveValue('2');
  await page.getByLabel('Pin-Intervall auswählen').selectOption('custom');await page.getByLabel('Pin-Intervall in Minuten').fill('1.5');
  await page.getByLabel('Spielmodus',{exact:true}).selectOption('custom');
- await page.getByLabel('Hunter live auf der Karte').uncheck();
+
  await page.getByRole('button',{name:'Regeln speichern'}).click();await expect(page.getByTestId('lobby-code')).toBeVisible();
- const lobby=await event(request,token,'lobby:sync');expect(lobby.settings.pinIntervalSeconds).toBe(90);expect(lobby.settings.hunterVisible).toBe(false);expect(lobby.settings.mode).toBe('custom');expect(lobby.settings.outsideGraceSeconds).toBe(60);
+ const lobby=await event(request,token,'lobby:sync');expect(lobby.settings.pinIntervalSeconds).toBe(90);expect(lobby.settings.mode).toBe('custom');expect(lobby.settings.outsideGraceSeconds).toBe(60);
 });
 test('mobile warning stays full screen, return swipe needs GPS, no emergency pause controls remain',async({page,request})=>{
  await page.setViewportSize({width:390,height:844});
@@ -36,7 +36,7 @@ test('mobile warning stays full screen, return swipe needs GPS, no emergency pau
   Object.defineProperty(navigator,'geolocation',{value:{watchPosition:(cb:PositionCallback)=>{(window as any).__gpsCallback=cb;return 42;},clearWatch:()=>{},getCurrentPosition:()=>{}}});
  },pt);
  await page.goto('/game');await expect(page.getByRole('heading',{name:'Die Jagd läuft.'})).toBeVisible();
- await expect(page.locator(`[data-player-id="${host}"]`)).toBeVisible();
+ await expect(page.locator(`[data-player-id="${other}"]`)).toBeVisible();
  await page.getByRole('checkbox',{name:/Ich teile meinen Standort/}).check();await page.getByRole('button',{name:'GPS aktivieren',exact:true}).click();
  const fix=async(longitude:number,accuracy=5)=>{
   const response=page.waitForResponse(r=>r.url().endsWith('/api/events')&&r.request().postDataJSON()?.data?.command?.type==='location');

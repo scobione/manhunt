@@ -5,6 +5,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import {circle} from '@turf/turf';
 import {GameEngine} from '../server/engine';
+import {shrinkPlan} from '../shared/zones';
 import { DEFAULT_SETTINGS, type Lobby } from '../shared/types';
 
 // All IDs, profiles and GPS coordinates below are isolated automated TEST fixtures.
@@ -67,6 +68,10 @@ describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
   const saved=(await rpc('edge_snapshot',[])).rows[0].value as {lobbies:Lobby[]};
   expect(saved.lobbies[0].players[1].eliminated).toBe(false);
  });
+ it('persists selected end zones and server phase draws through a durable checkpoint',async()=>{
+  const lobby=state();lobby.zone={feature:circle([13.405,52.52],.6,{steps:8}),excluded:[],name:'ISOLATED ENDZONE',confirmed:true,shrinkTarget:[13.406,52.521],randomCorners:true};const plan=shrinkPlan(lobby.zone,[1,.6,.1],()=>.5);(lobby as any)._engine={players:{},phase:0,leftIds:[],lastTick:Date.now(),zonePhases:plan};
+  await rpc('save_game_checkpoint',[JSON.stringify(lobby)]);const snapshot=(await rpc('edge_snapshot',[])).rows[0].value as {lobbies:Lobby[]};expect(snapshot.lobbies[0].zone).toEqual(lobby.zone);expect((snapshot.lobbies[0] as any)._engine.zonePhases).toEqual(plan);await expect(userRole(a,'select state from game_checkpoints')).rejects.toThrow(/permission denied/);
+ });
  it('invalidates snapshots when account erasure changes checkpoint membership',async()=>{
   await rpc('save_game_checkpoint',[JSON.stringify(state())]);
   const before=(await rpc('edge_snapshot',[])).rows[0].value as {revision:number;lobbies:Lobby[]};
@@ -95,7 +100,7 @@ describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
  });
  it('executes the full unchanged migration and enables RLS on every application table',async()=>{
   const tables=await db.query<{tablename:string;rowsecurity:boolean}>("select tablename,rowsecurity from pg_tables where schemaname='public'");
-  expect(tables.rows.length).toBe(27);
+  expect(tables.rows.length).toBe(29);
   expect(tables.rows.every(t=>t.rowsecurity)).toBe(true);
   expect((await db.query('select * from profiles')).rows).toHaveLength(3);
   expect(await friendCode(a)).toMatch(/^[A-Z0-9]{12}$/);
@@ -205,7 +210,7 @@ describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
    const upgrade=files.find(f=>f.endsWith('_complete_account_erasure.sql'))!;
    for(const f of files.filter(f=>f<upgrade))await old.exec(await readFile(`supabase/migrations/${f}`,'utf8'));
    for(const id of [a,b,c])await old.query('insert into auth.users(id) values($1)',[id]);
-   const l=lastSurvivor();l.result!.reason='OldDeletedWinner ist der letzte Hider.';
+   const l=lastSurvivor();delete (l as any)._engine.stats;l.result!.reason='OldDeletedWinner ist der letzte Hider.';
    await old.query('select save_game_checkpoint($1)',[l]);await old.query('select delete_account($1)',[c]);await old.query('delete from auth.users where id=$1',[c]);
    expect((await old.query<{result:any}>('select result from match_results where user_id=$1',[a])).rows[0].result.winner).toBe(c);
    await old.exec(await readFile(`supabase/migrations/${upgrade}`,'utf8'));
@@ -257,3 +262,28 @@ describe('durable web-push scheduling and privacy',()=>{
 
 
 it('consumes a push dispatch ticket once and denies clients minting or consuming it',async()=>{const ticket=(await rpc('issue_push_ticket',[])).rows[0].value as string;const hash=(await db.query<{hash:string}>("select encode(sha256(convert_to($1,'UTF8')),'hex') as hash",[ticket])).rows[0].hash;expect((await rpc('consume_push_ticket',[hash])).rows[0].value).toBe(true);expect((await rpc('consume_push_ticket',[hash])).rows[0].value).toBe(false);await expect(userRole(a,'select issue_push_ticket()')).rejects.toThrow(/permission denied/);await expect(userRole(a,'select * from push_dispatch_tickets')).rejects.toThrow(/permission denied/);});
+
+describe('account XP and team notices acceptance',()=>{
+ it('LEVEL-01 LEVEL-02 LEVEL-03 LEVEL-04 LEVEL-08: atomic rewards, statistics and RLS survive duplicate writes',async()=>{
+  const l=state();l.startedAt=Date.now()-600000;l.status='finished';l.result={winner:'hiders',reason:'Test time limit',endedAt:Date.now(),survivors:[b]};(l as any)._engine={stats:{[a]:{captures:2,points:0},[b]:{captures:0,points:3}},leftIds:[]};
+  await rpc('save_game_checkpoint',[l]);await rpc('save_game_checkpoint',[l]);
+  const rows=(await userRole(b,'select * from account_progress')).rows as any[];expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({total_xp:85,games:1,wins:1,survivals:1,hunt_points:3});
+  expect((await userRole(b,'select * from xp_rewards')).rows).toHaveLength(1);
+  await expect(userRole(b,'update account_progress set total_xp=999999')).rejects.toThrow();await expect(userRole(b,'insert into xp_rewards(session_id,user_id,amount) values($1,$2,500)',[l.id,b])).rejects.toThrow();
+  const bad=state();bad.code='ABC124';bad.status='finished';bad.result={winner:'hiders',reason:'Too short',endedAt:Date.now(),survivors:[b]};(bad as any)._engine={stats:{[b]:{captures:0,points:100}},leftIds:[]};await rpc('save_game_checkpoint',[bad]);expect((await userRole(b,'select * from xp_rewards')).rows).toHaveLength(1);
+ });
+ it('LEVEL-02: guests, aborts and farming beyond five matches receive no XP',async()=>{
+  await db.query('update auth.users set is_anonymous=true where id=$1',[c]);
+  for(let i=0;i<6;i++){const l=state();l.code=`TST00${i}`;l.startedAt=Date.now()-600000;l.status='finished';l.result={winner:'hunters',reason:'Test complete',endedAt:Date.now(),survivors:[]};(l as any)._engine={stats:{[a]:{captures:1,points:0}},leftIds:[]};await rpc('save_game_checkpoint',[l]);}
+  const earned=await db.query<{amount:number}>('select amount from xp_rewards where user_id=$1 order by created_at',[a]);expect(earned.rows.map(x=>x.amount)).toEqual([60,60,60,60,60,0]);
+  const guest=state();guest.code='TSTGST';guest.startedAt=Date.now()-600000;guest.status='finished';guest.players.push({...guest.players[1],id:c,username:'GuestTest'});guest.result={winner:'hiders',reason:'Guest test',endedAt:Date.now(),survivors:[c]};(guest as any)._engine={stats:{[c]:{captures:0,points:99}},leftIds:[]};await rpc('save_game_checkpoint',[guest]);expect((await db.query('select * from xp_rewards where user_id=$1',[c])).rows).toHaveLength(0);
+  const aborted=state();aborted.code='TSTABT';aborted.startedAt=Date.now()-600000;aborted.status='finished';aborted.result={winner:'aborted',reason:'Host ended',endedAt:Date.now(),survivors:[b]};(aborted as any)._engine={stats:{[b]:{captures:0,points:1}},leftIds:[]};await rpc('save_game_checkpoint',[aborted]);expect((await db.query('select * from xp_rewards where session_id=$1',[aborted.id])).rows).toHaveLength(0);
+
+ });
+ it('NOTIFY-01: host and every non-host get match notices; team chat never targets enemies',async()=>{
+  const l=state();l.players.push({...l.players[1],id:c,username:'TestOther'});l.events=[{id:randomUUID(),type:'match_started',at:Date.now(),message:'start'}];(l as any)._engine={players:{},leftIds:[],chat:[]};await rpc('save_game_checkpoint',[l]);
+  expect((await db.query('select distinct user_id from push_jobs where kind=\'match_started\'')).rows).toHaveLength(3);
+  (l as any)._engine.chat=[{id:randomUUID(),actorId:b,channel:'hiders',text:'secret',at:Date.now()}];l.revision++;await rpc('save_game_checkpoint',[l]);
+  const jobs=await db.query<{user_id:string;payload:any}>('select user_id,payload from push_jobs where kind=\'chat\'');expect(jobs.rows.map(x=>x.user_id)).toEqual([c]);expect(JSON.stringify(jobs.rows)).not.toContain('secret');
+ });
+});

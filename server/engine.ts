@@ -1,7 +1,11 @@
+import {rules,teamChannel,activeExclusions,DEFAULT_XP} from '../shared/rules.js';
+import {safeXpPosition,type PathCandidate} from './xp-paths.js';
+import type {ChatMessage} from '../shared/types.js';
 import { createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { area, booleanPointInPolygon, distance, featureCollection, intersect, lineString, point, pointToLineDistance, polygon, transformScale } from '@turf/turf';
 import type { Feature, Polygon } from 'geojson';
 import { DEFAULT_SETTINGS, type CaptureRequest, type Command, type GameEvent, type Lobby, type LobbyView, type LocationSample, type Pin, type Player, type Profile, type Settings } from '../shared/types.js';
+import {shrinkPlan} from '../shared/zones.js';
 import { validateCommand, validateSettings, validateZone } from './validation.js';
 
 export class GameError extends Error {
@@ -12,7 +16,7 @@ interface PlayerState {
   outsideAccumulatedMs:number; insideFixes?:number; insideFirstAt?:number; lastOutsideAt?:number; outsideFixes:number; lastReliableOutside:boolean;
   captureAttempts:number[]; missedPin:boolean; infectionAcknowledged:boolean; unreliableLocation?:boolean; lastLocationAt?:number;
 }
-interface PrivateState {players:Record<string,PlayerState>; phase:number; hunterReleaseAt?:number; lastTick:number; leftIds:string[];}
+interface PrivateState { manualPause?:boolean; chat?:ChatMessage[]; chatRate?:Record<string,number[]>; xpCandidates?:PathCandidate[]; xpPrevious?:PathCandidate; stats?:Record<string,{captures:number;points:number}>; zonePhases?:Feature<Polygon>[]; players:Record<string,PlayerState>; phase:number; hunterReleaseAt?:number; lastTick:number; leftIds:string[];}
 type EngineLobby=Lobby & {_engine:PrivateState};
 const clone=<T>(x:T):T=>structuredClone(x);
 const playing=(p:Player)=>!p.eliminated&&p.role!=='spectator';
@@ -41,7 +45,7 @@ export class GameEngine {
       lobby._engine.leftIds??=[];
       for(const p of lobby.players){lobby._engine.players[p.id]??=metadata();if(lobby.status==='paused')this.freezeOutside(lobby,p,lobby.pausedAt??this.now());}
       // Upgrade an existing pause once, preserving remaining game deadlines.
-      if(lobby.status==='paused'){this.resumeLegacy(lobby);lobby.revision++;}
+      if(lobby.status==='paused'&&!lobby._engine.manualPause){this.resumeLegacy(lobby);lobby.revision++;}
       this.lobbies.set(lobby.id,lobby);
     }
   }
@@ -99,7 +103,7 @@ export class GameEngine {
       if(pin.expiresAt<=now)return false;
       if(pin.playerId===userId)return true;
       if(l.status==='finished'||l.status==='closed')return false;
-      if(self.role==='spectator'||self.eliminated)return false;
+      if(self.role==='spectator'||self.eliminated||self.infectionPending)return false;
       if(l.status==='preparing'||(l._engine.hunterReleaseAt??0)>now)return false;
       if(pin.role==='hider'){
         if(!hunting(self))return false;
@@ -113,16 +117,17 @@ export class GameEngine {
     const visibleLocations:Pin[]=[];
     for(const player of l.players){
       if(player.id===userId||l._engine.leftIds.includes(player.id)||!player.location||player.locationSharing===false)continue;
-      const live=l.status==='active'&&l.settings.hunterVisible&&player.role==='hunter'&&!player.eliminated&&!self.eliminated&&self.role!=='spectator'&&(l._engine.hunterReleaseAt??0)<=now;
+      const sameTeam=teamChannel(player,l.settings)!==null&&teamChannel(player,l.settings)===teamChannel(self,l.settings);
+      const live=l.status==='active'&&sameTeam&&!player.eliminated&&!self.eliminated&&self.role!=='spectator'&&(l._engine.hunterReleaseAt??0)<=now;
       if(!live)continue;
       const sample=player.location,observedAt=Math.min(sample.timestamp,l._engine.players[player.id].lastLocationAt??sample.timestamp);
       if(now-observedAt>l.settings.fallbackPinMaxAgeSeconds*1000)continue;
-      visibleLocations.push({id:`live:${player.id}`,playerId:player.id,username:player.username,role:player.role,...sample,observedAt,createdAt:observedAt,expiresAt:observedAt+l.settings.fallbackPinMaxAgeSeconds*1000,stale:now-observedAt>15_000||!!l._engine.players[player.id].unreliableLocation,kind:'live'});
+      visibleLocations.push({id:`live:${player.id}`,playerId:player.id,username:player.username,role:player.role,avatar_url:player.avatar_url,...sample,observedAt,createdAt:observedAt,expiresAt:observedAt+l.settings.fallbackPinMaxAgeSeconds*1000,stale:now-observedAt>15_000||!!l._engine.players[player.id].unreliableLocation,kind:'live'});
     }
     return clone({id:l.id,code:l.code,hostId:l.hostId,status:l.status,
-      players:l.players.map(p=>({id:p.id,username:p.username,avatar_url:p.avatar_url,ready:p.ready,role:p.role,team:p.team,connected:p.connected,eliminated:p.eliminated,infectedAt:p.infectedAt,lastSeen:p.lastSeen})),
+      players:l.players.map(p=>({id:p.id,username:p.username,avatar_url:p.avatar_url,ready:p.ready,role:p.role,muted:p.muted,infectionPending:p.infectionPending,team:p.team,connected:p.connected,eliminated:p.eliminated,infectedAt:p.infectedAt,lastSeen:p.lastSeen})),
       settings:l.settings,zone:l.zone,activeZone:l.activeZone,createdAt:l.createdAt,startedAt:l.startedAt,endsAt:l.endsAt,pausedAt:l.pausedAt,previousStatus:l.previousStatus,
-      pins,visibleLocations,events:l.events,captures:l.captures.filter(c=>c.targetId===userId||c.hunterId===userId),result:l.result,revision:l.revision,
+      xpHunt:l.xpHunt,chat:(l._engine.chat??[]).filter(m=>m.channel==='all'||m.channel===teamChannel(self,l.settings)),pins,visibleLocations,events:l.events,captures:l.captures.filter(c=>c.targetId===userId||c.hunterId===userId),result:l.result,revision:l.revision,
       self:{...self,...(self.role==='hider'&&!self.eliminated&&l.settings.captureMethod==='qr'&&l._engine.players[self.id].captureSecret?{captureQr:{token:this.qrToken(l,self,Math.floor(now/30000)),expiresAt:(Math.floor(now/30000)+2)*30000}}:{})},serverTime:now});
   }
   command(id:string,userId:string,input:Command):Lobby{
@@ -136,6 +141,15 @@ export class GameEngine {
     }
     if(l.status==='finished'&&!['leave','close'].includes(command.type))fail('MATCH_FINISHED','Dieses Match ist beendet.');
     switch(command.type){
+      case 'pause':this.host(l,userId);if(!['active','preparing'].includes(l.status))fail('NOT_ACTIVE','Dieses Match kann gerade nicht pausiert werden.');l.previousStatus=l.status as 'active'|'preparing';l.pausedAt=now;l.status='paused';l._engine.manualPause=true;l.players.forEach(player=>this.freezeOutside(l,player));this.event(l,'match_paused','Der Host hat das Match pausiert.',userId);break;
+      case 'resume':this.host(l,userId);if(l.status!=='paused')fail('NOT_PAUSED','Dieses Match ist nicht pausiert.');this.resumeLegacy(l);delete l._engine.manualPause;break;
+      case 'end':this.host(l,userId);if(!['active','preparing','paused'].includes(l.status))fail('NOT_ACTIVE','Kein aktives Match.');this.finish(l,'aborted','Der Host hat das Match ohne Wertung beendet.');break;
+      case 'draw_teams':this.host(l,userId);this.waiting(l);this.drawTeams(l);l.settings.randomRoles=false;l.players.forEach(player=>player.ready=false);this.event(l,'teams_drawn','Teams wurden auf dem Server ausgelost.',userId);break;
+      case 'chat':{if(!['waiting','preparing','active','paused'].includes(l.status))fail('CHAT_DISABLED','Der Chat ist geschlossen.');if(p.muted)fail('MUTED','Du bist in dieser Lobby stummgeschaltet.');const channel=command.channel==='all'?'all':teamChannel(p,l.settings);if(!channel||command.channel==='team'&&l.status==='waiting')fail('FORBIDDEN','Teamchat ist erst nach der endgültigen Rollenverteilung verfügbar.');l._engine.chatRate??={};const recent=(l._engine.chatRate[p.id]??[]).filter(t=>now-t<10000);if(recent.length>=5)fail('RATE_LIMIT','Bitte warte kurz vor der nächsten Nachricht.');l._engine.chatRate[p.id]=[...recent,now];l._engine.chat??=[];l._engine.chat.push({id:randomUUID(),actorId:p.id,username:p.username,avatar_url:p.avatar_url,text:command.text,channel,at:now});l._engine.chat=l._engine.chat.slice(-200);break;}
+      case 'mute':this.host(l,userId);this.member(l,command.playerId).muted=command.muted;break;
+      case 'xp_regenerate':this.host(l,userId);if(l.status!=='active'||!rules(l.settings).xpHunt)fail('XP_DISABLED','XP-Jagd ist nicht aktiv.');this.nextXp(l);break;
+      case 'xp_confirm':this.host(l,userId);if(l.status!=='active'||!l.xpHunt?.point||l.xpHunt.point.id!==command.pointId)fail('STALE_POINT','Dieser Punkt ist nicht mehr aktuell.');l.xpHunt.point.confirmed=true;l.xpHunt.message=undefined;this.event(l,'xp_point','Ein neuer XP-Punkt wurde freigegeben.',userId);break;
+      case 'xp_collect':this.collectXp(l,p,command.pointId);break;
       case 'ready':this.waiting(l);p.ready=command.ready;break;
       case 'settings':this.host(l,userId);this.waiting(l);if(command.settings.maxPlayers<l.players.length)fail('INVALID_SETTINGS','Das Spielerlimit ist kleiner als die aktuelle Spielerzahl.');l.settings=clone(command.settings);l.players.forEach(p=>p.ready=false);break;
       case 'zone':this.host(l,userId);this.waiting(l);try{l.zone=validateZone(command.zone);}catch(e){fail('INVALID_ZONE',e instanceof Error?e.message:'Ungültige Zone.');}l.players.forEach(p=>p.ready=false);break;
@@ -150,11 +164,41 @@ export class GameEngine {
       case 'location':this.location(l,p,command.location,command.publish??false);break;
       case 'capture':this.capture(l,p,command.targetId,command.code,command.qrToken);break;
       case 'confirm_capture':this.confirmCapture(l,p,command.captureId,command.accept);break;
-      case 'infection_ack':if(p.role!=='zombie'||p.infectedAt===undefined)fail('NOT_INFECTED','Du bist nicht infiziert.');l._engine.players[p.id].infectionAcknowledged=true;this.event(l,'infection_ack','Infektion bestätigt.',userId);break;
-      case 'heal':{this.host(l,userId);if(l.status!=='active'||!l.settings.allowHealing||!this.infectionMode(l))fail('HEALING_DISABLED','Heilung ist nicht verfügbar.');const target=this.member(l,command.playerId);if(target.role!=='zombie'||target.eliminated)fail('INVALID_TARGET','Nur aktive Zombies können geheilt werden.');target.role='hider';delete target.infectedAt;target.captureCode=this.code();l._engine.players[target.id].captureSecret=randomBytes(32).toString('base64url');target.nextPinAt=now+l.settings.pinIntervalSeconds*1000;l.pins=l.pins.filter(pin=>pin.playerId!==target.id);this.event(l,'healed',`${target.username} wurde geheilt.`,userId,target.id);break;}
+      case 'infection_ack':if(p.role!=='zombie'||p.infectedAt===undefined)fail('NOT_INFECTED','Du bist nicht infiziert.');l._engine.players[p.id].infectionAcknowledged=true;p.infectionPending=false;this.event(l,'infection_ack','Infektion bestätigt.',userId);break;
+      case 'heal':{this.host(l,userId);if(l.status!=='active'||!l.settings.allowHealing||!this.infectionMode(l))fail('HEALING_DISABLED','Heilung ist nicht verfügbar.');const target=this.member(l,command.playerId);if(target.role!=='zombie'||target.eliminated)fail('INVALID_TARGET','Nur aktive Zombies können geheilt werden.');target.role='hider';target.infectionPending=false;delete target.infectedAt;target.captureCode=this.code();l._engine.players[target.id].captureSecret=randomBytes(32).toString('base64url');target.nextPinAt=now+l.settings.pinIntervalSeconds*1000;l.pins=l.pins.filter(pin=>pin.playerId!==target.id);this.event(l,'healed',`${target.username} wurde geheilt.`,userId,target.id);break;}
     }
     if(l.status==='active')this.evaluate(l);
     return this.changed(l);
+  }
+
+  /** Trusted transport calls this with OSM-derived data; no client command accepts candidates. */
+  prepareXp(id:string,candidates:PathCandidate[]){this.get(id)._engine.xpCandidates=clone(candidates);}
+  private nextXp(l:EngineLobby){
+    l.xpHunt??={collected:0,byPlayer:{},generation:0};const previous=l.xpHunt.point??l._engine.xpPrevious;if(previous)l._engine.xpPrevious=previous;
+    const available=(l._engine.xpCandidates??[]).filter(c=>safeXpPosition(c,l.zone!,l.activeZone!,l.settings,previous));
+    delete l.xpHunt.point;l.xpHunt.generation++;
+    if(!available.length){l.xpHunt.message='Kein sicherer, ausreichend entfernter Punkt auf verfügbaren Fußwegen gefunden. Der Host kann Wegdaten erneut prüfen; es wird kein ungeprüfter Ersatzpunkt erzeugt.';return;}
+    const candidate=available[randomInt(available.length)];l.xpHunt.point={...candidate,id:randomUUID(),radiusMeters:({...DEFAULT_XP,...l.settings.xp}).radiusMeters,confirmed:false};l.xpHunt.message='Host-Bestätigung erforderlich: Wegzugang, Umgebung und sichere Erreichbarkeit vor Ort prüfen.';
+    this.event(l,'xp_candidate','Ein XP-Punkt wartet auf die Sicherheitsbestätigung des Hosts.');
+  }
+  private collectXp(l:EngineLobby,p:Player,id:string){
+    if(l.status!=='active'||!rules(l.settings).xpHunt)fail('XP_DISABLED','XP-Jagd ist nicht aktiv.');
+    if(p.role!=='hider'||p.eliminated||!p.connected)fail('INVALID_ROLE','Nur aktive Hider dürfen Punkte sammeln.');
+    const target=l.xpHunt?.point;if(!target||target.id!==id||!target.confirmed)fail('STALE_POINT','Dieser Punkt ist nicht aktiv oder noch nicht bestätigt.');
+    const loc=p.location,meta=l._engine.players[p.id],now=this.now();
+    if(!loc||!p.locationSharing||meta.unreliableLocation||now-loc.timestamp>10000||now-(meta.lastLocationAt??0)>10000)fail('GPS_REQUIRED','Zum Sammeln benötigst du einen aktuellen, genauen Standort.');
+    if(!safeXpPosition(target,l.zone!,l.activeZone!,l.settings))fail('UNSAFE_POINT','Dieser Punkt liegt nicht mehr im sicheren Spielgebiet.');
+    if(distance([loc.longitude,loc.latitude],[target.longitude,target.latitude],{units:'meters'})+loc.accuracy>target.radiusMeters)fail('TOO_FAR','Du musst mit deiner gesamten GPS-Genauigkeit innerhalb des Sammelradius stehen.');
+    const xp=l.xpHunt!;xp.collected++;xp.byPlayer[p.id]=(xp.byPlayer[p.id]??0)+1;xp.lastCollector=p.username;
+    l._engine.stats??={};l._engine.stats[p.id]??={captures:0,points:0};l._engine.stats[p.id].points++;
+    this.event(l,'xp_collected',`${p.username} hat einen XP-Punkt eingesammelt.`,p.id);
+    const config={...DEFAULT_XP,...l.settings.xp},complete=config.goal==='team'?xp.collected>=config.target:xp.byPlayer[p.id]>=config.target;
+    if(complete){delete xp.point;this.finish(l,'hiders','Das XP-Ziel wurde erreicht. Die Hider gewinnen.');}else this.nextXp(l);
+  }
+  private drawTeams(l:EngineLobby){
+    const participants=l.players.filter(p=>p.role!=='spectator');if(participants.length<=l.settings.hunterCount)fail('INVALID_ROLES','Es müssen Hunter und Hider übrig bleiben.');
+    if(l.settings.mode==='team_hunt'){if(participants.length<4||l.settings.hunterCount<2||l.settings.hunterCount>participants.length-2)fail('TEAM_REQUIREMENTS','Beide Teams benötigen Hunter und Hider.');const shuffledPlayers=shuffled(participants);shuffledPlayers.forEach((p,i)=>{p.team=i%2?'B':'A';p.role='hider';});for(const team of ['A','B'])participants.find(p=>p.team===team)!.role='hunter';let remaining=l.settings.hunterCount-2;for(const p of shuffled(participants))if(remaining&&p.role==='hider'&&participants.filter(x=>x.team===p.team&&x.role==='hider').length>1){p.role='hunter';remaining--;}}
+    else{const hunters=new Set(shuffled(participants).slice(0,l.settings.hunterCount).map(p=>p.id));participants.forEach(p=>p.role=hunters.has(p.id)?'hunter':'hider');}
   }
   private code():string{return String(randomInt(0,1_000_000)).padStart(6,'0');}
   private start(l:EngineLobby,userId:string):void{
@@ -182,10 +226,13 @@ export class GameEngine {
     if(hunters.length!==l.settings.hunterCount||!participants.some(p=>p.role==='hider'))fail('INVALID_ROLES','Die Rollenverteilung entspricht nicht der Hunter-Anzahl.');
     if((l.settings.mode==='last_survivor'||l.settings.winCondition==='last_hider')&&participants.filter(p=>p.role==='hider').length<2)fail('NOT_ENOUGH_HIDERS','Last Survivor benötigt mindestens zwei Hider.');
     if(l.settings.mode==='infection_rush'){l.settings.pinIntervalSeconds=Math.min(l.settings.pinIntervalSeconds,60);l.settings.infectionDelaySeconds=Math.min(l.settings.infectionDelaySeconds,5);}
+    let zonePhases:Feature<Polygon>[]|undefined;
+    if(rules(l.settings).apocalypse&&(l.zone.shrinkTarget||l.zone.randomCorners)){try{zonePhases=shrinkPlan(l.zone,l.settings.phases.map(p=>p.scale),()=>randomInt(0,0x100000000)/0x100000000);}catch(error){fail('INVALID_ZONE',error instanceof Error?error.message:'Die Schrumpfzonen sind ungültig.');}}
     const now=this.now();l.startedAt=now+l.settings.preparationSeconds*1000;l.endsAt=l.startedAt+l.settings.durationSeconds*1000;
     l._engine.hunterReleaseAt=l.startedAt+l.settings.headStartSeconds*1000;
-    l.status=l.settings.preparationSeconds?'preparing':'active';l.activeZone=clone(l.zone.feature);l.pins=[];l.captures=[];l._engine.phase=0;
+    l.status=l.settings.preparationSeconds?'preparing':'active';l.activeZone=clone(l.zone.feature);l.pins=[];l.captures=[];l._engine.phase=0;l._engine.zonePhases=zonePhases;
     for(const p of participants){p.eliminated=false;p.captureCode=this.code();p.nextPinAt=l._engine.hunterReleaseAt;delete p.location;delete p.outsideSince;delete p.infectedAt;delete p.outsideClockAt;p.outsideActive=false;p.returnPending=false;p.outsideElapsed=0;p.locationSharing=false;p.zoneStatus='uncertain';l._engine.players[p.id]={...metadata(),captureSecret:randomBytes(32).toString('base64url')};}
+    l._engine.stats=Object.fromEntries(participants.map(p=>[p.id,{captures:0,points:0}]));if(rules(l.settings).xpHunt){l.xpHunt={collected:0,byPlayer:{},generation:0};this.nextXp(l);}
     this.event(l,'match_started','Rollen verteilt. Achte auf deine Umgebung.',userId);
   }
   private resumeLegacy(l:EngineLobby):void{
@@ -203,7 +250,7 @@ export class GameEngine {
     if(l.hostId===p.id){const next=l.players.find(x=>x.id!==p.id&&x.connected&&!x.eliminated)??l.players.find(x=>x.id!==p.id&&x.connected);if(next)l.hostId=next.id;else{l.status='closed';this.purge(l);}}
     if(l.status==='paused'&&l.players.every(x=>!playing(x))) {l.status='closed';this.purge(l);}
   }
-  private infectionMode(l:Lobby){return l.settings.mode==='zombie'||l.settings.mode==='infection_rush'||l.settings.mode==='custom'&&l.settings.winCondition==='infection';}
+  private infectionMode(l:Lobby){return rules(l.settings).zombie;}
   private location(l:EngineLobby,p:Player,loc:LocationSample,_publish:boolean):void{
     if(!['preparing','active','paused'].includes(l.status)||!playing(p))fail('LOCATION_DISABLED','Standortfreigabe ist nur im laufenden Match möglich.');
     const now=this.now(),meta=l._engine.players[p.id],old=p.location;
@@ -243,10 +290,10 @@ export class GameEngine {
   }
   private boundary(l:EngineLobby,loc:LocationSample):'inside'|'outside'|'uncertain'{
     if(!l.activeZone)return 'uncertain';const pos=point([loc.longitude,loc.latitude]);
-    const polygons=[l.activeZone,...(l.zone?.excluded??[])];
+    const polygons=[l.activeZone,...activeExclusions(l.zone)];
     const nearBoundary=polygons.some(poly=>poly.geometry.coordinates.some(ring=>pointToLineDistance(pos,lineString(ring),{units:'meters'})<=loc.accuracy+5));
     if(nearBoundary)return 'uncertain';
-    if(!booleanPointInPolygon(pos,l.activeZone)||l.zone?.excluded.some(zone=>booleanPointInPolygon(pos,zone)))return 'outside';
+    if(!booleanPointInPolygon(pos,l.activeZone)||activeExclusions(l.zone).some(zone=>booleanPointInPolygon(pos,zone)))return 'outside';
     return 'inside';
   }
   private observeBoundary(l:EngineLobby,p:Player,loc:LocationSample):void{
@@ -270,6 +317,7 @@ export class GameEngine {
   private canHunt(l:EngineLobby,p:Player):void{
     if(l.status!=='active')fail('NOT_ACTIVE','Fangen ist nur im aktiven Match möglich.');
     if((l._engine.hunterReleaseAt??0)>this.now())fail('HEAD_START','Der Vorsprung der Hider läuft noch.');
+    if(p.infectionPending)fail('INFECTION_PENDING','Bestätige zuerst deine Wiederbelebung.');
     if(!hunting(p))fail('INVALID_ROLE','Nur aktive Hunter und Zombies dürfen fangen.');
     if(!p.connected)fail('DISCONNECTED','Verbinde dich erneut, um zu fangen.');
     if(p.role==='zombie'&&(p.infectedAt??this.now())+l.settings.infectionDelaySeconds*1000>this.now())fail('INFECTION_DELAY','Die Infektionszeit läuft noch.');
@@ -309,9 +357,10 @@ export class GameEngine {
   }
   private finishCapture(l:EngineLobby,actor:Player,target:Player):void{
     l.captures=l.captures.filter(c=>c.targetId!==target.id);l.pins=l.pins.filter(pin=>pin.playerId!==target.id);delete target.captureCode;delete l._engine.players[target.id].captureSecret;
+    l._engine.stats??={};l._engine.stats[actor.id]??={captures:0,points:0};l._engine.stats[actor.id].captures++;
     this.event(l,'capture',`${actor.username} hat ${target.username} gefangen.`,actor.id,target.id);
     if(this.infectionMode(l)){
-      target.role='zombie';target.infectedAt=this.now();target.nextPinAt=this.now()+l.settings.pinIntervalSeconds*1000;delete target.outsideSince;
+      target.role='zombie';target.infectionPending=!!l.settings.rules;delete target.location;target.locationSharing=false;target.infectedAt=this.now();target.nextPinAt=this.now()+l.settings.pinIntervalSeconds*1000;delete target.outsideSince;
       l._engine.players[target.id]=metadata();this.event(l,'infection',`${target.username} wurde infiziert.`,actor.id,target.id);
     }else this.eliminate(l,target,'captured','Gefangen.',actor.id);
   }
@@ -323,7 +372,7 @@ export class GameEngine {
   }
   private purge(l:EngineLobby):void{l.pins=[];l.captures=[];for(const p of l.players){p.outsideActive=false;p.returnPending=false;delete p.outsideClockAt;delete p.location;delete p.captureCode;delete l._engine.players[p.id].captureSecret;delete p.outsideSince;delete p.nextPinAt;}}
   private finish(l:EngineLobby,winner:string,reason:string):void{
-    l.result={winner,reason,endedAt:this.now(),survivors:l.players.filter(p=>playing(p)&&p.role==='hider').map(p=>p.id)};l.status='finished';this.purge(l);this.event(l,'match_finished',reason);
+    l.result={winner,reason,endedAt:this.now(),survivors:l.players.filter(p=>playing(p)&&p.role==='hider').map(p=>p.id)};l.status='finished';this.purge(l);l._engine.chat=[];this.event(l,'match_finished',reason);
   }
   private evaluate(l:EngineLobby):void{
     const hiders=l.players.filter(p=>playing(p)&&p.role==='hider'),hunters=l.players.filter(hunting),timeout=this.now()>=(l.endsAt??Infinity);
@@ -338,7 +387,7 @@ export class GameEngine {
     if(!hiders.length){this.finish(l,this.infectionMode(l)?'infected':'hunters',this.infectionMode(l)?'Alle Hider wurden infiziert oder sind ausgeschieden.':'Alle Hider wurden gefangen oder sind ausgeschieden.');return;}
     if((l.settings.mode==='last_survivor'||l.settings.mode==='custom'&&l.settings.winCondition==='last_hider')&&hiders.length===1){this.finish(l,hiders[0].id,'Der letzte Hider gewinnt.');return;}
     if(!hunters.length){this.finish(l,'hiders','Keine aktiven Hunter mehr. Die Hider gewinnen.');return;}
-    if(timeout)this.finish(l,'hiders','Zeitlimit erreicht. Die verbliebenen Hider gewinnen.');
+    if(timeout){const winner=rules(l.settings).xpHunt?({...DEFAULT_XP,...l.settings.xp}).timeout:'hiders';this.finish(l,winner,winner==='draw'?'Zeitlimit: XP-Ziel nicht erreicht. Unentschieden.':'Zeitlimit erreicht.');}
   }
   tick():Lobby[]{
     const changes:Lobby[]=[],now=this.now();
@@ -356,13 +405,15 @@ export class GameEngine {
         }
       }
       if(l.status==='active'){
-        if(l.settings.mode==='apocalypse'||l.settings.mode==='custom'){
+        if(rules(l.settings).apocalypse){
           const elapsed=(now-(l.startedAt??now))/1000;let phase=0;l.settings.phases.forEach((p,i)=>{if(elapsed>=p.afterSeconds)phase=i;});
           if(phase!==l._engine.phase){
-            const scaled=transformScale(clone(l.zone!.feature),l.settings.phases[phase].scale);
-            const clipped=intersect(featureCollection([scaled,l.zone!.feature]));
+            const planned=l._engine.zonePhases?.[phase];
+            const scaled=planned??transformScale(clone(l.zone!.feature),l.settings.phases[phase].scale);
+            const clipped=planned?clone(planned):intersect(featureCollection([scaled,l.zone!.feature]));
             if(!clipped){l._engine.phase=phase;this.event(l,'unsafe_zone','Verkleinerung übersprungen: Die bisherige sichere Zone bleibt bestehen.');}
             else{l.activeZone=clipped.geometry.type==='Polygon'?clipped as Feature<Polygon>:clipped.geometry.coordinates.map(c=>polygon(c)).sort((a,b)=>area(b)-area(a))[0];l._engine.phase=phase;this.event(l,'zone_shrunk',`Zone verkleinert: Phase ${phase+1}.`);for(const p of l.players)this.freezeOutside(l,p);}
+            if(rules(l.settings).xpHunt&&l.xpHunt?.point&&!safeXpPosition(l.xpHunt.point,l.zone!,l.activeZone!,l.settings))this.nextXp(l);
             changed=true;
           }
         }

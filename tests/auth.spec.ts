@@ -52,7 +52,7 @@ test('cancelled OAuth returns to a recoverable login screen',async({page})=>{
  await page.route(`${origin}/**`,route=>route.abort());
  await page.goto('/auth/callback?error=access_denied&error_description=User%20cancelled');
  await expect(page.getByRole('heading',{name:'Anmeldung abschließen'})).toBeVisible();
- await expect(page.getByRole('alert')).toContainText('Die Google-Anmeldung wurde abgebrochen');
+ await expect(page.getByRole('alert')).toContainText('Die Anmeldung wurde abgebrochen');
  await page.getByRole('link',{name:'Zur Anmeldung',exact:true}).click();
  await expect(page.getByRole('button',{name:'Mit E-Mail anmelden',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:/Google/})).toHaveCount(0);
@@ -62,7 +62,7 @@ test('cancelled OAuth returns to a recoverable login screen',async({page})=>{
 test('provider callback failure is explained without exposing raw OAuth details',async({page})=>{
  await page.route(`${origin}/**`,route=>route.abort());
  await page.goto('/auth/callback#error=server_error&error_code=unexpected_failure&error_description=Unable%20to%20exchange%20external%20code%3A%20isolated-sensitive-code');
- await expect(page.getByRole('alert')).toContainText('Die Google-Verbindung muss vom Betreiber geprüft werden');
+ await expect(page.getByRole('alert')).toContainText('Melde dich mit deiner bisherigen E-Mail-Adresse an');
  await expect(page.getByText(/isolated-sensitive-code/)).toHaveCount(0);
  await expect(page).toHaveURL(/\/auth\/callback\/?$/);
  await expect(page.getByRole('heading',{name:'Anmeldung erfolgreich.'})).toHaveCount(0);

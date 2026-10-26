@@ -15,6 +15,6 @@ const db=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false
 Deno.serve(createEdgeHandler({
   repository:new SupabaseRepository(db),store:new SupabaseEdgeStore(db),
   verify:token=>authenticate(token,db),
-  push:new SupabasePushService(db,'https://manhunt-fieldgame.scobione.chatgpt.site',`${url}/functions/v1/manhunt-api/api/push/dispatch`),
-  origins:['https://manhunt-fieldgame.scobione.chatgpt.site'],
+  push:new SupabasePushService(db,'https://manhunt-pwa.vercel.app',`${url}/functions/v1/manhunt-api/api/push/dispatch`),
+  origins:['https://manhunt-fieldgame.scobione.chatgpt.site','https://manhunt-pwa.vercel.app','https://manhunt-pwa-djj10-4253.vercel.app'],
 }));
