@@ -112,3 +112,13 @@ test('a hunter scans the hiders actual rendered QR and captures without a reques
   await expect(guest.page.getByRole('button',{name:'Fang bestätigen'})).toHaveCount(0);
  }finally{await host.context.close();await guest.context.close();}
 });
+
+test('QR-REGRESSION: a responsive screenshot with rounded module pixels reaches the validated join API',async({browser})=>{
+ const guest=await actor(browser,'QrRounding');try{
+  await guest.page.goto('/join');await guest.page.getByRole('button',{name:'Lobby-QR scannen'}).click();
+  const sent=guest.page.waitForRequest(r=>r.url().endsWith('/api/events')&&r.method()==='POST'&&r.postDataJSON()?.event==='lobby:join');
+  // Previously failed screenshot from an isolated CI lobby, no production data.
+  await guest.page.getByLabel('QR-Bild auswählen').setInputFiles('tests/fixtures/lobby-qr-pixel-rounding.png');
+  expect((await sent).postDataJSON().data.code).toBe('PPHBR7');
+ }finally{await guest.context.close();}
+});

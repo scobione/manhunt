@@ -6,7 +6,13 @@ test('production landing, all modes and privacy pages render without browser err
  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
  await page.goto('/');await expect(page.getByRole('heading',{name:'Raus aus dem Alltag.',exact:true})).toBeVisible();
  if(process.env.PUBLIC_URL)await expect(page.getByText('Spielserver verbunden.')).toBeVisible();
- await expect(page.locator('.sidebar-foot')).toContainText(version.endsWith('-beta')?'b.'+version.slice(0,-5):`V${version}`);
+ const expectedVersion=version.endsWith('-beta')?'b.'+version.slice(0,-5):`V${version}`;
+ if(process.env.PUBLIC_URL){
+  test.setTimeout(240000);
+  // A Git push starts this workflow and the Vercel build concurrently. Wait for
+  // the requested version, then run assertions against the published frontend.
+  await expect.poll(async()=>{await page.reload();return await page.locator('.sidebar-foot').textContent();},{timeout:180000,intervals:[2000,5000,10000]}).toContain(expectedVersion);
+ }else await expect(page.locator('.sidebar-foot')).toContainText(expectedVersion);
  await page.screenshot({path:'test-results-public/public-desktop.png',fullPage:true});
  await page.goto('/modes');await expect(page.locator('.all-modes article')).toHaveCount(8);
  await page.goto('/login');await expect(page.getByTestId('test-login')).toHaveCount(0);
