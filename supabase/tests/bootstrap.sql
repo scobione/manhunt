@@ -3,10 +3,12 @@
 create role anon nologin;
 create role authenticated nologin;
 create role service_role nologin bypassrls;
+create role supabase_auth_admin nologin;
 create schema auth;
 create schema storage;
-grant usage on schema public,auth,storage to anon,authenticated,service_role;
+grant usage on schema public,auth,storage to anon,authenticated,service_role,supabase_auth_admin;
 create table auth.users(id uuid primary key, is_anonymous boolean not null default false, raw_user_meta_data jsonb not null default '{}'::jsonb);
+grant select,delete on auth.users to supabase_auth_admin;
 create function auth.uid() returns uuid language sql stable as $$
  select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid;
 $$;

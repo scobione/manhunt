@@ -287,3 +287,18 @@ describe('account XP and team notices acceptance',()=>{
   const jobs=await db.query<{user_id:string;payload:any}>('select user_id,payload from push_jobs where kind=\'chat\'');expect(jobs.rows.map(x=>x.user_id)).toEqual([c]);expect(JSON.stringify(jobs.rows)).not.toContain('secret');
  });
 });
+
+describe('actual Supabase Auth role boundaries',()=>{
+ it('AUTH-09: Auth user deletion cascades under auth_admin without exposing game state',async()=>{
+  await befriend();const before=(await rpc('edge_snapshot',[])).rows[0].value as {socialRevision:number};
+  await db.exec('set role supabase_auth_admin');
+  try{await expect(db.query('select state from game_checkpoints')).rejects.toThrow(/permission denied/);await db.query('delete from auth.users where id=$1',[b]);}finally{await db.exec('reset role');}
+  expect((await db.query('select id from profiles where id=$1',[b])).rows).toHaveLength(0);expect(((await rpc('edge_snapshot',[])).rows[0].value as {socialRevision:number}).socialRevision).toBeGreaterThan(before.socialRevision);
+  await expect(userRole(a,'update edge_runtime set social_revision=0')).rejects.toThrow(/permission denied/);
+ });
+ it('LEVEL-03: erasing a finished match never re-awards XP or requires direct auth-table access',async()=>{
+  const l=state();l.startedAt=Date.now()-600000;l.status='finished';l.result={winner:'hiders',reason:'Test',endedAt:Date.now(),survivors:[b]};(l as any)._engine={stats:{[b]:{captures:0,points:3}},leftIds:[]};await rpc('save_game_checkpoint',[l]);
+  await db.exec('set role service_role');try{await expect(db.query('select is_anonymous from auth.users')).rejects.toThrow(/permission denied/);}finally{await db.exec('reset role');}
+  await rpc('delete_account',[b]);expect((await db.query('select amount from xp_rewards where user_id=$1',[b])).rows).toEqual([{amount:85}]);
+ });
+});

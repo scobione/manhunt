@@ -43,3 +43,12 @@ it('XPJ-14: an apocalypse phase invalidates an active outer point and preserves 
 it('MODE-10: pending infection cannot read published hider pins; healing restores hider permissions',()=>{
  const l=game({zombie:true,apocalypse:false,xpHunt:false},false);send(l,1,{type:'settings',settings:{...l.settings,allowHealing:true}});[1,2,3,4].forEach(n=>send(l,n,{type:'ready',ready:true}));send(l,1,{type:'start'});fix(l,3);expect(e.view(l.id,uid(1)).pins.length).toBeGreaterThan(0);capture(l,1,2);expect(e.view(l.id,uid(2)).pins).toEqual([]);send(l,1,{type:'heal',playerId:uid(2)});expect(e.view(l.id,uid(2)).self.infectionPending).toBe(false);send(l,2,{type:'chat',channel:'team',text:'Healed hider'});expect(e.view(l.id,uid(3)).chat?.at(-1)?.text).toBe('Healed hider');
 });
+it('ZONE-09 ZONE-10 ZONE-11 ZONE-12 ZONE-13: exclusions count only reliable time, clear on return and eliminate at expiry',()=>{
+ const l=game(undefined,false),z={...zone(),excluded:[circle([13.4,52.5],.08)]};send(l,1,{type:'zone',zone:z});send(l,1,{type:'settings',settings:{...l.settings,outsideGraceSeconds:15}});[1,2,3,4].forEach(n=>send(l,n,{type:'ready',ready:true}));send(l,1,{type:'start'});
+ fix(l,2);expect(e.view(l.id,uid(2)).self.outsideActive).toBe(true);const first=e.view(l.id,uid(2)).self.outsideSince;expect(first).toBe(now);now+=2000;rejected(()=>fix(l,2,paths[0],500),'GPS_UNCERTAIN');expect(l.players[1].eliminated).toBe(false);
+ now+=60000;fix(l,2,paths[1]);now+=2000;fix(l,2,paths[1]);expect(e.view(l.id,uid(2)).self.outsideActive).toBe(false);expect(l.players[1].outsideElapsed).toBe(0);
+ now+=60000;fix(l,2);for(let i=0;i<3;i++){now+=5000;fix(l,2);}expect(l.players[1].eliminated).toBe(true);expect(l.events.some(event=>event.type==='zone_elimination')).toBe(true);
+});
+it('LOBBY-09: only host pauses, paused time does not advance, resume persists once',()=>{
+ const l=game(),end=l.endsAt!;rejected(()=>send(l,2,{type:'pause'}),'HOST_ONLY');send(l,1,{type:'pause'});now+=30000;e.tick();expect(l.status).toBe('paused');expect(l.endsAt).toBe(end);e.restore(e.snapshot());expect(e.view(l.id,uid(3)).status).toBe('paused');send(e.lobbies.get(l.id)!,1,{type:'resume'});expect(e.lobbies.get(l.id)!.endsAt).toBe(end+30000);expect(e.view(l.id,uid(3)).status).toBe('active');
+});
