@@ -107,7 +107,12 @@ test('a hunter scans the hiders actual rendered QR and captures without a reques
   for(const p of [host,guest])await command(p.page,p.token,{type:'ready',ready:true});await command(host.page,host.token,{type:'start'});
   await guest.page.goto('/game');await host.page.goto('/game');await guest.page.getByRole('button',{name:'Fang-QR anzeigen'}).click();
   const image=guest.page.getByRole('img',{name:'Dein persönlicher Fang-QR-Code'});await expect(image).toBeVisible();await image.evaluate(async e=>{await (e as HTMLImageElement).decode();e.scrollIntoView({block:'center'});});const buffer=await image.screenshot({animations:'disabled'});await test.info().attach('rendered-qr',{body:buffer,contentType:'image/png'});
-  await host.page.getByRole('button',{name:'Fang-QR scannen',exact:true}).click();await host.page.getByLabel('QR-Bild auswählen').setInputFiles({name:'isolated-capture-qr.png',mimeType:'image/png',buffer});
+  await host.page.getByRole('button',{name:'Fang-QR scannen',exact:true}).click();
+  // Failed CI raster, from an expired isolated test lobby. It must decode but
+  // cannot authorize a capture in this match (no production credentials).
+  await host.page.getByLabel('QR-Bild auswählen').setInputFiles('tests/fixtures/capture-qr-pixel-rounding.png');
+  await expect(host.page.getByRole('alert')).toHaveText('Kein gültiger Fang-QR-Code aus diesem Match.');
+  await host.page.getByLabel('QR-Bild auswählen').setInputFiles({name:'isolated-capture-qr.png',mimeType:'image/png',buffer});
   await expect(host.page.getByRole('heading',{name:'DIE HUNTER GEWINNEN'})).toBeVisible();await expect(guest.page.getByRole('heading',{name:'DIE HUNTER GEWINNEN'})).toBeVisible();
   await expect(guest.page.getByRole('button',{name:'Fang bestätigen'})).toHaveCount(0);
  }finally{await host.context.close();await guest.context.close();}
