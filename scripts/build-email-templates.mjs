@@ -1,5 +1,5 @@
 import {writeFile,mkdir} from 'node:fs/promises';
-const origin='https://manhunt-fieldgame.scobione.chatgpt.site';
+const origin='https://manhunt-pwa.vercel.app';
 const designs=[
  {name:'confirmation',setting:'confirmation',subject:'Bestätige deine E-Mail für MANHUNT',label:'E-MAIL BESTÄTIGEN',title:'Dein Zugang zum Spielfeld.',text:'Gib diesen Code in MANHUNT ein, um deine E-Mail-Adresse zu bestätigen. Zeige oder sende den Code niemandem.',code:true,button:'E-Mail bestätigen'},
  {name:'recovery',setting:'recovery',subject:'Dein neues MANHUNT-Passwort',label:'PASSWORT ZURÜCKSETZEN',title:'Wieder bereit für draußen.',text:'Du hast ein neues Passwort angefordert. Öffne den sicheren Link und lege dein neues Passwort fest.',button:'Neues Passwort festlegen'},

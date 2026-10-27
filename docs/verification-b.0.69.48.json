@@ -127,10 +127,10 @@
       "url": "https://manhunt-pwa.vercel.app"
     },
     "sites": {
-      "id": "appgdep_6adfcbd5c6948191b0a719314aaa08ff",
+      "id": "appgdep_6ae040ed054481919f4e7fea88ac244e",
       "status": "succeeded",
       "url": "https://manhunt-fieldgame.scobione.chatgpt.site",
-      "version": 13
+      "version": 14
     }
   },
   "ci": {
@@ -145,6 +145,12 @@
       "status": "success",
       "url": "https://github.com/scobione/manhunt/actions/runs/40458432815"
     },
-    "note": "The later documentation commit adds one public QR regression; that new test passed locally and on the production site before publication."
+    "note": "The final report commit including the additional public QR regression passed the complete CI. Subsequent static email URL/icon changes were separately built and checked.",
+    "final_report_run": {
+      "id": 40458961978,
+      "commit": "19e868b0f94c5874f744a75a65a1f840be32d276",
+      "status": "success",
+      "url": "https://github.com/scobione/manhunt/actions/runs/40458961978"
+    }
   }
 }

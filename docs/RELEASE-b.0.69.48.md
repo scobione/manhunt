@@ -18,6 +18,8 @@ MANHUNT läuft auf **https://manhunt-pwa.vercel.app**, mit dem bestehenden Supab
 - Kontolöschung unter der echten Supabase-Auth-Rolle repariert, ohne Zugriff auf private Spielzustände zu erweitern. Wiederholte Änderungen fertiger Checkpoints vergeben keine XP erneut.
 - QR-Codes werden als scharfe SVG-Grafiken dargestellt. Ein zweiter lokaler Bilddecoder liest schwierige mobile Screenshots. Zwei konkrete CI-Fehlerbilder, neun wiederholte QR-Testläufe und der öffentliche Vercel-Scanner sind geprüft; Fremdmatch-Codes bleiben gesperrt.
 
+Die E-Mail-Vorlagen verweisen auf das Logo auf Vercel. Die alte Domain liefert ihre bisherigen Icons weiterhin, damit auch ältere E-Mails ihre Bilder behalten. Vorschau: https://manhunt-pwa.vercel.app/email-templates/.
+
 ## Nachweise und Grenzen
 
 190 Unit-/API-/Engine-/PostgreSQL-Tests und 52 verschiedene lokale Browserfälle bestanden. Browserprüfungen umfassen Socket.IO, Edge-Synchronisierung, mehrere getrennte Sitzungen, lokale Auth-Testantworten, Touch-Eingabe und Weiterleitung. Die [maschinelle Ergebnissammlung](verification-b.0.69.48.json) und der [Bericht je Test-ID](ACCEPTANCE-b.0.69.48.md) trennen Simulation und tatsächliche Integration.

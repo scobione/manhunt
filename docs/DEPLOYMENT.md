@@ -46,4 +46,6 @@ Keine kostenpflichtigen Ressourcen wurden für diese Migration beauftragt. Es ge
 
 Geprüftes Vercel-Produktionsdeployment `dpl_HpzkGawe4L4XDqArTR2HW68fx6XV`, App-Code `d7c725407287e2862cfee0fc8f3804aa784f31ab`, READY. Das Vercel-Plugin wurde für Preview und Produktion tatsächlich verwendet. Git-verknüpfte Neubauten wurden ebenfalls nachgewiesen.
 
-Sites-Version 13, Deployment `appgdep_6adfcbd5c6948191b0a719314aaa08ff`, succeeded. Die öffentliche alte Domain wurde erst nach erfolgreichen Produktions-Browser- und Multiplayer-Prüfungen umgestellt. Vier Online-Weiterleitungstests und zwei echte Navigationen (10 Sekunden und Sofort-Button) bestanden. Die Weiterleitung verwendet ausschließlich https://manhunt-pwa.vercel.app.
+Sites-Version 14, Deployment `appgdep_6ae040ed054481919f4e7fea88ac244e`, succeeded. Die öffentliche alte Domain wurde erst nach erfolgreichen Produktions-Browser- und Multiplayer-Prüfungen umgestellt. Vier Online-Weiterleitungstests und zwei echte Navigationen (10 Sekunden und Sofort-Button) bestanden. Die Weiterleitung verwendet ausschließlich https://manhunt-pwa.vercel.app.
+
+Bereits versendete E-Mails verwenden teilweise das Logo auf der alten Domain. Das Weiterleitungsartefakt liefert deshalb weiterhin `icon-192.png` und `icon-512.png`. Neue Vorlagendateien verwenden Vercel; der bestehende Supabase-Mailinhalt wurde über die Integration nicht geändert. Authentifizierungslinks bleiben Supabase-Platzhalter und werden nicht durch eigene Zugangstokens ersetzt.

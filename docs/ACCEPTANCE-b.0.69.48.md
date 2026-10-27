@@ -14,7 +14,7 @@ Simulierte GPS-Koordinaten wurden ausschließlich in automatisierten, gekennzeic
 
 190 Unit-/Integrationstests und 52 verschiedene lokale Browserfälle sind bestanden: 8 Socket.IO, 22 Edge, 18 Oberfläche/Auth und 4 Weiterleitung. Der vollständige 22er-Edge-Lauf einschließlich Offline-XP-Wiederverbindung ist bestanden. Zusätzlich bestanden 4 öffentliche Produktionstests, 4 veröffentlichte Weiterleitungstests und zwei Navigationen mit echter Wartezeit/echtem Ziel. Mobile Viewports ersetzen keine Geräteprüfung. [Rohzusammenfassung](verification-b.0.69.48.json); [maschinenlesbare Testmatrix](acceptance-b.0.69.48.json).
 
-Der vollständige [GitHub-CI-Lauf des App-Codes](https://github.com/scobione/manhunt/actions/runs/40458432717) und der [öffentliche CI-Browserlauf](https://github.com/scobione/manhunt/actions/runs/40458432815) sind erfolgreich. Der danach ergänzte öffentliche QR-Regressionstest wurde zusätzlich lokal und auf Vercel ausgeführt. App-Code: `d7c725407287e2862cfee0fc8f3804aa784f31ab`; spätere Dokumentationsänderungen verändern das Produktverhalten nicht.
+Der vollständige [GitHub-CI-Lauf des App-Codes](https://github.com/scobione/manhunt/actions/runs/40458432717) und der [öffentliche CI-Browserlauf](https://github.com/scobione/manhunt/actions/runs/40458432815) sind erfolgreich. Der danach ergänzte öffentliche QR-Regressionstest wurde zusätzlich lokal und auf Vercel ausgeführt. Auch der [Abschlusscommit mit zusätzlichem QR-Test](https://github.com/scobione/manhunt/actions/runs/40458961978) hat den vollständigen CI-Lauf bestanden. App-Code: `d7c725407287e2862cfee0fc8f3804aa784f31ab`; spätere Dokumentationsänderungen verändern das Produktverhalten nicht.
 
 ## Behobene Fehler während der Prüfung
 
@@ -24,6 +24,8 @@ Der vollständige [GitHub-CI-Lauf des App-Codes](https://github.com/scobione/man
 - GitHub-Publikationstest lief vor dem Deployment: erwartet jetzt die veröffentlichte Versionsnummer, bevor er die Seite prüft.
 - Zwei unterschiedliche mobile QR-Screenshot-Raster verursachten Decoderfehler in GitHub CI. Die erste reine Skalierungskorrektur reichte für dichte Fangcodes nicht aus. QR-Darstellung auf SVG umgestellt, begrenzte lokale Pixelauswertung mit zweitem Decoder ergänzt. Beide konkreten Fehlerbilder, neun wiederholte QR-Browserfälle und der vollständige Edge-Lauf bestanden. Ein alter Fremdmatch-Code bleibt abgewiesen. Der zusätzliche öffentliche Scanner-Test bestand auch auf Vercel ohne Anlage eines Kontos.
 - Lokale Sandbox ohne Loopback-Netzfreigabe verhinderte zuerst 16 API-Tests; nach korrekter Umgebung alle bestanden. Ein Mehrbrowserlauf überschritt unter paralleler Last sein Zeitlimit; separater Lauf und abschließender Gesamt-Edge-Lauf bestanden. Diese früheren Fehlläufe sind nicht als verschwundene Produktfehler gezählt.
+
+Die anschließende statische Migrationskorrektur stellt neue E-Mail-Logos auf Vercel um und liefert ältere Logo-URLs auf Sites weiter aus. Der Build und alle vier Tests des aktualisierten Weiterleitungsartefakts sind bestanden. Eine tatsächliche E-Mail-Zustellung wird daraus nicht abgeleitet.
 
 ## Einzelergebnisse
 
