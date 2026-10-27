@@ -1,6 +1,6 @@
 # Deployment: Vercel und Supabase
 
-Stand: 26.10.2026, Freigabeprüfung läuft. Dies ist keine Zusage einer vollständig bestandenen Abnahme.
+Stand: 27.10.2026, b.0.69.48 veröffentlicht; 126/134 Akzeptanz-IDs bestanden, 8 blockiert.
 
 - Produktionsdomain: https://manhunt-pwa.vercel.app
 - Vercel-Projekt: `manhunt-pwa`, Hobby; GitHub `scobione/manhunt`, Produktion `main`.
@@ -8,7 +8,7 @@ Stand: 26.10.2026, Freigabeprüfung läuft. Dies ist keine Zusage einer vollstä
 - API: https://dxoleuqmhcnqnjyqdqvw.supabase.co/functions/v1/manhunt-api
 - Bisherige Website: https://manhunt-fieldgame.scobione.chatgpt.site
 
-Die erste Vercel-Bereitstellung enthält noch b.0.69.47. b.0.69.48 wird zunächst auf einem separaten Branch getestet. Die alte Seite bleibt bis zum bestandenen Vercel-Live-Test unverändert. Veröffentlichte Versionen und Testergebnisse werden nach der Bereitstellung ergänzt.
+b.0.69.48 wurde als geschützte Vorschau geprüft und auf der Produktionsdomain veröffentlicht. Tatsächliche Bereitstellungen und verbleibende Abnahmegrenzen stehen im [Releasebericht](RELEASE-b.0.69.48.md). Die Produktion verwendet den bestehenden Supabase-Server, Version 9, mit 29 RLS-geschützten Anwendungstabellen.
 
 ## Konfiguration
 
@@ -41,3 +41,9 @@ PWAs können im Hintergrund angehalten werden. Push benötigt die ausdrückliche
 Die Wegdatenprüfung kann bei Ausfall oder Ablehnung des öffentlichen Overpass-Dienstes keinen XP-Punkt liefern. Es gibt keinen ungeprüften Ersatzpunkt. OSM ist keine verbindliche Auskunft über aktuelle Gefahren oder Betretungsrechte; jeder Kandidat muss vor Ort vom Host bestätigt werden.
 
 Keine kostenpflichtigen Ressourcen wurden für diese Migration beauftragt. Es gelten die jeweils aktuellen Kontingente der Anbieter; Lasttests im großen Maßstab wurden nicht auf den kostenlosen Produktionsdiensten durchgeführt.
+
+## Veröffentlichungsnachweis
+
+Geprüftes Vercel-Produktionsdeployment `dpl_HpzkGawe4L4XDqArTR2HW68fx6XV`, App-Code `d7c725407287e2862cfee0fc8f3804aa784f31ab`, READY. Das Vercel-Plugin wurde für Preview und Produktion tatsächlich verwendet. Git-verknüpfte Neubauten wurden ebenfalls nachgewiesen.
+
+Sites-Version 13, Deployment `appgdep_6adfcbd5c6948191b0a719314aaa08ff`, succeeded. Die öffentliche alte Domain wurde erst nach erfolgreichen Produktions-Browser- und Multiplayer-Prüfungen umgestellt. Vier Online-Weiterleitungstests und zwei echte Navigationen (10 Sekunden und Sofort-Button) bestanden. Die Weiterleitung verwendet ausschließlich https://manhunt-pwa.vercel.app.

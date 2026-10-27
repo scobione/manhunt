@@ -67,3 +67,15 @@ test('mobile production layout and PWA metadata work without test login',async({
  await page.goto('/login');await expect(page.getByTestId('test-login')).toHaveCount(0);
  await page.screenshot({path:'test-results-public/public-mobile.png',fullPage:true});
 });
+
+test('public guest QR scanner reads a dense screenshot and rejects it before creating a session',async({page})=>{
+ const signupRequests:string[]=[];
+ page.on('request',request=>{if(request.url().includes('/auth/v1/signup'))signupRequests.push(request.url());});
+ await page.goto('/join');await page.getByLabel('Dein Gastname').fill('QrCheck');
+ await page.getByRole('button',{name:'Lobby-QR scannen',exact:true}).click();
+ // Expired capture QR from an isolated CI match: pixels must decode, but its
+ // contents must never be accepted as a join URL or trigger an anonymous signup.
+ await page.getByLabel('QR-Bild auswählen').setInputFiles('tests/fixtures/capture-qr-pixel-rounding.png');
+ await expect(page.getByRole('alert')).toHaveText('Das ist kein Lobby-QR-Code dieser MANHUNT-App.');
+ expect(signupRequests).toEqual([]);
+});

@@ -1,0 +1,150 @@
+{
+  "date": "2026-10-27",
+  "application_commit": "d7c725407287e2862cfee0fc8f3804aa784f31ab",
+  "unit_integration": {
+    "total": 190,
+    "passed": 190,
+    "failed": 0
+  },
+  "browser_suites": {
+    "socket": {
+      "passed": 8
+    },
+    "edge": {
+      "passed": 22,
+      "note": "Full suite passed after SVG and pixel decoder fix; includes offline XP reconnect."
+    },
+    "public_local": {
+      "passed": 18,
+      "note": "14 isolated auth response scenarios and 4 production-bundle checks"
+    },
+    "redirect_local": {
+      "passed": 4,
+      "note": "Navigation destination intercepted; mobile sizes emulate viewports, not physical devices"
+    },
+    "public_production": {
+      "passed": 4
+    },
+    "redirect_published": {
+      "passed": 4,
+      "actual_destination_navigations": 2
+    },
+    "qr_repeated": {
+      "passed": 9,
+      "note": "Three real QR flows repeated three times; already included in unique Edge count."
+    }
+  },
+  "audit_production_dependencies": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "live_production": {
+    "url": "https://manhunt-pwa.vercel.app",
+    "at": "2026-10-26T21:40:59.123Z",
+    "results": [
+      {
+        "id": "DEPLOY-07-health",
+        "status": "BESTANDEN",
+        "detail": "Live API, version and exact frontend CORS"
+      },
+      {
+        "id": "LIVE-FIXTURE",
+        "status": "BESTANDEN",
+        "detail": "Authenticated real guest host uses isolated server-seeded private test lobby; this does not test registered host creation"
+      },
+      {
+        "id": "AUTH-05-live",
+        "status": "BESTANDEN",
+        "detail": "Two independent browser sessions join using actual Supabase anonymous sign-in"
+      },
+      {
+        "id": "DEPLOY-06",
+        "status": "BESTANDEN",
+        "detail": "Three real online sessions synchronize lobby membership"
+      },
+      {
+        "id": "XPJ-04-live",
+        "status": "BLOCKIERT",
+        "detail": "Kein sicherer, ausreichend entfernter Punkt auf verfügbaren Fußwegen gefunden. Der Host kann Wegdaten erneut prüfen; es wird kein ungeprüfter Ersatzpunkt erzeugt."
+      },
+      {
+        "id": "CHAT-03-live",
+        "status": "BESTANDEN",
+        "detail": "Live Hider message reaches teammate, absent from Hunter view"
+      },
+      {
+        "id": "MAP-01-live",
+        "status": "BESTANDEN",
+        "detail": "Consenting Hider teammate visible; Hunter gets released pin only"
+      },
+      {
+        "id": "MODE-10-live",
+        "status": "BESTANDEN",
+        "detail": "Live capture/swipe changes team and revokes old protected chat"
+      },
+      {
+        "id": "LOBBY-09-live",
+        "status": "BESTANDEN",
+        "detail": "Host pause/resume and reload preserve actual online match"
+      },
+      {
+        "id": "LOBBY-10-live",
+        "status": "BESTANDEN",
+        "detail": "Host end is unscored and synchronized"
+      },
+      {
+        "id": "AUTH-02-live",
+        "status": "BESTANDEN",
+        "detail": "Supabase Google provider disabled and direct OAuth rejected"
+      }
+    ]
+  },
+  "limits": [
+    "No real email redemption or former-Google-account recovery tested",
+    "No physical device GPS, push or installation test",
+    "XP path generation has no positive live evidence"
+  ],
+  "acceptance": {
+    "total": 134,
+    "passed": 126,
+    "failed": 0,
+    "blocked": 8,
+    "not_run": 0
+  },
+  "additional_stress": {
+    "total": 12,
+    "passed": 12,
+    "failed": 0
+  },
+  "deployments": {
+    "vercel": {
+      "id": "dpl_HpzkGawe4L4XDqArTR2HW68fx6XV",
+      "status": "READY",
+      "url": "https://manhunt-pwa.vercel.app"
+    },
+    "sites": {
+      "id": "appgdep_6adfcbd5c6948191b0a719314aaa08ff",
+      "status": "succeeded",
+      "url": "https://manhunt-fieldgame.scobione.chatgpt.site",
+      "version": 13
+    }
+  },
+  "ci": {
+    "application_run": {
+      "id": 40458432717,
+      "commit": "d7c725407287e2862cfee0fc8f3804aa784f31ab",
+      "status": "success",
+      "url": "https://github.com/scobione/manhunt/actions/runs/40458432717"
+    },
+    "public_run": {
+      "id": 40458432815,
+      "status": "success",
+      "url": "https://github.com/scobione/manhunt/actions/runs/40458432815"
+    },
+    "note": "The later documentation commit adds one public QR regression; that new test passed locally and on the production site before publication."
+  }
+}

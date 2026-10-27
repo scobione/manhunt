@@ -2,9 +2,9 @@
 
 **Deine Stadt. Dein Spielfeld.** Ein quelloffenes GPS-Verfolgungsspiel für private Gruppen — React, TypeScript, Socket.IO, Supabase und MapLibre. MIT-lizenziert.
 
-> **Stand b.0.69.48:** Die Migration zu Vercel wird vorbereitet. Die Spiellogik läuft weiterhin in Supabase Edge Functions mit atomaren PostgreSQL-Checkpoints und authentifizierter Synchronisierung etwa alle zwei Sekunden. Accounts und Daten bleiben im bestehenden Supabase-Projekt. Google ist abgeschaltet; E-Mail und Gastzugang bleiben erhalten. Den nachgewiesenen Veröffentlichungsstand dokumentiert [DEPLOYMENT.md](docs/DEPLOYMENT.md).
+> **Stand b.0.69.48:** Die PWA ist auf Vercel veröffentlicht. Die Spiellogik läuft weiterhin in Supabase Edge Functions mit atomaren PostgreSQL-Checkpoints und authentifizierter Synchronisierung etwa alle zwei Sekunden. Accounts und Daten bleiben im bestehenden Supabase-Projekt. Google ist abgeschaltet; E-Mail und Gastzugang bleiben erhalten. Den nachgewiesenen Veröffentlichungsstand dokumentiert [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-**Vercel-Adresse:** [MANHUNT](https://manhunt-pwa.vercel.app). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Die bisherige Sites-Adresse wird erst nach erfolgreichem Live-Test umgeleitet.
+**Vercel-Adresse:** [MANHUNT](https://manhunt-pwa.vercel.app). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Die bisherige Sites-Adresse leitet nach zehn Sekunden zur getesteten Vercel-Seite weiter.
 
 ## Funktionen
 
@@ -68,7 +68,7 @@ Unter Linux wird standardmäßig `/usr/bin/chromium` genutzt; `PLAYWRIGHT_CHROMI
 
 Die SQL-Regressionstests führen alle eingecheckten Migrationen unverändert in echtem PostgreSQL als WASM (PGlite) aus. Minimale Auth-/Storage-Testschemas bilden ausschließlich die Plattformverträge ab. Die echte E-Mail-Zustellung, eine vollständige Anmeldung am eigenen Account, GPS auf realen Geräten und Push-Zustellung benötigen ergänzende Live-Prüfungen; lokale Auth-Tests verwenden ausdrücklich Testantworten.
 
-Details und tatsächlich ausgeführte Ergebnisse: [Testbericht](docs/TESTING.md).
+Details und tatsächlich ausgeführte Ergebnisse: [Abnahmebericht b.0.69.48](docs/ACCEPTANCE-b.0.69.48.md). 126 von 134 Akzeptanz-IDs bestanden, 8 blockiert; keine vollständige Endabnahme.
 
 ## Deployment
 
@@ -106,4 +106,4 @@ Beiträge: [CONTRIBUTING.md](CONTRIBUTING.md). Sicherheitsmodell: [SECURITY.md](
 
 [Release b.0.69.43](docs/RELEASE-b.0.69.43.md) beschreibt die Bereitstellung, Prüfgrenzen und den vom Nutzer gewünschten späteren Codex-Security-Check. [Edge-Betrieb](docs/EDGE-DEPLOYMENT.md) erklärt Zustandsabgleich, Wiederverbindung und Free-Tier-Grenzen.
 
-Aktuelle Änderungen und Auth-Dashboard-Schritte: [Release b.0.69.47](docs/RELEASE-b.0.69.47.md).
+Aktuelle Änderungen und Prüfgrenzen: [Release b.0.69.48](docs/RELEASE-b.0.69.48.md).

@@ -1,3 +1,9 @@
+# Aktuell: b.0.69.48
+
+Der vollständige [Abnahmebericht mit 134 Test-IDs](ACCEPTANCE-b.0.69.48.md) dokumentiert Voraussetzungen, Schritte, Soll, Ist, Status und Fehler. [Maschinelle Ergebnisse](verification-b.0.69.48.json). [Release und verbleibende Prüfungen](RELEASE-b.0.69.48.md).
+
+Die folgenden Abschnitte sind historische Testergebnisse früherer Versionen:
+
 # Aktuell: b.0.69.47
 
 146 Unit-/API-/SQL-/Engine-Tests und 34 lokale Browserfälle bestanden. Die neuen Regressionen prüfen die einmalige Wiederaufnahme alter Pausen mit Restzeit und Rollen, konkurrierende Edge-Speicherungen, Weiterlaufen bei Verbindungsabbruch, Standortwiderruf ohne Matchpause und die Entfernung der Pausen-Pushmeldungen. [Release](RELEASE-b.0.69.47.md).

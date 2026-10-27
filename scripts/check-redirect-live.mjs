@@ -1,0 +1,8 @@
+// Public read-only browser check. Real wall clock; no mocked destination or GPS.
+import {chromium,expect} from '@playwright/test';
+const old='https://manhunt-fieldgame.scobione.chatgpt.site',target='https://manhunt-pwa.vercel.app';
+const browser=await chromium.launch({executablePath:process.env.PLAYWRIGHT_CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage'],...(process.env.HTTPS_PROXY?{proxy:{server:process.env.HTTPS_PROXY}}:{})});
+try{
+ const mobile=await browser.newContext({viewport:{width:390,height:844}}),page=await mobile.newPage();await page.goto(old);await expect(page.getByRole('heading',{name:'MANHUNT IST UMGEZOGEN'})).toBeVisible();await expect(page.locator('#seconds')).toHaveText('10');await expect(page.locator('#seconds')).toHaveText('6',{timeout:6000});expect(Number(await page.locator('#progress').getAttribute('value'))).toBeGreaterThanOrEqual(40);await page.waitForURL(target+'/',{timeout:15000});await expect(page.getByRole('heading',{name:'Raus aus dem Alltag.',exact:true})).toBeVisible();console.log('LIVE REDIRECT: real ten-second navigation and actual destination passed');await mobile.close();
+ const desktop=await browser.newContext({viewport:{width:1280,height:900}}),second=await desktop.newPage();await second.goto(old);await second.getByRole('link',{name:'Jetzt zur neuen Website'}).click();await expect(second).toHaveURL(target+'/');await expect(second.getByRole('heading',{name:'Raus aus dem Alltag.',exact:true})).toBeVisible();console.log('LIVE REDIRECT: immediate button and actual destination passed');await desktop.close();
+}finally{await browser.close();}
