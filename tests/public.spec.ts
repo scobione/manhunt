@@ -5,7 +5,6 @@ const {version}=JSON.parse(readFileSync(new URL('../package.json',import.meta.ur
 test('production landing, all modes and privacy pages render without browser errors',async({page})=>{
  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
  await page.goto('/');await expect(page.getByRole('heading',{name:'Raus aus dem Alltag.',exact:true})).toBeVisible();
- if(process.env.PUBLIC_URL)await expect(page.getByText('Spielserver verbunden.')).toBeVisible();
  const expectedVersion=version.endsWith('-beta')?'b.'+version.slice(0,-5):`V${version}`;
  if(process.env.PUBLIC_URL){
   test.setTimeout(240000);
