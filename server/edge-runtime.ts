@@ -7,8 +7,7 @@ import { HttpError, safeMessage, statusCode, uuid, type Identity } from './auth'
 import type { Repository } from './repository';
 import type { EdgeStore } from './edge-store';
 import { settingsSchema, partialSettingsSchema } from './validation';
-import packageInfo from '../package.json' with {type:'json'};
-const {version}=packageInfo;
+import {RELEASE_VERSION as version} from '../shared/version';
 import {pushSubscriptionSchema,validPushEndpoint,type PushService} from './push';
 
 const empty=z.object({}).strict();

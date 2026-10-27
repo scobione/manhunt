@@ -1,6 +1,6 @@
 import {defineConfig} from '@playwright/test';
 export default defineConfig({
- outputDir:'test-results-edge',testDir:'./tests',testMatch:['edge-browser.spec.ts','gps-privacy.spec.ts','gps-safety.spec.ts','zones-browser.spec.ts','expanded-browser.spec.ts'],workers:1,timeout:60000,expect:{timeout:15000},reporter:'list',
+ outputDir:'test-results-edge',testDir:'./tests',testMatch:['edge-browser.spec.ts','gps-privacy.spec.ts','gps-safety.spec.ts','zones-browser.spec.ts','expanded-browser.spec.ts','map-zoom.spec.ts'],workers:1,timeout:60000,expect:{timeout:15000},reporter:'list',
  use:{baseURL:'http://127.0.0.1:5174',launchOptions:{executablePath:process.env.PLAYWRIGHT_CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader'],...(process.env.HTTPS_PROXY?{proxy:{server:process.env.HTTPS_PROXY,bypass:'127.0.0.1,localhost'}}:{})},screenshot:'only-on-failure'},
  webServer:[
   {command:'node --import tsx tests/edge-server.ts',url:'http://127.0.0.1:3002/api/health',reuseExistingServer:false,env:{NODE_ENV:'test',TEST_AUTH:'true'}},

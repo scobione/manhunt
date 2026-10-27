@@ -1,6 +1,6 @@
 {
   "name": "manhunt",
-  "version": "0.69.48-beta",
+  "version": "0.1.102-beta.1",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -66,5 +66,6 @@
   },
   "overrides": {
     "body-parser": "^2.4.0"
-  }
+  },
+  "releaseVersion": "0.b1.102"
 }

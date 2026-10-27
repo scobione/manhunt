@@ -1,6 +1,6 @@
 # Deployment: Vercel und Supabase
 
-Stand: 27.10.2026, b.0.69.48 veröffentlicht; 126/134 Akzeptanz-IDs bestanden, 8 blockiert.
+Stand: 27.10.2026, Beta 0.b1.102. Die frühere vollständige Akzeptanzmatrix bleibt bei 126/134 bestandenen und 8 blockierten IDs; die zusätzlichen Kartenprüfungen stehen im aktuellen Releasebericht.
 
 - Produktionsdomain: https://manhunt-pwa.vercel.app
 - Vercel-Projekt: `manhunt-pwa`, Hobby; GitHub `scobione/manhunt`, Produktion `main`.
@@ -8,7 +8,7 @@ Stand: 27.10.2026, b.0.69.48 veröffentlicht; 126/134 Akzeptanz-IDs bestanden, 8
 - API: https://dxoleuqmhcnqnjyqdqvw.supabase.co/functions/v1/manhunt-api
 - Bisherige Website: https://manhunt-fieldgame.scobione.chatgpt.site
 
-b.0.69.48 wurde als geschützte Vorschau geprüft und auf der Produktionsdomain veröffentlicht. Tatsächliche Bereitstellungen und verbleibende Abnahmegrenzen stehen im [Releasebericht](RELEASE-b.0.69.48.md). Die Produktion verwendet den bestehenden Supabase-Server, Version 9, mit 29 RLS-geschützten Anwendungstabellen.
+Die Migration b.0.69.48 wurde als geschützte Vorschau geprüft und auf der Produktionsdomain veröffentlicht. Beta 0.b1.102 korrigiert die GPS-Marker beim Kartenzoom; Nachweise und verbleibende Abnahmegrenzen stehen im [Releasebericht](RELEASE-0.b1.102.md). Die Produktion verwendet den bestehenden Supabase-Server, Funktionsrevision 10, mit 29 RLS-geschützten Anwendungstabellen. Für diese Beta war keine Datenbankmigration nötig.
 
 ## Konfiguration
 

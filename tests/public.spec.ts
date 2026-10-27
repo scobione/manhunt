@@ -1,11 +1,10 @@
-import { readFileSync } from 'node:fs';
+import { RELEASE_VERSION } from '../shared/version';
 import {test,expect} from '@playwright/test';
-const {version}=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
 // No synthetic users, no GPS simulation, no authentication bypass in these production checks.
 test('production landing, all modes and privacy pages render without browser errors',async({page})=>{
  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
  await page.goto('/');await expect(page.getByRole('heading',{name:'Raus aus dem Alltag.',exact:true})).toBeVisible();
- const expectedVersion=version.endsWith('-beta')?'b.'+version.slice(0,-5):`V${version}`;
+ const expectedVersion=RELEASE_VERSION;
  if(process.env.PUBLIC_URL){
   test.setTimeout(240000);
   // A Git push starts this workflow and the Vercel build concurrently. Wait for

@@ -6,6 +6,7 @@ import {circle} from '@turf/turf';
 import {readFileSync,writeFileSync} from 'node:fs';
 let input='';for await(const c of process.stdin){input+=c;if(input.includes('\n'))break;}
 const {url,share,accessUrl,hostSession,fixtureCode}=JSON.parse(input),origin=new URL(url).origin;
+const {releaseVersion}=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
 const config=JSON.parse(readFileSync(new URL('../src/public-config.json',import.meta.url),'utf8'));
 const API=config.apiUrl+'/api',AUTH=config.supabaseUrl+'/auth/v1',storageKey='sb-dxoleuqmhcnqnjyqdqvw-auth-token';
 const proxy=process.env.HTTPS_PROXY?{server:process.env.HTTPS_PROXY}:undefined;
@@ -19,7 +20,7 @@ const cmd=(a,command)=>event(a,'lobby:command',{command});
 async function open(a,path){if(accessUrl){await a.page.goto(accessUrl);}else if(share){const u=new URL(origin);u.searchParams.set('x-vercel-protection-bypass',share);u.searchParams.set('x-vercel-set-bypass-cookie','true');await a.page.goto(u.href);}await a.page.goto(origin+path);}
 async function actor(name){const context=await browser.newContext({viewport:{width:390,height:844}}),a={context,page:await context.newPage(),name};actors.push(a);return a;}
 try{
- const health=await api.get(API+'/health',{headers:{Origin:origin}});expect(health.status()).toBe(200);expect(health.headers()['access-control-allow-origin']).toBe(origin);expect((await health.json()).version).toBe('0.69.48-beta');ok('DEPLOY-07-health','Live API, version and exact frontend CORS');
+ const health=await api.get(API+'/health',{headers:{Origin:origin}});expect(health.status()).toBe(200);expect(health.headers()['access-control-allow-origin']).toBe(origin);expect((await health.json()).version).toBe(releaseVersion);ok('DEPLOY-07-health','Live API, version and exact frontend CORS');
  const host=await actor('QAHost');if(!hostSession||!fixtureCode)throw Error('A seeded private QA lobby with a real disposable anonymous session is required; guest lobby creation remains forbidden.');host.session=hostSession;host.id=hostSession.user.id;await host.context.addInitScript(({key,session})=>localStorage.setItem(key,JSON.stringify(session)),{key:storageKey,session:host.session});
  await call(host,'/profile');const lobby=(await event(host,'lobby:join',{code:fixtureCode})).lobby;await open(host,'/lobby');await expect(host.page.getByTestId('lobby-code')).toHaveText(lobby.code);ok('LIVE-FIXTURE','Authenticated real guest host uses isolated server-seeded private test lobby; this does not test registered host creation');
  for(const name of ['QAHider','QAOther']){const a=await actor(name);await open(a,'/join');await a.page.getByLabel('Dein Gastname').fill(name);await a.page.getByLabel('Lobby-Code',{exact:true}).fill(lobby.code);await a.page.getByRole('button',{name:'Als Gast beitreten',exact:true}).click();await expect(a.page.getByTestId('lobby-code')).toHaveText(lobby.code,{timeout:30000});a.session=await a.page.evaluate(key=>JSON.parse(localStorage.getItem(key)),storageKey);a.id=a.session.user.id;}

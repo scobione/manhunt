@@ -12,7 +12,8 @@
 .mh-legend-dot.hider{background:#00ff9c}.mh-legend-dot.hunter{background:#ff3b45}.mh-legend-dot.zombie{background:#b1ff47}
 .mh-map-error{position:absolute;top:58px;left:14px;right:58px;padding:10px 12px;border:1px solid #704334;border-radius:5px;background:#241b16f5;color:#ffd2b8;display:flex;align-items:center;gap:9px;font-size:12px;line-height:1.5}
 .mh-map-error svg{flex:none}
-.mh-pin{--pin-color:#00ff9c;position:relative;width:18px;height:18px;border:3px solid #10191c;border-radius:50%;background:var(--pin-color);box-shadow:0 0 0 2px var(--pin-color),0 0 16px #0009;padding:0;cursor:pointer}
+/* MapLibre owns marker translation; keep the marker out of normal document flow. */
+.mh-pin{--pin-color:#00ff9c;position:absolute;top:0;left:0;width:18px;height:18px;border:3px solid #10191c;border-radius:50%;background:var(--pin-color);box-shadow:0 0 0 2px var(--pin-color),0 0 16px #0009;padding:0;cursor:pointer}
 .mh-pin::after{position:absolute;content:'';inset:-8px;border:1px solid var(--pin-color);border-radius:50%;animation:mh-pin-pulse 2.5s ease-out infinite;pointer-events:none}
 .mh-pin-hunter{--pin-color:#ff3b45}.mh-pin-zombie{--pin-color:#b1ff47}.mh-pin-own{--pin-color:#00b8ff;z-index:3}
 .mh-pin-own:before{content:'';position:absolute;border:4px solid transparent;border-bottom:8px solid #00b8ff;left:2px;top:-15px}
@@ -79,6 +80,6 @@
 .mh-pin-label{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);background:#080b0de8;border:1px solid var(--pin-color);color:#f4f7f8;white-space:nowrap;padding:3px 6px;border-radius:4px;font:10px ui-monospace,monospace;pointer-events:none}.mh-pin-old{border-style:dashed;opacity:.75}.mh-pin-live{box-shadow:0 0 0 3px #ff3b4533,0 0 14px #ff3b4588}
 
 .mh-end-target{width:34px;height:34px;border:2px solid #00b8ff;border-radius:50%;background:#072534;color:#e5f8ff;font-size:25px;line-height:28px;padding:0;text-align:center;cursor:grab;touch-action:none;box-shadow:0 0 0 5px #00b8ff25}.mh-legend-dot.end{background:#00b8ff;border-radius:0}.mh-map-legend{flex-wrap:wrap;max-width:calc(100% - 24px)}
-.mh-xp-pin{display:grid;place-items:center;width:38px;height:38px;background:#082f42;border:2px solid #00b8ff;border-radius:12px;color:#fff;font:bold 14px monospace;box-shadow:0 0 25px #00b8ff66}.mh-pin img{width:24px;height:24px;object-fit:cover}.mh-zone-editor{min-width:0}.mh-zone-panel,.mh-zone-map-column{min-width:0}.mh-zone-panel input,.mh-zone-panel select{max-width:100%;min-width:0}.mh-zone-feedback{overflow-wrap:anywhere}
+.mh-xp-pin{display:grid;place-items:center;width:38px;height:38px;background:#082f42;border:2px solid #00b8ff;border-radius:12px;color:#fff;font:bold 14px monospace;box-shadow:0 0 25px #00b8ff66}.mh-pin img{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:24px;height:24px;object-fit:cover}.mh-zone-editor{min-width:0}.mh-zone-panel,.mh-zone-map-column{min-width:0}.mh-zone-panel input,.mh-zone-panel select{max-width:100%;min-width:0}.mh-zone-feedback{overflow-wrap:anywhere}
 .mh-exclusion-center{font:bold 11px monospace;padding:5px 7px;background:#40181a;color:#fff;border:1px solid #ff3b45;border-radius:5px;cursor:grab}.mh-exclusion-row{flex-wrap:wrap}.mh-exclusion-row .mh-zone-confirm{margin:0;flex-basis:100%;order:2}
 .mh-zone-panel input.mh-visually-hidden{width:1px!important;height:1px!important;min-width:0!important;max-width:1px!important;padding:0!important;border:0!important;clip-path:inset(50%)}

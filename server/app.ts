@@ -1,3 +1,4 @@
+import {RELEASE_VERSION} from '../shared/version.js';
 import {rules} from '../shared/rules.js';
 import {loadXpPaths} from './xp-paths.js';
 import express, { type ErrorRequestHandler, type RequestHandler } from 'express';
@@ -108,7 +109,7 @@ export async function createBackend(options:BackendOptions={}){
     }catch{healthy=false;console.error('Database initialization failed; multiplayer startup is blocked.');}
   }
   const requireReady=()=>{repo();if(!healthy)throw new HttpError(503,'Der Spielserver wartet auf eine sichere Datenbankverbindung.');};
-  app.get('/api/health',(_req,res)=>res.status(repository&&!healthy?503:200).json({status:healthy?'ok':'configuration_required',configured:!!repository,version:'0.1.0'}));
+  app.get('/api/health',(_req,res)=>res.status(repository&&!healthy?503:200).json({status:healthy?'ok':'configuration_required',configured:!!repository,version:RELEASE_VERSION}));
   app.get('/api/config',(_req,res)=>res.json({configured:!!repository&&healthy,authConfigured:!!supabase||testing,pushPublicKey:pushConfigured?process.env.VAPID_PUBLIC_KEY:undefined}));
   const auth:RequestHandler=async(req,res,next)=>{
     try{requireReady();const identity=await authenticate(bearer(req),supabase);limiter.take(`api:${identity.id}`,120,60_000);res.locals.identity=identity;res.locals.profile=await repo().getProfile(identity);next();}catch(error){next(error);}
