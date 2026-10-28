@@ -1,0 +1,42 @@
+/** Multi-origin browser tests; simulated Auth/mail delivery exists ONLY on localhost. */
+import {test,expect,type Page} from '@playwright/test';
+import {randomUUID} from 'node:crypto';
+const GAME='http://127.0.0.1:5176',API='http://127.0.0.1:3003';
+async function login(page:Page,email:string,password:string,admin=true){await page.goto(admin?'/':GAME+'/login');await page.getByLabel('E-Mail-Adresse',{exact:true}).fill(email);await page.getByLabel('Passwort',{exact:true}).fill(password);await page.getByRole('button',{name:admin?'Als Administrator anmelden':'Mit E-Mail anmelden',exact:true}).click();}
+test('ADMIN-01 ADMIN-02 ADMIN-03 ADMIN-16: separate mobile portal denies player access and supplies its own PWA',async({page})=>{
+ await page.setViewportSize({width:390,height:844});await login(page,'player@isolated.invalid','Player-Test-Password1');await expect(page.getByRole('heading',{name:'Kein Adminzugang.'})).toBeVisible();await expect(page.getByRole('heading',{name:'Deine Spieler.'})).toHaveCount(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ const manifest=await (await page.request.get('/manifest.webmanifest')).json();expect(manifest.name).toBe('Manhunt Admin');expect(manifest.display).toBe('standalone');for(const icon of manifest.icons)expect((await page.request.get(icon.src)).ok()).toBe(true);
+ const sw=await(await page.request.get('/sw.js')).text();expect(sw).toContain("const STATIC=['/offline.html','/icon.svg','/icon-192.png','/icon-512.png']");
+});
+test('ADMIN-04 ADMIN-06 ADMIN-07 SETUP-08 SETUP-09 SETUP-10 SETUP-11 ADMIN-14 ADMIN-15: admin provisions a real test account which completes mandatory setup in a separate game browser',async({browser,request})=>{
+ const admin=await browser.newContext({viewport:{width:390,height:844}}),player=await browser.newContext({viewport:{width:390,height:844}});const a=await admin.newPage(),p=await player.newPage();
+ try{
+  await login(a,'admin@isolated.invalid','Admin-Test-Password1');await expect(a.getByRole('heading',{name:'Alles bereit für die nächste Runde.'})).toBeVisible();
+  await a.getByRole('link',{name:'Account erstellen',exact:true}).first().click();const email=`manual-${randomUUID()}@example.invalid`;
+  await a.getByLabel('E-Mail-Adresse des Benutzers').fill(email);await a.getByRole('button',{name:'Account erstellen',exact:true}).click();await expect(a.getByRole('heading',{name:'Account erstellt.'})).toBeVisible();
+  const temporary=await a.getByLabel('Vorläufiges Passwort').inputValue();expect(temporary.length).toBeGreaterThanOrEqual(24);await a.getByRole('button',{name:'Zugangsdaten ausblenden'}).click();await a.reload();await expect(a.getByLabel('Vorläufiges Passwort')).toHaveCount(0);
+  await login(p,email,temporary,false);await expect(p.getByRole('heading',{name:'Dein eigenes Passwort'})).toBeVisible();await p.goto(GAME+'/game');await expect(p.getByRole('heading',{name:'Dein eigenes Passwort'})).toBeVisible();
+  await p.getByLabel('Neues Passwort',{exact:true}).fill('My-New-Password-123');await p.getByLabel('Passwort bestätigen',{exact:true}).fill('My-New-Password-123');await p.getByRole('button',{name:'Speichern & weiter',exact:true}).click();await expect(p.getByRole('heading',{name:'So kennt dich deine Crew'})).toBeVisible();
+  const old=await request.post(API+'/auth/v1/token?grant_type=password',{data:{email,password:temporary}});expect(old.status()).toBe(400);
+  const name='Crew.'+randomUUID().slice(0,8);await p.getByRole('textbox',{name:/Benutzername/}).fill(name);await expect(p.getByText('Benutzername ist verfügbar.',{exact:true})).toBeVisible();await p.getByRole('button',{name:'Speichern & weiter',exact:true}).click();
+  await expect(p.getByRole('heading',{name:'Bereit für deine erste Runde'})).toBeVisible();await p.getByRole('checkbox').check();await p.getByRole('button',{name:'Einrichtung abschließen'}).click();await expect(p.getByRole('heading',{name:'Dein eigenes Passwort'})).toHaveCount(0);
+  await p.goto(GAME+'/profile');await expect(p.getByRole('heading',{name,exact:true})).toBeVisible();await p.reload();await expect(p.getByRole('heading',{name,exact:true})).toBeVisible();
+  await a.goto('/#users');await a.getByRole('textbox',{name:'Benutzer suchen'}).fill(email);await expect(a.locator('.user-row')).toHaveCount(1);await a.locator('.user-row').click();await expect(a.getByText('Nicht verifiziert · administrativ freigegeben',{exact:true})).toBeVisible();
+  await a.getByRole('button',{name:'Account deaktivieren',exact:true}).click();await expect(a.getByRole('status')).toHaveText('Account deaktiviert.');await p.reload();await expect(p.getByRole('heading',{name:'Dieses Konto ist deaktiviert.'})).toBeVisible();
+  await a.getByRole('button',{name:'Account reaktivieren',exact:true}).click();await p.reload();await expect(p.getByRole('heading',{name,exact:true})).toBeVisible();
+  expect(await a.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await a.screenshot({path:'test-results-admin/admin-mobile.png',fullPage:true});
+ }finally{await admin.close();await player.close();}
+});
+test('ADMIN-05: additional code is required after reload and wrong codes fail',async({page})=>{
+ await login(page,'code-admin@isolated.invalid','Admin-Test-Password1');await expect(page.getByRole('heading',{name:'Alles bereit für die nächste Runde.'})).toBeVisible();await page.goto('/#settings');await page.getByLabel('Neuer Zugangscode',{exact:true}).fill('Isolated-Extra-Code-123');await page.getByLabel('Zugangscode bestätigen').fill('Isolated-Extra-Code-123');await page.getByRole('button',{name:'Zugangscode speichern'}).click();await expect(page.getByLabel('Zusätzlicher Zugangscode')).toBeVisible();
+ await page.getByLabel('Zusätzlicher Zugangscode').fill('Incorrect-Extra-Code');await page.getByRole('button',{name:'Portal entsperren'}).click();await expect(page.getByRole('alert')).toContainText('stimmt nicht');await page.getByLabel('Zusätzlicher Zugangscode').fill('Isolated-Extra-Code-123');await page.getByRole('button',{name:'Portal entsperren'}).click();await expect(page.getByRole('heading',{name:'Zugang unter deiner Kontrolle.'})).toBeVisible();
+ await page.reload();await expect(page.getByLabel('Zusätzlicher Zugangscode')).toBeVisible();await page.getByLabel('Zusätzlicher Zugangscode').fill('Isolated-Extra-Code-123');await page.getByRole('button',{name:'Portal entsperren'}).click();await expect(page.getByRole('heading',{name:'Zugang unter deiner Kontrolle.'})).toBeVisible();
+ await page.getByRole('button',{name:'Zusätzlichen Code deaktivieren'}).click();await expect(page.getByRole('heading',{name:'Zugang unter deiner Kontrolle.'})).toBeVisible();
+});
+test('AUTH-CODE-12 AUTH-CODE-13: signup reserves a name, rejects incorrect, expired and reused codes (simulated mailbox)',async({page,request})=>{
+ const email=`registration-${randomUUID()}@example.invalid`;await page.goto(GAME+'/login');await page.getByRole('button',{name:'Registrieren',exact:true}).click();await page.getByLabel('E-Mail-Adresse',{exact:true}).fill(email);await page.getByRole('textbox',{name:/Benutzername/}).fill('New.'+randomUUID().slice(0,8));await page.getByLabel('Passwort',{exact:true}).fill('My-Registration-Password-123');await page.getByLabel('Passwort wiederholen',{exact:true}).fill('My-Registration-Password-123');await page.getByRole('button',{name:'Konto erstellen',exact:true}).click();
+ const code=page.getByLabel('Verifizierungscode aus der E-Mail');await expect(code).toHaveAttribute('maxlength','6');await code.fill('000000');await page.getByRole('button',{name:'E-Mail mit Code bestätigen'}).click();await expect(page.getByRole('alert')).toContainText('ungültig oder abgelaufen');
+ let mail=await(await request.get(API+'/__test/mailbox',{params:{email}})).json();await request.post(API+'/__test/expire-otp',{data:{email}});await code.fill(mail.code);await page.getByRole('button',{name:'E-Mail mit Code bestätigen'}).click();await expect(page.getByRole('alert')).toContainText('ungültig oder abgelaufen');
+ await page.clock.install();await page.clock.fastForward(61000);await page.getByRole('button',{name:'Bestätigung erneut senden',exact:true}).click();mail=await(await request.get(API+'/__test/mailbox',{params:{email}})).json();await code.fill(mail.code);await page.getByRole('button',{name:'E-Mail mit Code bestätigen'}).click();await expect(code).toHaveCount(0);
+ expect((await request.post(API+'/auth/v1/verify',{data:{email,token:mail.code,type:'email'}})).status()).toBe(403);
+});

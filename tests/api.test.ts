@@ -6,7 +6,8 @@ import type { AddressInfo } from 'node:net';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { circle } from '@turf/turf';
 import { createBackend } from '../server/app';
-import { authenticate } from '../server/auth';
+import { authenticate, HttpError } from '../server/auth';
+import {AccountService} from '../server/accounts';
 import { MemoryRepository } from '../server/repository';
 import { DEFAULT_SETTINGS, type Command, type LobbyView } from '../shared/types';
 
@@ -31,6 +32,25 @@ const send=(socket:Socket,command:Command)=>ack(socket,'lobby:command',{command}
 async function match(){await profiles();const a=await connect(alice),b=await connect(bob);const lobby=await ack(a,'lobby:create',{settings:{...DEFAULT_SETTINGS,randomRoles:false,preparationSeconds:0,headStartSeconds:0,captureMethod:'code'}});await ack(b,'lobby:join',{code:lobby.code});await send(a,{type:'zone',zone:{feature:circle([13.4,52.5],.5),excluded:[],confirmed:true,name:'ISOLATED TEST ZONE'}});await send(a,{type:'assign',playerId:alice.id,role:'hunter',team:'A'});await send(a,{type:'ready',ready:true});await send(b,{type:'ready',ready:true});await send(a,{type:'start'});return{a,b,lobby};}
 
 describe('authenticated API and Socket.IO transport',()=>{
+ it('ADMIN-SOCKET checks the real socket session for broadcasts and stops revoked recipients',async()=>{
+  await backend.close();
+  const session=randomUUID(),id=randomUUID();let revoked=false;
+  const jwt=`header.${Buffer.from(JSON.stringify({session_id:session,exp:Math.floor(Date.now()/1000)+3600})).toString('base64url')}.test-signature`;
+  const supabase={auth:{getUser:async()=>({data:{user:{id,is_anonymous:false,user_metadata:{full_name:'SocketAccount'},email_confirmed_at:new Date().toISOString()}},error:null})}} as unknown as SupabaseClient;
+  const guard=vi.spyOn(AccountService.prototype,'requireGame').mockImplementation(async identity=>{if(identity.sessionId!==session||revoked)throw new HttpError(401,'Session revoked');});
+  try{
+   backend=await createBackend({repository,supabase,timers:false});
+   await new Promise<void>(r=>backend.httpServer.listen(0,'127.0.0.1',r));
+   const port=(backend.httpServer.address() as AddressInfo).port;
+   const socket=io(`http://127.0.0.1:${port}`,{auth:{token:jwt},transports:['websocket'],reconnection:false});clients.push(socket);
+   await new Promise<void>((resolve,reject)=>{socket.once('connect',()=>resolve());socket.once('connect_error',reject);});
+   const states:LobbyView[]=[];socket.on('lobby:state',state=>states.push(state));
+   const lobby=await ack(socket,'lobby:create',{settings:DEFAULT_SETTINGS});
+   await vi.waitFor(()=>expect(states.some(state=>state.id===lobby.id)).toBe(true));
+   expect(guard.mock.calls.every(([identity])=>identity.sessionId===session)).toBe(true);
+   revoked=true;await expect(ack(socket,'lobby:sync')).rejects.toThrow(/Session revoked/);
+  }finally{guard.mockRestore();}
+ });
  it('lets a full group on a shared network reconnect without exhausting the IP budget',async()=>{
   const group=Array.from({length:40},(_,index)=>({id:randomUUID(),name:`Shared_Network_${index}`}));
   for(const person of group)(await connect(person)).disconnect();

@@ -8,6 +8,8 @@ import type { Repository } from './repository';
 import type { EdgeStore } from './edge-store';
 import { settingsSchema, partialSettingsSchema } from './validation';
 import {RELEASE_VERSION as version} from '../shared/version';
+import type {AccountService} from './accounts';
+import {USERNAME_PATTERN,validGuestAlias} from '../shared/accounts';
 import {pushSubscriptionSchema,validPushEndpoint,type PushService} from './push';
 
 const empty=z.object({}).strict();
@@ -15,7 +17,7 @@ const codeSchema=z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6}$/);
 const eventSchema=z.object({event:z.enum(['lobby:create','lobby:join','lobby:sync','lobby:command']),data:z.unknown().optional()}).strict();
 const commandSchema=z.object({command:z.object({type:z.string()}).passthrough()}).strict();
 const PRESENCE_MS=20_000;
-export interface EdgeOptions {repository:Repository;store:EdgeStore;verify:(token:string)=>Promise<Identity>;origins:string[];push?:PushService;pathLoader?:typeof loadXpPaths}
+export interface EdgeOptions {repository:Repository;store:EdgeStore;verify:(token:string)=>Promise<Identity>;origins:string[];push?:PushService;pathLoader?:typeof loadXpPaths;accounts?:AccountService}
 
 async function jsonBody(request:Request){
   if(!request.body)return {};
@@ -29,7 +31,7 @@ async function jsonBody(request:Request){
 /** Request-scoped engine, durable PostgreSQL state, no isolate-local authority.
  * HTTP polling survives the edge worker lifetime without depending on timers.
  */
-export function createEdgeHandler({repository:repo,store,verify,origins,push,pathLoader=loadXpPaths}:EdgeOptions){
+export function createEdgeHandler({repository:repo,store,verify,origins,push,pathLoader=loadXpPaths,accounts}:EdgeOptions){
   async function game(identity:Identity,profile:Profile,event:string,raw:unknown){
     const id=identity.id;
     if(identity.isGuest&&event==='lobby:create')throw new HttpError(403,'Als Gast kannst du einer Lobby beitreten. Zum Erstellen benötigst du ein E-Mail-Konto.');
@@ -107,7 +109,7 @@ export function createEdgeHandler({repository:repo,store,verify,origins,push,pat
     const origin=request.headers.get('origin');
     const headers:Record<string,string>={'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Vary':'Origin'};
     if(origin&&origins.includes(origin))headers['Access-Control-Allow-Origin']=origin;
-    headers['Access-Control-Allow-Headers']='authorization, apikey, content-type, x-client-info';
+    headers['Access-Control-Allow-Headers']='authorization, apikey, content-type, x-client-info, x-manhunt-admin-session';
     headers['Access-Control-Allow-Methods']='GET, POST, PATCH, DELETE, OPTIONS';
     const respond=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers});
     try{
@@ -118,12 +120,15 @@ export function createEdgeHandler({repository:repo,store,verify,origins,push,pat
       if(path==='/push/dispatch'&&method==='POST'){if(!push||!await push.authorized(request.headers.get('x-manhunt-push-ticket')))throw new HttpError(401,'Nicht berechtigt.');return respond(await push.dispatch());}
       if(method==='GET'&&(path==='/config'||path==='/health')){
         const ready=await store.ready();
-        return respond(path==='/config'?{configured:ready,authConfigured:true,transport:'http',pollIntervalMs:2000,...(push?{pushPublicKey:await push.publicKey()}:{})}:{status:ready?'ok':'configuration_required',configured:ready,version,transport:'http'},ready?200:503);
+        return respond(path==='/config'?{configured:ready,authConfigured:true,accountControls:!!accounts,transport:'http',pollIntervalMs:2000,...(push?{pushPublicKey:await push.publicKey()}:{})}:{status:ready?'ok':'configuration_required',configured:ready,version,transport:'http'},ready?200:503);
       }
+      if(accounts&&path==='/account/username'&&method==='GET'){await store.quota('00000000-0000-4000-8000-000000000001','username-lookup',300);return respond(await accounts.available(new URL(request.url).searchParams.get('name')));}
       const auth=request.headers.get('authorization');
       if(!auth?.startsWith('Bearer '))throw new HttpError(401,'Bitte melde dich an.');
       const identity=await verify(auth.slice(7)),id=identity.id;
       await store.quota(id,'api',120);
+      if(accounts&&(path==='/account'||path.startsWith('/account/')||path.startsWith('/admin/')))return respond(await accounts.handle(identity,auth.slice(7),path,method,['POST','PATCH','DELETE'].includes(method)?await jsonBody(request):{},new URL(request.url).searchParams,request.headers.get('x-manhunt-admin-session')));
+      await accounts?.requireGame(identity);
       const profile=await repo.getProfile(identity);
       await store.touch(id);
       const body=['POST','PATCH','DELETE'].includes(method)?await jsonBody(request):{};
@@ -133,7 +138,8 @@ export function createEdgeHandler({repository:repo,store,verify,origins,push,pat
       }else if(path==='/sync'&&method==='GET')result=await game(identity,profile,'lobby:sync',{});
       else if(path==='/profile'&&method==='GET')result=profile;
       else if(path==='/profile'&&method==='PATCH'){
-        const patch=z.object({username:z.string().trim().regex(/^[a-zA-Z0-9_]{3,24}$/),show_online:z.boolean(),avatar_url:z.string().url().max(2048).nullable()}).partial().strict().parse(body);
+        const patch=z.object({username:z.string().trim().regex(/^[a-zA-Z0-9_.]{3,24}$/),show_online:z.boolean(),avatar_url:z.string().url().max(2048).nullable()}).partial().strict().parse(body);
+        if(patch.username&&patch.username!==profile.username&&!USERNAME_PATTERN.test(patch.username)&&!(identity.isGuest&&validGuestAlias(patch.username,identity.id)))throw new HttpError(400,'Wähle 3–20 Buchstaben, Zahlen, Punkte oder Unterstriche.');
         if(!Object.keys(patch).length)throw new HttpError(400,'Keine Änderungen angegeben.');
         if(patch.avatar_url){const url=new URL(patch.avatar_url);if(url.protocol!=='https:'||url.username||url.password||!/^(lh[0-9]+\.)?googleusercontent\.com$/.test(url.hostname))throw new HttpError(400,'Bitte lade dein Profilbild in deinen eigenen Avatar-Speicher hoch.');}
         result=await repo.patchProfile(id,patch);await repo.audit(id,'profile.update',{fields:Object.keys(patch)});

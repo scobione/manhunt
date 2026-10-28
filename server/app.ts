@@ -1,3 +1,6 @@
+import {AccountService} from './accounts.js';
+import {SupabaseAccountStore} from './account-store.js';
+import {USERNAME_PATTERN,validGuestAlias} from '../shared/accounts.js';
 import {RELEASE_VERSION} from '../shared/version.js';
 import {rules} from '../shared/rules.js';
 import {loadXpPaths} from './xp-paths.js';
@@ -39,6 +42,7 @@ export async function createBackend(options:BackendOptions={}){
   if(options.repository instanceof MemoryRepository&&!testing)throw new Error('MemoryRepository is allowed only in isolated automated tests.');
   const supabase=options.supabase!==undefined?options.supabase:process.env.SUPABASE_URL&&process.env.SUPABASE_SERVICE_ROLE_KEY?createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{autoRefreshToken:false,persistSession:false}}):null;
   const repository=options.repository??(testing?new MemoryRepository():supabase?new SupabaseRepository(supabase):null);
+  const accounts=supabase?new AccountService(new SupabaseAccountStore(supabase)):undefined;
   const engine=options.engine??new GameEngine();
   const app=express();
   app.disable('x-powered-by');
@@ -66,10 +70,21 @@ export async function createBackend(options:BackendOptions={}){
   const broadcast=(lobby:Lobby)=>{
     for(const player of lobby.players){
       if(!socketsByUser.has(player.id))continue;
-      try{(io.to(`user:${player.id}`) as unknown as {emit:(event:string,payload:unknown)=>void}).emit('lobby:state',engine.view(lobby.id,player.id));}catch{/* Removed users receive lobby:left below. */}
+      try{send(player.id,'lobby:state',engine.view(lobby.id,player.id));}catch{/* Removed users receive lobby:left below. */}
     }
   };
-  const send=(userId:string,event:string,payload:unknown)=>(io.to(`user:${userId}`) as unknown as {emit:(event:string,payload:unknown)=>void}).emit(event,payload);
+  const send=(userId:string,event:string,payload:unknown)=>{
+    const emit=()=>{(io.to(`user:${userId}`) as unknown as {emit:(event:string,payload:unknown)=>void}).emit(event,payload);};
+    if(!accounts){emit();return;}
+    for(const socketId of socketsByUser.get(userId)??[]){
+      const socket=io.sockets.sockets.get(socketId);if(!socket)continue;
+      void accounts.requireGame(socket.data.identity).then(()=>{
+        if(!socket.connected||socket.data.identity.expiresAt<=Date.now())return;
+        const current=event==='lobby:state'?engine.view((payload as Lobby).id,userId):payload;
+        (socket as unknown as {emit:(event:string,payload:unknown)=>void}).emit(event,current);
+      }).catch(()=>socket.disconnect(true));
+    }
+  };
   const pushConfigured=!!(process.env.VAPID_PUBLIC_KEY&&process.env.VAPID_PRIVATE_KEY&&process.env.VAPID_SUBJECT);
   if(pushConfigured)webpush.setVapidDetails(process.env.VAPID_SUBJECT!,process.env.VAPID_PUBLIC_KEY!,process.env.VAPID_PRIVATE_KEY!);
   const notifySocial=async(ids:string[])=>{
@@ -110,9 +125,10 @@ export async function createBackend(options:BackendOptions={}){
   }
   const requireReady=()=>{repo();if(!healthy)throw new HttpError(503,'Der Spielserver wartet auf eine sichere Datenbankverbindung.');};
   app.get('/api/health',(_req,res)=>res.status(repository&&!healthy?503:200).json({status:healthy?'ok':'configuration_required',configured:!!repository,version:RELEASE_VERSION}));
-  app.get('/api/config',(_req,res)=>res.json({configured:!!repository&&healthy,authConfigured:!!supabase||testing,pushPublicKey:pushConfigured?process.env.VAPID_PUBLIC_KEY:undefined}));
+  app.get('/api/config',(_req,res)=>res.json({configured:!!repository&&healthy,authConfigured:!!supabase||testing,pushPublicKey:pushConfigured?process.env.VAPID_PUBLIC_KEY:undefined,accountControls:!!accounts}));
+  app.get('/api/account/username',(req,res,next)=>{if(!accounts){next();return;}accounts.available(req.query.name).then(value=>res.json(value)).catch(next);});
   const auth:RequestHandler=async(req,res,next)=>{
-    try{requireReady();const identity=await authenticate(bearer(req),supabase);limiter.take(`api:${identity.id}`,120,60_000);res.locals.identity=identity;res.locals.profile=await repo().getProfile(identity);next();}catch(error){next(error);}
+    try{requireReady();const identity=await authenticate(bearer(req),supabase);limiter.take(`api:${identity.id}`,120,60_000);res.locals.identity=identity;if(accounts&&(req.path==='/account'||req.path.startsWith('/account/')||req.path.startsWith('/admin/'))){res.json(await accounts.handle(identity,bearer(req),req.path,req.method,req.body??{},new URL(req.originalUrl,'http://localhost').searchParams,req.get('x-manhunt-admin-session')??null));return;}await accounts?.requireGame(identity);res.locals.profile=await repo().getProfile(identity);next();}catch(error){next(error);}
   };
   app.use('/api',auth);
   const identity=(res:express.Response)=>res.locals.identity as Identity;
@@ -128,7 +144,8 @@ export async function createBackend(options:BackendOptions={}){
   const changed=async(res:express.Response,task:Promise<string[]>)=>{const ids=await task;await notifySocial(ids);res.json({ok:true});};
   app.get('/api/profile',(_req,res)=>res.json(res.locals.profile));
   app.patch('/api/profile',route(async(req,res)=>{
-    const patch=z.object({username:z.string().trim().regex(/^[a-zA-Z0-9_]{3,24}$/),show_online:z.boolean(),avatar_url:z.string().url().max(2048).nullable()}).partial().strict().parse(req.body);
+    const patch=z.object({username:z.string().trim().regex(/^[a-zA-Z0-9_.]{3,24}$/),show_online:z.boolean(),avatar_url:z.string().url().max(2048).nullable()}).partial().strict().parse(req.body);
+    if(patch.username&&patch.username!==res.locals.profile.username&&!USERNAME_PATTERN.test(patch.username)&&!(identity(res).isGuest&&validGuestAlias(patch.username,identity(res).id)))throw new HttpError(400,'Wähle 3–20 Buchstaben, Zahlen, Punkte oder Unterstriche.');
     if(!Object.keys(patch).length)throw new HttpError(400,'Keine Änderungen angegeben.');
     const id=identity(res).id;
     if(patch.avatar_url!==undefined&&!validAvatar(patch.avatar_url,id))throw new HttpError(400,'Bitte lade ein Profilbild in deinen eigenen Avatar-Speicher hoch.');
@@ -211,7 +228,7 @@ export async function createBackend(options:BackendOptions={}){
       const candidate=process.env.TRUST_PROXY==='1'&&typeof forwarded==='string'?forwarded.split(',').at(-1)!.trim():'';
       const address=isIP(candidate)?candidate:socket.handshake.address;
       limiter.take(`connect-ip:${address}`,240,60_000);
-      const user=await authenticate(socket.handshake.auth?.token,supabase);
+      const user=await authenticate(socket.handshake.auth?.token,supabase);await accounts?.requireGame(user);
       limiter.take(`connect-user:${user.id}`,20,60_000);
       if((socketsByUser.get(user.id)?.size??0)>=6)throw new HttpError(429,'Zu viele aktive Verbindungen für dieses Konto.');
       socket.data.identity=user;socket.data.profile=await repo().getProfile(user);next();
@@ -227,6 +244,7 @@ export async function createBackend(options:BackendOptions={}){
         if(typeof ack!=='function')return;
         void serialize(async()=>{
           if(shuttingDown)throw new HttpError(503,'Der Server startet neu. Bitte verbinde dich erneut.');
+          await accounts?.requireGame(socket.data.identity);
           if(socket.data.identity.expiresAt<=Date.now())throw new HttpError(401,'Deine Sitzung ist abgelaufen.');
           limiter.take(`socket:${id}`,180,60_000);
           return handler(body);

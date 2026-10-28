@@ -133,7 +133,7 @@ for(const allowed of [true,false])test(`email signup ${allowed?'requires confirm
  await page.route(`${origin}/**`,route=>{
   const url=new URL(route.request().url());
   if(url.pathname==='/auth/v1/signup'){
-   const body=route.request().postDataJSON();expect(body.email).toBe('email-test@example.invalid');expect(body.password).toBe('isolated-password-123');expect(body.code_challenge_method).toBe('s256');
+   const body=route.request().postDataJSON();expect(body.email).toBe('email-test@example.invalid');expect(body.password).toBe('isolated-password-123');expect(body.data.username).toBe('Email.Test');expect(body.code_challenge_method).toBe('s256');
    expect(new URL(url.searchParams.get('redirect_to')!).pathname).toBe('/auth/callback');
    return route.fulfill({status:allowed?200:400,headers:apiHeaders,contentType:'application/json',body:JSON.stringify(allowed?{...testUser,identities:[]}:{code:'email_address_not_authorized',msg:'Email not authorized'})});
   }
@@ -141,11 +141,11 @@ for(const allowed of [true,false])test(`email signup ${allowed?'requires confirm
   return route.abort();
  });
  await page.goto('/login');await page.getByRole('button',{name:'Registrieren',exact:true}).click();
- await page.getByLabel('E-Mail-Adresse',{exact:true}).fill('email-test@example.invalid');
+ await page.getByLabel('E-Mail-Adresse',{exact:true}).fill('email-test@example.invalid');await page.getByRole('textbox',{name:/Benutzername/}).fill('Email.Test');
  await page.getByLabel('Passwort',{exact:true}).fill('isolated-password-123');await page.getByLabel('Passwort wiederholen',{exact:true}).fill('different-password');
  await page.getByRole('button',{name:'Konto erstellen',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Passwörter stimmen nicht überein');
  await page.getByLabel('Passwort wiederholen',{exact:true}).fill('isolated-password-123');await page.getByRole('button',{name:'Konto erstellen',exact:true}).click();
- if(allowed){await expect(page.getByRole('status')).toContainText('bestätige deine E-Mail-Adresse');await page.getByRole('button',{name:'Bestätigung erneut senden'}).click();await expect(page.getByRole('status')).toContainText('Bestätigung erneut angefordert');expect(resent).toBe(1);}
+ if(allowed){await expect(page.getByRole('status')).toContainText('bestätige deine E-Mail-Adresse');await page.clock.install();await page.clock.fastForward(61000);await page.getByRole('button',{name:'Bestätigung erneut senden'}).click();await expect(page.getByRole('status')).toContainText('Bestätigung erneut angefordert');expect(resent).toBe(1);}
  else await expect(page.getByRole('alert')).toContainText('E-Mail-Versand ist für diese Adresse noch nicht freigeschaltet');
  await expect(page.getByRole('heading',{name:'Anmeldung erfolgreich.'})).toHaveCount(0);
 });
@@ -190,7 +190,7 @@ test('recovery callback verifies the session before accepting a new password',as
 
 test('email verification accepts a code inside the installed-app flow without a PKCE verifier',async({page})=>{
  let checks=0;await page.route(`${origin}/**`,route=>{const url=new URL(route.request().url());if(url.pathname==='/auth/v1/signup')return route.fulfill({status:200,headers:apiHeaders,contentType:'application/json',body:JSON.stringify({...testUser,identities:[]})});if(url.pathname==='/auth/v1/verify'){checks++;expect(route.request().postDataJSON()).toMatchObject({email:'code-test@example.invalid',token:'123456',type:'email'});return route.fulfill({status:200,headers:apiHeaders,contentType:'application/json',body:JSON.stringify(sessionFixture())});}if(url.pathname==='/auth/v1/user')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(testUser)});return route.abort();});
- await page.goto('/login');await page.getByRole('button',{name:'Registrieren',exact:true}).click();await page.getByLabel('E-Mail-Adresse',{exact:true}).fill('code-test@example.invalid');await page.getByLabel('Passwort',{exact:true}).fill('isolated-password-123');await page.getByLabel('Passwort wiederholen',{exact:true}).fill('isolated-password-123');await page.getByRole('button',{name:'Konto erstellen',exact:true}).click();
+ await page.goto('/login');await page.getByRole('button',{name:'Registrieren',exact:true}).click();await page.getByLabel('E-Mail-Adresse',{exact:true}).fill('code-test@example.invalid');await page.getByRole('textbox',{name:/Benutzername/}).fill('Code.Test');await page.getByLabel('Passwort',{exact:true}).fill('isolated-password-123');await page.getByLabel('Passwort wiederholen',{exact:true}).fill('isolated-password-123');await page.getByRole('button',{name:'Konto erstellen',exact:true}).click();
  await page.getByLabel('Verifizierungscode aus der E-Mail').fill('123456');await page.getByRole('button',{name:'E-Mail mit Code bestätigen'}).click();await expect(page.getByRole('heading',{name:'Anmeldung erfolgreich.'})).toBeVisible();expect(checks).toBe(1);
 });
 

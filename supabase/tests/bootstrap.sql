@@ -7,10 +7,14 @@ create role supabase_auth_admin nologin;
 create schema auth;
 create schema storage;
 grant usage on schema public,auth,storage to anon,authenticated,service_role,supabase_auth_admin;
-create table auth.users(id uuid primary key, is_anonymous boolean not null default false, raw_user_meta_data jsonb not null default '{}'::jsonb);
+create table auth.users(id uuid primary key, is_anonymous boolean not null default false, raw_user_meta_data jsonb not null default '{}'::jsonb, raw_app_meta_data jsonb not null default '{}'::jsonb, email text, email_confirmed_at timestamptz, banned_until timestamptz, last_sign_in_at timestamptz, created_at timestamptz not null default now());
+create table auth.sessions(id uuid primary key,user_id uuid references auth.users(id) on delete cascade,not_after timestamptz);
 grant select,delete on auth.users to supabase_auth_admin;
 create function auth.uid() returns uuid language sql stable as $$
  select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid;
+$$;
+create function auth.jwt() returns jsonb language sql stable as $$
+ select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb;
 $$;
 create table storage.buckets(id text primary key,name text not null,public boolean default false,file_size_limit bigint,allowed_mime_types text[]);
 create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text references storage.buckets(id),name text not null);

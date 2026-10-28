@@ -5,7 +5,7 @@ import { z } from 'zod';
 export class HttpError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
-export interface Identity { id: string; username?: string; avatarUrl?: string | null; expiresAt: number; isGuest?:boolean; }
+export interface Identity { id: string; username?: string; avatarUrl?: string | null; expiresAt: number; isGuest?:boolean; email?:string;emailVerified?:boolean;sessionId?:string; }
 export const uuid = z.string().uuid();
 export function testAuthEnabled(): boolean {
   return process.env.NODE_ENV === 'test' && process.env.TEST_AUTH === 'true';
@@ -34,7 +34,11 @@ export async function authenticate(token: unknown, supabase: SupabaseClient | nu
   const user: User = data.user;
   const expiresAt = expiry(token);
   if (expiresAt <= Date.now()) throw new HttpError(401, 'Deine Sitzung ist abgelaufen.');
-  return { id: user.id, isGuest:!!user.is_anonymous, username: user.user_metadata?.full_name, avatarUrl: user.user_metadata?.avatar_url, expiresAt };
+  // getUser verified the token first. The session ID is only used as a key for
+  // a fresh server-side auth.sessions lookup, never as proof of authorization.
+  let sessionId:string|undefined;
+  try{const claims=JSON.parse(Buffer.from(token.split('.')[1],'base64url').toString('utf8'));if(uuid.safeParse(claims.session_id).success)sessionId=claims.session_id;}catch{}
+  return { id: user.id, isGuest:!!user.is_anonymous, username: user.user_metadata?.full_name, avatarUrl: user.user_metadata?.avatar_url, expiresAt,email:user.email,emailVerified:!!user.email_confirmed_at,sessionId };
 }
 
 export function safeMessage(error: unknown): string {

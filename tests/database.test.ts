@@ -15,7 +15,7 @@ const c='30000000-0000-4000-8000-000000000003';
 let db:PGlite;
 async function userRole(id:string, sql:string, params:unknown[]=[]){
  await db.exec('set role authenticated');
- await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);
+ await db.query("select set_config('request.jwt.claim.sub',$1,false),set_config('request.jwt.claims',$2,false)",[id,JSON.stringify({sub:id,session_id:id})]);
  try{return await db.query(sql,params);}finally{await db.exec('reset role');}
 }
 async function rpc(name:string,args:unknown[]){
@@ -50,11 +50,55 @@ beforeAll(async()=>{
 },30000);
 beforeEach(async()=>{
  await db.exec('truncate auth.users cascade');
- for(const id of [a,b,c])await db.query('insert into auth.users(id) values($1)',[id]);
+ for(const id of [a,b,c])await db.query('insert into auth.users(id,raw_user_meta_data,email_confirmed_at) values($1,$2,now())',[id,{username:'Player_'+id.slice(0,8)}]);
+ for(const id of [a,b,c])await db.query('insert into auth.sessions(id,user_id) values($1,$1)',[id]);
 });
 afterAll(async()=>{await db?.close();});
 
 describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
+ it('ADMIN-DB-01 keeps roles, access-code hashes and admin sessions inaccessible to player SQL',async()=>{
+  for(const table of ['account_controls','admin_security','admin_sessions'])for(const action of ['select * from','delete from'])await expect(userRole(a,`${action} ${table}`)).rejects.toThrow(/permission denied/);
+  await expect(userRole(a,"select admin_change_code(null,null)")).rejects.toThrow(/permission denied/);
+  await expect(userRole(a,"select account_setup_step($1,2,null)",[a])).rejects.toThrow(/permission denied/);
+ });
+ it('ADMIN-DB-02 fresh role and live Auth session are both required for the account directory',async()=>{
+  const session=randomUUID();await db.query('insert into auth.sessions(id,user_id) values($1,$2)',[session,a]);
+  await expect(rpc('admin_account_directory',[a,session,'','',0,null])).rejects.toThrow(/admin_required/);
+  await db.query('update account_controls set is_admin=true where user_id=$1',[a]);
+  const directory=(await rpc('admin_account_directory',[a,session,'','',0,null])).rows[0].value as any;expect(directory.counts.total).toBe(3);
+  await db.query('delete from auth.sessions where id=$1',[session]);await expect(rpc('admin_account_directory',[a,session,'','',0,null])).rejects.toThrow(/admin_required/);
+ });
+ it('ADMIN-DB-03 disabling a user revokes direct RLS reads without deleting accounts or friendships',async()=>{
+  await befriend();await db.query('update account_controls set disabled=true where user_id=$1',[a]);
+  expect((await userRole(a,'select * from profiles')).rows).toHaveLength(0);expect((await userRole(a,'select * from friendships')).rows).toHaveLength(0);
+  expect((await db.query('select * from profiles')).rows).toHaveLength(3);
+  await db.query('update account_controls set disabled=false where user_id=$1',[a]);expect((await userRole(a,'select * from profiles')).rows).toHaveLength(2);
+ });
+ it('ADMIN-DB-SESSION revoked access tokens cannot read protected game data',async()=>{
+  expect((await userRole(a,'select * from profiles')).rows.length).toBeGreaterThan(0);
+  await db.query('delete from auth.sessions where id=$1',[a]);
+  expect((await userRole(a,'select * from profiles')).rows).toHaveLength(0);
+ });
+ it('ADMIN-DB-04 manual provisioning records approval separately from mailbox verification',async()=>{
+  const id=randomUUID();await db.query("insert into auth.users(id,email,email_confirmed_at,raw_app_meta_data) values($1,'manual@example.invalid',now(),$2)",[id,{manhunt_provisioning:'admin',manhunt_temporary_password_hash:'hash-fixture'}]);
+  const c=(await db.query<any>('select * from account_controls where user_id=$1',[id])).rows[0];expect(c).toMatchObject({is_admin:false,setup_stage:0,source:'admin',email_verified_at:null});expect(c.admin_approved_at).toBeTruthy();
+  await expect(rpc('account_setup_step',[id,2,null])).rejects.toThrow(/invalid_setup_step/);expect((await userRole(id,'select * from profiles')).rows).toHaveLength(0);
+ });
+ it('ADMIN-DB-05 user metadata cannot grant admin or mark setup complete',async()=>{
+  const id=randomUUID();await db.query('insert into auth.users(id,raw_user_meta_data) values($1,$2)',[id,{is_admin:true,setup_stage:3,manhunt_provisioning:'admin'}]);
+  const c=(await db.query<any>('select * from account_controls where user_id=$1',[id])).rows[0];expect(c).toMatchObject({is_admin:false,setup_stage:1,source:'self'});
+ });
+ it('AUTH-NAME-DB reserves the supplied name case-insensitively and supports periods',async()=>{
+  const id=randomUUID();await db.query('insert into auth.users(id,raw_user_meta_data) values($1,$2)',[id,{username:'New.Player'}]);
+  expect((await db.query<any>('select username from profiles where id=$1',[id])).rows[0].username).toBe('New.Player');
+  await expect(db.query('insert into auth.users(id,raw_user_meta_data) values($1,$2)',[randomUUID(),{username:'new.player'}])).rejects.toThrow(/unique/);
+  expect((await rpc('account_username_available',['NEW.PLAYER',null])).rows[0].value).toBe(false);
+ });
+ it('SETUP-DB direct step skipping and repeated completion are rejected atomically',async()=>{
+  await db.query('update account_controls set setup_stage=1 where user_id=$1',[a]);await expect(rpc('account_setup_step',[a,2,null])).rejects.toThrow(/invalid_setup_step/);
+  await rpc('account_setup_step',[a,1,'My.Player']);await rpc('account_setup_step',[a,2,null]);await expect(rpc('account_setup_step',[a,2,null])).rejects.toThrow(/invalid_setup_step/);
+  expect((await userRole(a,'select username from profiles')).rows).toEqual([{username:'My.Player'}]);
+ });
  it('keeps edge snapshots, presence and global quotas inaccessible to clients',async()=>{
   for(const table of ['edge_runtime','edge_presence','edge_quotas'])await expect(userRole(a,`select * from ${table}`)).rejects.toThrow(/permission denied/);
   for(const sql of ['select edge_snapshot()',`select edge_touch('${a}')`,`select edge_commit(0,'[]',null)`,`select edge_quota('${a}','api',999)`])await expect(userRole(a,sql)).rejects.toThrow(/permission denied/);
@@ -100,7 +144,7 @@ describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
  });
  it('executes the full unchanged migration and enables RLS on every application table',async()=>{
   const tables=await db.query<{tablename:string;rowsecurity:boolean}>("select tablename,rowsecurity from pg_tables where schemaname='public'");
-  expect(tables.rows.length).toBe(29);
+  expect(tables.rows.length).toBe(32);
   expect(tables.rows.every(t=>t.rowsecurity)).toBe(true);
   expect((await db.query('select * from profiles')).rows).toHaveLength(3);
   expect(await friendCode(a)).toMatch(/^[A-Z0-9]{12}$/);

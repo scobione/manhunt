@@ -1,3 +1,4 @@
+import type {AccountState} from '../shared/accounts';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { io, type Socket } from 'socket.io-client';
@@ -13,9 +14,9 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || (!import.meta.env.
 export const supabase:SupabaseClient|null = supabaseUrl && supabaseKey ? createClient(supabaseUrl,supabaseKey,{auth:{flowType:'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}) : null;
 export const TEST_MODE = import.meta.env.MODE === 'test' && import.meta.env.VITE_TEST_AUTH === 'true';
 const API_BASE = (import.meta.env.VITE_API_URL || defaults?.apiUrl || '').replace(/\/$/,'');
-interface Config { configured:boolean; authConfigured:boolean; pushPublicKey?:string; transport?:'http'|'socket' }
+interface Config { configured:boolean; authConfigured:boolean; pushPublicKey?:string; transport?:'http'|'socket';accountControls?:boolean }
 interface AppContextValue {
-  profile:Profile|null; token:string|null; lobby:LobbyView|null; connected:boolean; loading:boolean; config:Config|null;
+  account:AccountState|null;accountChecking:boolean;refreshAccount:()=>Promise<void>;profile:Profile|null; token:string|null; lobby:LobbyView|null; connected:boolean; loading:boolean; config:Config|null;
   identity:{id:string;email?:string;isGuest?:boolean}|null; authChecking:boolean; authError:string;
   passwordRecovery:boolean; finishPasswordRecovery:()=>void; clearAuthError:()=>void;
   notice:string; clearNotice:()=>void; notify:(message:string)=>void; api:<T=any>(path:string,options?:RequestInit)=>Promise<T>;
@@ -28,15 +29,20 @@ export function AppProvider({children}:{children:ReactNode}) {
  const [lobby,setLobby]=useState<LobbyView|null>(null),[connected,setConnected]=useState(false),[loading,setLoading]=useState(true),[config,setConfig]=useState<Config|null>(null),[notice,setNotice]=useState(''),[socialRevision,setSocialRevision]=useState(0);
  const [identity,setIdentity]=useState<{id:string;email?:string;isGuest?:boolean}|null>(null),[authChecking,setAuthChecking]=useState(false),[authError,setAuthError]=useState('');
  const [passwordRecovery,setPasswordRecovery]=useState(false);
+ const [account,setAccount]=useState<AccountState|null>(null),[accountChecking,setAccountChecking]=useState(false);
+ const accountRefreshPending=useRef(false);
  const socketRef=useRef<Socket|null>(null);const lastEvent=useRef<string|null>(null); const tokenRef=useRef(token); tokenRef.current=token;
  const httpRef=useRef<ReturnType<typeof httpSession>|null>(null);
  const notify=useCallback((message:string)=>setNotice(message),[]);
  const api=useCallback(async <T,>(path:string,options:RequestInit={}):Promise<T>=>{
    const response=await fetch(`${API_BASE}/api${path}`,{signal:AbortSignal.timeout(15000),...options,headers:{'Content-Type':'application/json',...(tokenRef.current?{Authorization:`Bearer ${tokenRef.current}`} : {}),...options.headers}});
    const body=await response.json().catch(()=>null);
+   if(!response.ok&&[403,428].includes(response.status)&&tokenRef.current&&!accountRefreshPending.current){accountRefreshPending.current=true;void fetch(`${API_BASE}/api/account`,{headers:{Authorization:`Bearer ${tokenRef.current}`}}).then(r=>r.ok?r.json():null).then(v=>{if(v)setAccount(v);}).catch(()=>{}).finally(()=>{accountRefreshPending.current=false;});}
    if(!response.ok) throw Object.assign(new Error(body?.error||'Der Server ist gerade nicht erreichbar. Bitte versuche es erneut.'),{status:response.status});
    return body as T;
  },[]);
+ const refreshAccount=useCallback(async()=>{if(tokenRef.current)setAccount(await api<AccountState>('/account'));},[api]);
+ useEffect(()=>{setAccount(null);if(!token||!config?.accountControls){setAccountChecking(false);return;}let active=true;setAccountChecking(true);api<AccountState>('/account').then(v=>{if(active)setAccount(v);}).catch(e=>{if(active)notify(e.message);}).finally(()=>{if(active)setAccountChecking(false);});return()=>{active=false;};},[token,config?.accountControls,api,notify]);
  const refreshProfile=useCallback(async()=>{ if(tokenRef.current) setProfile(await api<Profile>('/profile')); },[api]);
  useEffect(()=>{
   fetch(`${API_BASE}/api/config`).then(r=>r.ok?r.json():Promise.reject()).then(setConfig).catch(()=>setConfig({configured:false,authConfigured:!!supabase}));
@@ -68,7 +74,7 @@ export function AppProvider({children}:{children:ReactNode}) {
   return()=>{active=false;};
  },[token]);
  useEffect(()=>{
-  if(!token||!config?.configured){setProfile(null);setLobby(null);setConnected(false);return;}
+  if(!token||!config?.configured||config.accountControls&&(!account||account.disabled||account.setupStage!==3)){setProfile(null);setLobby(null);setConnected(false);return;}
   let cancelled=false;
   refreshProfile().catch(e=>!cancelled&&notify(e.message));
   if(config.transport==='http'){
@@ -91,7 +97,7 @@ export function AppProvider({children}:{children:ReactNode}) {
   socket.on('social:changed',()=>setSocialRevision(v=>v+1));
   socket.on('notice',(data:{message:string})=>notify(data.message));
   return()=>{cancelled=true;socket.disconnect();socketRef.current=null;};
- },[token,refreshProfile,notify,api,config?.configured,config?.transport]);
+ },[token,refreshProfile,notify,api,config?.configured,config?.transport,config?.accountControls,account?.setupStage,account?.disabled,!!account]);
  const emit=useCallback(<T,>(event:string,data:unknown={}):Promise<T>=>new Promise((resolve,reject)=>{
   if(httpRef.current){httpRef.current.send<T>(event,data).then(resolve,reject);return;}
   const socket=socketRef.current;if(!socket?.connected){reject(new Error('Keine Serververbindung. Warte auf die Wiederverbindung.'));return;}
@@ -105,9 +111,9 @@ export function AppProvider({children}:{children:ReactNode}) {
  }),[]);
  const command=useCallback((command:Command)=>emit<LobbyView>('lobby:command',{command}),[emit]);
 
- async function logout(){if(tokenRef.current){const {detachPush}=await import('./push-client');await detachPush(api);}if(lobby && lobby.status!=='finished')await command({type:'leave'});if(supabase){const {error}=await supabase.auth.signOut();if(error)throw error;}sessionStorage.removeItem('manhunt:test-token');setToken(null);setIdentity(null);setProfile(null);setLobby(null);setAuthError('');}
+ async function logout(){if(tokenRef.current&&profile){const {detachPush}=await import('./push-client');await detachPush(api);}if(lobby && lobby.status!=='finished')await command({type:'leave'});if(supabase){const {error}=await supabase.auth.signOut();if(error)throw error;}sessionStorage.removeItem('manhunt:test-token');setToken(null);setIdentity(null);setProfile(null);setLobby(null);setAccount(null);setAuthError('');}
  function setTestSession(id:string,name:string){if(!TEST_MODE)return;const value=`test:${id}:${name}`;sessionStorage.setItem('manhunt:test-token',value);setToken(value);}
- return <AppContext.Provider value={{profile,token,lobby,connected,loading,identity,authChecking,authError,passwordRecovery,finishPasswordRecovery:()=>setPasswordRecovery(false),clearAuthError:()=>setAuthError(''),config,notice,clearNotice:()=>setNotice(''),notify,api,emit,command,logout,refreshProfile,setTestSession,socialRevision}}>{children}</AppContext.Provider>;
+ return <AppContext.Provider value={{account,accountChecking,refreshAccount,profile,token,lobby,connected,loading,identity,authChecking,authError,passwordRecovery,finishPasswordRecovery:()=>setPasswordRecovery(false),clearAuthError:()=>setAuthError(''),config,notice,clearNotice:()=>setNotice(''),notify,api,emit,command,logout,refreshProfile,setTestSession,socialRevision}}>{children}</AppContext.Provider>;
 }
 export function useApp(){const value=useContext(AppContext);if(!value)throw new Error('AppProvider missing');return value;}
 export function useNow(){const [now,setNow]=useState(Date.now());useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[]);return now;}

@@ -21,10 +21,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Build independent admin portal
+        run: npm --prefix admin ci && npm --prefix admin run build
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
       - run: npm audit --omit=dev --audit-level=high
+      - run: npm --prefix admin audit --omit=dev --audit-level=high
       - name: Install Chromium for Playwright
         # ubuntu-latest already supplies Chromium's shared libraries. Avoid
         # unrelated apt upgrades, which can stall on a slow Ubuntu mirror.
@@ -35,6 +38,7 @@ jobs:
           export PLAYWRIGHT_CHROMIUM_PATH=$(node --input-type=module -e "import { chromium } from '@playwright/test'; console.log(chromium.executablePath())")
           npm run test:e2e
           npm run test:edge:e2e
+          npx playwright test -c playwright.admin.config.ts
       - name: Check the production frontend bundle
         run: |
           export PLAYWRIGHT_CHROMIUM_PATH=$(node --input-type=module -e "import { chromium } from '@playwright/test'; console.log(chromium.executablePath())")
@@ -48,6 +52,7 @@ jobs:
             playwright-report/
             test-results/
             test-results-edge/
+            test-results-admin/
             test-results-public/
             test-results-redirect/
           retention-days: 7
