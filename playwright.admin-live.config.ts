@@ -1,0 +1,3 @@
+import {defineConfig} from '@playwright/test';
+// Read-only checks against the real Vercel deployment. No Auth fixtures or GPS.
+export default defineConfig({testDir:'tests',testMatch:'admin-live.spec.ts',outputDir:'test-results-admin-live',workers:1,timeout:45000,reporter:'list',use:{...(process.env.HTTPS_PROXY?{proxy:{server:process.env.HTTPS_PROXY,bypass:'127.0.0.1,localhost'}}:{}),baseURL:process.env.ADMIN_URL||'https://manhunt-admin-scobione.vercel.app',launchOptions:{executablePath:process.env.PLAYWRIGHT_CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage'],...(process.env.HTTPS_PROXY?{proxy:{server:process.env.HTTPS_PROXY,bypass:'127.0.0.1,localhost'}}:{})},screenshot:'only-on-failure'}});

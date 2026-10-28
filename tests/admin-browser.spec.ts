@@ -6,7 +6,7 @@ async function login(page:Page,email:string,password:string,admin=true){await pa
 test('ADMIN-01 ADMIN-02 ADMIN-03 ADMIN-16: separate mobile portal denies player access and supplies its own PWA',async({page})=>{
  await page.setViewportSize({width:390,height:844});await login(page,'player@isolated.invalid','Player-Test-Password1');await expect(page.getByRole('heading',{name:'Kein Adminzugang.'})).toBeVisible();await expect(page.getByRole('heading',{name:'Deine Spieler.'})).toHaveCount(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  const manifest=await (await page.request.get('/manifest.webmanifest')).json();expect(manifest.name).toBe('Manhunt Admin');expect(manifest.display).toBe('standalone');for(const icon of manifest.icons)expect((await page.request.get(icon.src)).ok()).toBe(true);
- const sw=await(await page.request.get('/sw.js')).text();expect(sw).toContain("const STATIC=['/offline.html','/icon.svg','/icon-192.png','/icon-512.png']");
+ const sw=await(await page.request.get('/sw.js')).text();expect(sw).toContain("const STATIC=['/offline.html','/offline.css','/icon.svg','/icon-192.png','/icon-512.png']");
 });
 test('ADMIN-04 ADMIN-06 ADMIN-07 SETUP-08 SETUP-09 SETUP-10 SETUP-11 ADMIN-14 ADMIN-15: admin provisions a real test account which completes mandatory setup in a separate game browser',async({browser,request})=>{
  const admin=await browser.newContext({viewport:{width:390,height:844}}),player=await browser.newContext({viewport:{width:390,height:844}});const a=await admin.newPage(),p=await player.newPage();

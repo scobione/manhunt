@@ -1,7 +1,7 @@
 // A static offline notice and icons only. NEVER store API responses, sessions,
 // account lists, dashboard pages or temporary credentials in a service-worker cache.
-const CACHE='manhunt-admin-static-v1';
-const STATIC=['/offline.html','/icon.svg','/icon-192.png','/icon-512.png'];
+const CACHE='manhunt-admin-static-v2';
+const STATIC=['/offline.html','/offline.css','/icon.svg','/icon-192.png','/icon-512.png'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(STATIC))));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{

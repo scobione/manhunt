@@ -22,3 +22,5 @@ test-results-edge/
 test-results-redirect/
 test-results-admin/
 .admin-game-test-dist/
+
+test-results-admin-live/

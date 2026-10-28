@@ -4,7 +4,7 @@ Eigenständige React/Vite-PWA im Verzeichnis `admin/`, separat deploybar. Spiel 
 
 - Spiel: https://manhunt-pwa.vercel.app
 - Admin-Projekt / Produktionsadresse: https://manhunt-admin-scobione.vercel.app
-- Die verschachtelte Adresse `admin.manhunt-pwa.vercel.app` konnte diesem Vercel-Konto nicht zugewiesen werden (403). `manhunt-admin.vercel.app` ist bereits vergeben. Die gewählte Alternative wurde über das Vercel-Plugin zugewiesen und verifiziert. Es ist kein Domainkauf erforderlich.
+- Die verschachtelte Adresse `admin.manhunt-pwa.vercel.app` konnte diesem Vercel-Konto nicht zugewiesen werden (403). Die direkte Zuweisung von `manhunt-admin.vercel.app` meldete zunächst 409; das erste Deployment führt diese Adresse inzwischen ebenfalls als Alias. Die hier dokumentierte Betreiberadresse bleibt unverändert. Die gewählte Alternative wurde über das Vercel-Plugin zugewiesen und verifiziert. Es ist kein Domainkauf erforderlich.
 
 ## Verwendung
 
@@ -61,3 +61,5 @@ Die Admin-Browsertests starten drei isolierte lokale Ursprünge. Produktions- un
 Die echte Zustellung und Einlösung einer Registrierungs-E-Mail benötigen ein kontrolliertes Postfach. Die verfügbare Supabase-Integration kann SMTP, OTP-Länge und E-Mail-Templates nicht verwalten. Prüfen unter [Auth Providers](https://supabase.com/dashboard/project/dxoleuqmhcnqnjyqdqvw/auth/providers): Confirm Email aktiviert, OTP-Länge sechs. Unter [E-Mail-Templates](https://supabase.com/dashboard/project/dxoleuqmhcnqnjyqdqvw/auth/templates) muss die Bestätigung `{{ .Token }}` enthalten; gestaltete Vorlagen liegen bereits unter `supabase/templates/`. Kein neues kostenpflichtiges Mail-Abo wurde eingerichtet.
 
 Der Betreiber muss seinen persönlichen Admin-Login und die Installation auf seinem iPhone/Android-Gerät abschließend prüfen. Automatisierte Chromium-Tests mit mobiler Bildschirmgröße ersetzen keine echte Geräteinstallation.
+
+Prüfergebnisse und offene echte Geräte-/Postfachprüfungen: [ADMIN-TEST-REPORT.md](ADMIN-TEST-REPORT.md).
