@@ -1,4 +1,4 @@
-# Manhunt Admin — 0.b1.103
+# Manhunt Admin — 0.b1.104
 
 Eigenständige React/Vite-PWA im Verzeichnis `admin/`, separat deploybar. Spiel und Admin verwenden dasselbe bestehende Supabase-Projekt; es wird keine zweite Benutzerdatenbank angelegt.
 
@@ -22,7 +22,19 @@ Die normale Registrierung bleibt E-Mail + Benutzername + eigenes Passwort, ansch
 
 Die manuelle Erstellung verwendet `auth.admin.createUser` und versendet **keine E-Mail**. Supabase benötigt für die direkte Passwortanmeldung `email_confirm: true`; hier bedeutet das ausschließlich administrative Loginfreigabe. `account_controls.source='admin'`, `admin_approved_at` und ein **leeres** `email_verified_at` unterscheiden diese Freigabe ausdrücklich von nachgewiesenem E-Mail-Besitz. Portal und Ersteinrichtung zeigen „Nicht verifiziert · administrativ freigegeben“. Die globale E-Mail-Verifizierung wird nicht abgeschaltet. Der Ablauf darf nicht als Nachweis des Mailboxbesitzes verwendet werden.
 
-Passwort-Reset bleibt vom Maildienst und dessen Kontingent abhängig. Die neue manuelle Kontoerstellung funktioniert ohne dieses Kontingent. Bereits bestehende E-Mail-Adressen werden nicht überschrieben. Bei verlorenen einmaligen Zugangsdaten eines bereits angelegten Kontos muss der Besitzer den normalen Passwort-Reset nutzen; ein vorhandenes Passwort kann nicht ausgelesen werden.
+Passwort-Reset bleibt vom Maildienst und dessen Kontingent abhängig. Die neue manuelle Kontoerstellung funktioniert ohne dieses Kontingent. Bereits bestehende E-Mail-Adressen werden nicht überschrieben. Bei verlorenen einmaligen Zugangsdaten kann ein Administrator in den Accountdetails ein neues vorläufiges Passwort setzen. Ein vorhandenes Passwort kann nicht ausgelesen werden.
+
+## Manueller Passwort-Reset
+
+**Benutzerverwaltung → Konto öffnen → Vorläufiges Passwort festlegen.** Passwort und Bestätigung eingeben, dann „Vorläufiges Passwort speichern“. Mindestens zwölf Zeichen mit Groß-/Kleinbuchstaben und einer Zahl. Es wird keine E-Mail versendet; das Versandkontingent wird nicht benötigt.
+
+Das Passwort ersetzt den bisherigen Zugang. Alle bestehenden Auth-Sitzungen und Refresh-Grants des ausgewählten Spielerkontos werden widerrufen. Bei der nächsten Anmeldung mit dem vorläufigen Passwort ist ein eigenes, davon verschiedenes Passwort Pflicht. Ein bereits fertig eingerichtetes Profil wird danach unmittelbar freigegeben: Name, Bild, Freundschaften und Statistiken bleiben erhalten. Bei zuvor unvollständiger Einrichtung geht es anschließend beim ursprünglichen Schritt weiter.
+
+Der Reset reaktiviert kein deaktiviertes Konto und bestätigt keine bislang unbestätigte E-Mail-Adresse. Administratorkonten können sich über diesen Weg nicht gegenseitig übernehmen; für sie bleibt der persönliche E-Mail-Reset vorgesehen. Der Admin muss das vorläufige Passwort dem vorgesehenen Benutzer persönlich mitteilen. Die Formulare speichern es nicht im Browser-Cache und leeren es nach der Anfrage sowie beim Ausblenden der App.
+
+Ein zufällig gesalzener PBKDF2-SHA256-Prüfwert verhindert die Wiederverwendung des vorgegebenen Passworts. Accountkontrolle, Sperre gegen parallele Passwortänderungen und Sitzungswiderruf erfolgen serverseitig. Bei einem nicht bestätigten Auth-API-Aufruf bleibt das Konto gesperrt, bis ein Administrator den manuellen Reset erfolgreich wiederholt; ein Fehler darf den Passwortwechsel nicht umgehen. Start, Fehler und Erfolg werden ohne Passwortinhalt protokolliert. Höchstens drei manuelle Resets je Admin und Minute.
+
+[Prüfbericht zur Erweiterung](MANUAL-PASSWORD-RESET.md).
 
 ## Sicherheit und Datenmodell
 
@@ -63,3 +75,7 @@ Die echte Zustellung und Einlösung einer Registrierungs-E-Mail benötigen ein k
 Der Betreiber muss seinen persönlichen Admin-Login und die Installation auf seinem iPhone/Android-Gerät abschließend prüfen. Automatisierte Chromium-Tests mit mobiler Bildschirmgröße ersetzen keine echte Geräteinstallation.
 
 Prüfergebnisse und offene echte Geräte-/Postfachprüfungen: [ADMIN-TEST-REPORT.md](ADMIN-TEST-REPORT.md).
+
+## Verbrauch pro Match und Spieler
+
+Unter **Datenverbrauch** siehst du alle Matches und die gemeldeten Bytezähler jedes Spielers. WLAN, Mobilfunk, Kabel und unbekannte Verbindungen werden getrennt angezeigt. Grenzen der Browsermessung und Testergebnisse stehen in [TRAFFIC.md](TRAFFIC.md).

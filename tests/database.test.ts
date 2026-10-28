@@ -1,3 +1,4 @@
+import {emptyBuckets} from '../shared/traffic';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
@@ -56,6 +57,62 @@ beforeEach(async()=>{
 afterAll(async()=>{await db?.close();});
 
 describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
+ it('TRAFFIC-DB-01 cumulative reports are idempotent, isolated by player and survive reloads',async()=>{
+  const lobby=state();await rpc('save_game_checkpoint',[lobby]);const client=randomUUID(),buckets=emptyBuckets();buckets.wifi.down=1024;buckets.wifi.requests=2;
+  await rpc('record_match_traffic',[a,a,lobby.id,client,1,buckets]);await rpc('record_match_traffic',[a,a,lobby.id,client,1,buckets]);
+  buckets.wifi.down=2048;await rpc('record_match_traffic',[a,a,lobby.id,client,2,buckets]);buckets.wifi.down=8000;await rpc('record_match_traffic',[a,a,lobby.id,client,1,buckets]);
+  buckets.wifi.down=512;await rpc('record_match_traffic',[a,a,lobby.id,client,3,buckets]);await rpc('record_match_traffic',[b,b,lobby.id,randomUUID(),1,buckets]);
+  const r=(await rpc('read_match_traffic',[a,a,false,lobby.id,0])).rows[0].value as any;expect(r.match.bytes).toBe(2560);expect(r.match.reporters).toBe(2);expect(r.players).toHaveLength(2);expect(r.rows.find((r:any)=>r.userId===a&&r.network==='wifi').down).toBe(2048);
+  await rpc('record_match_traffic',[a,a,lobby.id,randomUUID(),1,buckets]);expect(((await rpc('read_match_traffic',[a,a,false,lobby.id,0])).rows[0].value as any).match.bytes).toBe(3072);
+ });
+ it('TRAFFIC-DB-02 foreign matches, stale sessions, normal-user admin reads and direct SQL are denied',async()=>{
+  const lobby=state();await rpc('save_game_checkpoint',[lobby]);const buckets=emptyBuckets();
+  await expect(rpc('record_match_traffic',[c,c,lobby.id,randomUUID(),1,buckets])).rejects.toThrow(/traffic_forbidden/);
+  await expect(rpc('read_match_traffic',[c,c,false,lobby.id,0])).rejects.toThrow(/traffic_forbidden/);
+  await expect(rpc('read_match_traffic',[a,a,true,null,0])).rejects.toThrow(/traffic_forbidden/);
+  await expect(userRole(a,'select * from match_traffic')).rejects.toThrow(/permission denied/);
+  await expect(userRole(a,'select read_match_traffic($1,$1,true,null,0)',[a])).rejects.toThrow(/permission denied/);
+  await db.query('update account_controls set is_admin=true where user_id=$1',[c]);expect(((await rpc('read_match_traffic',[c,c,true,null,0])).rows[0].value as any).matches).toHaveLength(1);
+  await db.query('delete from auth.sessions where id=$1',[c]);await expect(rpc('read_match_traffic',[c,c,true,null,0])).rejects.toThrow(/traffic_forbidden/);
+ });
+ it('TRAFFIC-DB-03 no retroactive values, bounded writes and expired diagnostics are removed',async()=>{
+  const lobby=state();await rpc('save_game_checkpoint',[lobby]);const empty=(await rpc('read_match_traffic',[a,a,false,lobby.id,0])).rows[0].value as any;expect(empty.match.reporters).toBe(0);expect(empty.rows).toEqual([]);expect(empty.players.every((p:any)=>p.updatedAt===null)).toBe(true);
+  const client=randomUUID(),buckets=emptyBuckets();buckets.cellular.up=500;
+  await expect(rpc('record_match_traffic',[a,a,lobby.id,client,0,buckets])).rejects.toThrow(/traffic_invalid/);
+  await expect(rpc('record_match_traffic',[a,a,lobby.id,client,1,{...buckets,ssid:'private'}])).rejects.toThrow(/traffic_invalid/);
+  await rpc('record_match_traffic',[a,a,lobby.id,client,1,buckets]);await db.query("update match_traffic set updated_at=now()-interval '31 days'");expect(((await rpc('read_match_traffic',[a,a,false,lobby.id,0])).rows[0].value as any).rows).toEqual([]);
+  await rpc('record_match_traffic',[a,a,lobby.id,randomUUID(),1,emptyBuckets()]);expect((await db.query('select * from match_traffic where client_id=$1',[client])).rows).toHaveLength(0);
+  await db.query("update game_sessions set ended_at=now()-interval '7 hours' where id=$1",[lobby.id]);await expect(rpc('record_match_traffic',[a,a,lobby.id,randomUUID(),1,buckets])).rejects.toThrow(/traffic_forbidden/);
+ });
+
+ it('MRESET-DB-01 only a live admin may start a reset; browser RPCs cannot bypass it',async()=>{
+  const lock=randomUUID(),hash='pbkdf2$'+'a'.repeat(48)+'$'+'b'.repeat(64);
+  await expect(rpc('admin_begin_password_reset',[a,a,b,lock,hash])).rejects.toThrow(/admin_required/);
+  await db.query('update account_controls set is_admin=true where user_id=$1',[a]);
+  await expect(userRole(a,'select admin_begin_password_reset($1,$1,$2,$3,$4)',[a,b,lock,hash])).rejects.toThrow(/permission denied/);
+  await expect(userRole(b,'select account_finish_password($1,$2,true)',[b,lock])).rejects.toThrow(/permission denied/);
+  await expect(rpc('admin_begin_password_reset',[a,a,a,lock,hash])).rejects.toThrow(/reset_target_not_allowed/);
+  await db.query('delete from auth.sessions where id=$1',[a]);await expect(rpc('admin_begin_password_reset',[a,a,b,lock,hash])).rejects.toThrow(/admin_required/);
+ });
+ it('MRESET-DB-02 revokes target sessions only and preserves profile and email verification',async()=>{
+  const lock=randomUUID(),hash='pbkdf2$'+'a'.repeat(48)+'$'+'b'.repeat(64);await db.query('update account_controls set is_admin=true where user_id=$1',[a]);
+  await db.query('insert into auth.refresh_tokens(user_id,session_id) values($1,$2)',[b,b]);const before=(await db.query('select * from profiles where id=$1',[b])).rows[0];
+  await rpc('admin_begin_password_reset',[a,a,b,lock,hash]);
+  expect((await db.query<any>('select setup_stage,password_return_stage,password_reset_pending,email_verified_at from account_controls where user_id=$1',[b])).rows[0]).toMatchObject({setup_stage:0,password_return_stage:3,password_reset_pending:true});
+  expect((await db.query('select * from auth.sessions where user_id=$1',[b])).rows).toHaveLength(0);expect((await db.query('select * from auth.refresh_tokens where user_id=$1',[b])).rows).toHaveLength(0);expect((await db.query('select * from auth.sessions')).rows).toHaveLength(2);
+  expect((await db.query('select * from profiles where id=$1',[b])).rows[0]).toEqual(before);
+  await expect(rpc('admin_begin_password_reset',[a,a,b,randomUUID(),hash])).rejects.toThrow(/password_operation_busy/);
+  await expect(rpc('account_finish_password',[b,lock,true])).rejects.toThrow(/password_operation_busy/);
+  await rpc('admin_finish_password_reset',[a,a,b,lock,true]);
+  const userLock=randomUUID();await db.query('update account_controls set setup_lock=$2 where user_id=$1',[b,userLock]);await rpc('account_finish_password',[b,userLock,true]);
+  expect((await db.query<any>('select setup_stage,temporary_password_hash from account_controls where user_id=$1',[b])).rows[0]).toEqual({setup_stage:3,temporary_password_hash:null});
+ });
+ it('MRESET-DB-03 an interrupted reset stays blocked and a retry preserves unfinished setup',async()=>{
+  const hash='pbkdf2$'+'a'.repeat(48)+'$'+'b'.repeat(64),first=randomUUID(),second=randomUUID();await db.query('update account_controls set is_admin=true where user_id=$1',[a]);await db.query('update account_controls set setup_stage=2,disabled=true,email_verified_at=null where user_id=$1',[b]);
+  await rpc('admin_begin_password_reset',[a,a,b,first,hash]);await rpc('admin_finish_password_reset',[a,a,b,first,false]);expect((await db.query<any>('select password_reset_pending from account_controls where user_id=$1',[b])).rows[0].password_reset_pending).toBe(true);
+  await rpc('admin_begin_password_reset',[a,a,b,second,hash]);await expect(rpc('admin_finish_password_reset',[a,a,b,first,true])).rejects.toThrow(/password_operation_busy/);await rpc('admin_finish_password_reset',[a,a,b,second,true]);
+  const c=(await db.query<any>('select * from account_controls where user_id=$1',[b])).rows[0];expect(c).toMatchObject({password_return_stage:2,setup_stage:0,disabled:true,email_verified_at:null,password_reset_pending:false});
+ });
  it('ADMIN-DB-01 keeps roles, access-code hashes and admin sessions inaccessible to player SQL',async()=>{
   for(const table of ['account_controls','admin_security','admin_sessions'])for(const action of ['select * from','delete from'])await expect(userRole(a,`${action} ${table}`)).rejects.toThrow(/permission denied/);
   await expect(userRole(a,"select admin_change_code(null,null)")).rejects.toThrow(/permission denied/);
@@ -144,7 +201,7 @@ describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
  });
  it('executes the full unchanged migration and enables RLS on every application table',async()=>{
   const tables=await db.query<{tablename:string;rowsecurity:boolean}>("select tablename,rowsecurity from pg_tables where schemaname='public'");
-  expect(tables.rows.length).toBe(32);
+  expect(tables.rows.length).toBe(33);
   expect(tables.rows.every(t=>t.rowsecurity)).toBe(true);
   expect((await db.query('select * from profiles')).rows).toHaveLength(3);
   expect(await friendCode(a)).toMatch(/^[A-Z0-9]{12}$/);

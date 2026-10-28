@@ -1,3 +1,4 @@
+import {beginTraffic,startTraffic,socketTraffic} from './traffic-meter';
 import type {AccountState} from '../shared/accounts';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -35,12 +36,18 @@ export function AppProvider({children}:{children:ReactNode}) {
  const httpRef=useRef<ReturnType<typeof httpSession>|null>(null);
  const notify=useCallback((message:string)=>setNotice(message),[]);
  const api=useCallback(async <T,>(path:string,options:RequestInit={}):Promise<T>=>{
+   const measured=beginTraffic(`${API_BASE}/api${path}`,options.body);
    const response=await fetch(`${API_BASE}/api${path}`,{signal:AbortSignal.timeout(15000),...options,headers:{'Content-Type':'application/json',...(tokenRef.current?{Authorization:`Bearer ${tokenRef.current}`} : {}),...options.headers}});
-   const body=await response.json().catch(()=>null);
+   const text=await response.text();measured(text);let body:any=null;try{body=JSON.parse(text);}catch{/* Keep the existing friendly API error. */}
    if(!response.ok&&[403,428].includes(response.status)&&tokenRef.current&&!accountRefreshPending.current){accountRefreshPending.current=true;void fetch(`${API_BASE}/api/account`,{headers:{Authorization:`Bearer ${tokenRef.current}`}}).then(r=>r.ok?r.json():null).then(v=>{if(v)setAccount(v);}).catch(()=>{}).finally(()=>{accountRefreshPending.current=false;});}
    if(!response.ok) throw Object.assign(new Error(body?.error||'Der Server ist gerade nicht erreichbar. Bitte versuche es erneut.'),{status:response.status});
    return body as T;
  },[]);
+ useEffect(()=>{
+  if(!profile?.id||!lobby?.startedAt||!['active','preparing','paused'].includes(lobby.status))return;
+  const meter=startTraffic(lobby.id,API_BASE,report=>api('/traffic',{method:'POST',body:JSON.stringify(report),keepalive:true}));
+  return()=>meter.stop();
+ },[profile?.id,lobby?.id,!!lobby?.startedAt,lobby?.status==='finished'||lobby?.status==='closed',api]);
  const refreshAccount=useCallback(async()=>{if(tokenRef.current)setAccount(await api<AccountState>('/account'));},[api]);
  useEffect(()=>{setAccount(null);if(!token||!config?.accountControls){setAccountChecking(false);return;}let active=true;setAccountChecking(true);api<AccountState>('/account').then(v=>{if(active)setAccount(v);}).catch(e=>{if(active)notify(e.message);}).finally(()=>{if(active)setAccountChecking(false);});return()=>{active=false;};},[token,config?.accountControls,api,notify]);
  const refreshProfile=useCallback(async()=>{ if(tokenRef.current) setProfile(await api<Profile>('/profile')); },[api]);
@@ -87,6 +94,8 @@ export function AppProvider({children}:{children:ReactNode}) {
    return()=>{cancelled=true;session.close();httpRef.current=null;};
   }
   const socket=io(API_BASE||window.location.origin,{auth:{token},reconnection:true,reconnectionDelay:1000,reconnectionDelayMax:10000,timeout:20000});socketRef.current=socket;
+  socket.onAny((event,...args)=>socketTraffic({event,args},'down'));
+  socket.onAnyOutgoing((event,...args)=>socketTraffic({event,args},'up'));
   socket.on('connect',()=>{setConnected(true);socket.emit('lobby:sync',{},(response:any)=>{if(response?.ok)setLobby(response.data??null);});});
   socket.on('disconnect',()=>setConnected(false));
   socket.on('connect_error',(error)=>{setConnected(false);notify(`Verbindung unterbrochen: ${error.message}`);});
@@ -102,6 +111,7 @@ export function AppProvider({children}:{children:ReactNode}) {
   if(httpRef.current){httpRef.current.send<T>(event,data).then(resolve,reject);return;}
   const socket=socketRef.current;if(!socket?.connected){reject(new Error('Keine Serververbindung. Warte auf die Wiederverbindung.'));return;}
   socket.timeout(15000).emit(event,data,(timeout:Error|null,result:any)=>{
+   if(!timeout)socketTraffic(result,'down');
    if(timeout){reject(new Error('Der Server antwortet noch nicht. Bei einem kostenlosen Server kann der Start etwa eine Minute dauern.'));return;}
    if(!result?.ok){reject(new Error(result?.error||'Aktion konnte nicht ausgeführt werden.'));return;}
    if(event==='lobby:command' && ['leave','close'].includes((data as any).command?.type))setLobby(null);

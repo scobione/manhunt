@@ -1,3 +1,4 @@
+import {TestTrafficStore} from './traffic-fixtures';
 /** LOCAL AUTOMATED TEST SERVER ONLY: simulated Supabase Auth/mailbox and users.
  * Never deployed, never contacted by a production build. Real AccountService,
  * Edge routing, game engine and both React/Supabase clients run unchanged. */
@@ -9,13 +10,13 @@ import {TestEdgeStore} from './edge-fixtures';
 import {TestAccountStore} from './account-fixtures';
 import {HttpError,type Identity} from '../server/auth';
 if(process.env.NODE_ENV!=='test'||process.env.TEST_AUTH!=='true')throw Error('Isolated admin fixture requires explicit test opt-in.');
-const store=new TestAccountStore(),edge=new TestEdgeStore(),service=new AccountService(store),tokens=new Map<string,Identity>(),confirmed=new Set<string>(),otps=new Map<string,{code:string;expires:number;used:boolean}>();
+const store=new TestAccountStore(),edge=new TestEdgeStore(),service=new AccountService(store,Date.now,new TestTrafficStore(edge.lobbies)),tokens=new Map<string,Identity>(),confirmed=new Set<string>(),otps=new Map<string,{code:string;expires:number;used:boolean}>();
 store.repo.checkpoints=edge.lobbies;
 const admin={id:randomUUID(),username:'AdminFixture',email:'admin@isolated.invalid',expiresAt:Date.now()+3600000},player={id:randomUUID(),username:'PlayerFixture',email:'player@isolated.invalid',expiresAt:Date.now()+3600000};
 await store.seed(admin,admin.email,'Admin-Test-Password1',true);await store.seed(player,player.email,'Player-Test-Password1');confirmed.add(admin.id);confirmed.add(player.id);
 const codeAdmin={id:randomUUID(),username:'CodeAdminFixture',email:'code-admin@isolated.invalid',expiresAt:Date.now()+3600000};await store.seed(codeAdmin,codeAdmin.email,'Admin-Test-Password1',true);confirmed.add(codeAdmin.id);
 function user(id:string){const c=store.controls.get(id)!;return{id,email:store.emails.get(id),aud:'authenticated',role:'authenticated',app_metadata:{provider:'email',providers:['email']},user_metadata:{},email_confirmed_at:confirmed.has(id)||c.source==='admin'?'2026-01-01T00:00:00Z':null,created_at:'2026-01-01T00:00:00Z',is_anonymous:false};}
-function session(id:string){const u=user(id),identity={id,email:u.email,username:store.repo.profiles.get(id)!.username,emailVerified:!!u.email_confirmed_at,sessionId:randomUUID(),expiresAt:Date.now()+3600000},encode=(v:unknown)=>Buffer.from(JSON.stringify(v)).toString('base64url');const token=`${encode({alg:'HS256',typ:'JWT'})}.${encode({sub:id,session_id:identity.sessionId,exp:Math.floor(identity.expiresAt/1000),role:'authenticated'})}.isolated-admin-fixture`;tokens.set(token,identity);store.live.add(identity.sessionId);return{access_token:token,refresh_token:'isolated-refresh-'+identity.sessionId,token_type:'bearer',expires_in:3600,expires_at:Math.floor(identity.expiresAt/1000),user:u};}
+function session(id:string){const u=user(id),identity={id,email:u.email,username:store.repo.profiles.get(id)!.username,emailVerified:!!u.email_confirmed_at,sessionId:randomUUID(),expiresAt:Date.now()+3600000},encode=(v:unknown)=>Buffer.from(JSON.stringify(v)).toString('base64url');const token=`${encode({alg:'HS256',typ:'JWT'})}.${encode({sub:id,session_id:identity.sessionId,exp:Math.floor(identity.expiresAt/1000),role:'authenticated'})}.isolated-admin-fixture`;tokens.set(token,identity);store.live.add(identity.sessionId);store.sessionOwners.set(identity.sessionId,id);return{access_token:token,refresh_token:'isolated-refresh-'+identity.sessionId,token_type:'bearer',expires_in:3600,expires_at:Math.floor(identity.expiresAt/1000),user:u};}
 function verify(token:string){const i=tokens.get(token);if(!i||!store.live.has(i.sessionId!))throw new HttpError(401,'Ungültige Test-Sitzung.');return i;}
 store.changePassword=async(id,password,token)=>{store.passwords.set(id,password);for(const[t,i]of tokens)if(i.id===id&&t!==token)store.live.delete(i.sessionId!);};
 const handler=createEdgeHandler({repository:store.repo,store:edge,accounts:service,origins:['http://127.0.0.1:4175','http://127.0.0.1:5176'],verify:async t=>verify(t)});

@@ -1,3 +1,4 @@
+import {SupabaseTrafficStore} from './traffic';
 import {AccountService} from './accounts.js';
 import {SupabaseAccountStore} from './account-store.js';
 import {USERNAME_PATTERN,validGuestAlias} from '../shared/accounts.js';
@@ -42,7 +43,7 @@ export async function createBackend(options:BackendOptions={}){
   if(options.repository instanceof MemoryRepository&&!testing)throw new Error('MemoryRepository is allowed only in isolated automated tests.');
   const supabase=options.supabase!==undefined?options.supabase:process.env.SUPABASE_URL&&process.env.SUPABASE_SERVICE_ROLE_KEY?createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{autoRefreshToken:false,persistSession:false}}):null;
   const repository=options.repository??(testing?new MemoryRepository():supabase?new SupabaseRepository(supabase):null);
-  const accounts=supabase?new AccountService(new SupabaseAccountStore(supabase)):undefined;
+  const accounts=supabase?new AccountService(new SupabaseAccountStore(supabase),Date.now,new SupabaseTrafficStore(supabase)):undefined;
   const engine=options.engine??new GameEngine();
   const app=express();
   app.disable('x-powered-by');
@@ -128,7 +129,7 @@ export async function createBackend(options:BackendOptions={}){
   app.get('/api/config',(_req,res)=>res.json({configured:!!repository&&healthy,authConfigured:!!supabase||testing,pushPublicKey:pushConfigured?process.env.VAPID_PUBLIC_KEY:undefined,accountControls:!!accounts}));
   app.get('/api/account/username',(req,res,next)=>{if(!accounts){next();return;}accounts.available(req.query.name).then(value=>res.json(value)).catch(next);});
   const auth:RequestHandler=async(req,res,next)=>{
-    try{requireReady();const identity=await authenticate(bearer(req),supabase);limiter.take(`api:${identity.id}`,120,60_000);res.locals.identity=identity;if(accounts&&(req.path==='/account'||req.path.startsWith('/account/')||req.path.startsWith('/admin/'))){res.json(await accounts.handle(identity,bearer(req),req.path,req.method,req.body??{},new URL(req.originalUrl,'http://localhost').searchParams,req.get('x-manhunt-admin-session')??null));return;}await accounts?.requireGame(identity);res.locals.profile=await repo().getProfile(identity);next();}catch(error){next(error);}
+    try{requireReady();const identity=await authenticate(bearer(req),supabase);limiter.take(`api:${identity.id}`,120,60_000);res.locals.identity=identity;if(accounts&&(req.path==='/traffic'||req.path==='/account'||req.path.startsWith('/account/')||req.path.startsWith('/admin/'))){res.json(await accounts.handle(identity,bearer(req),req.path,req.method,req.body??{},new URL(req.originalUrl,'http://localhost').searchParams,req.get('x-manhunt-admin-session')??null));return;}await accounts?.requireGame(identity);res.locals.profile=await repo().getProfile(identity);next();}catch(error){next(error);}
   };
   app.use('/api',auth);
   const identity=(res:express.Response)=>res.locals.identity as Identity;

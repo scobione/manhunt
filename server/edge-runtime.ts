@@ -108,7 +108,7 @@ export function createEdgeHandler({repository:repo,store,verify,origins,push,pat
   return async(request:Request):Promise<Response>=>{
     const origin=request.headers.get('origin');
     const headers:Record<string,string>={'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Vary':'Origin'};
-    if(origin&&origins.includes(origin))headers['Access-Control-Allow-Origin']=origin;
+    if(origin&&origins.includes(origin)){headers['Access-Control-Allow-Origin']=origin;headers['Timing-Allow-Origin']=origin;}
     headers['Access-Control-Allow-Headers']='authorization, apikey, content-type, x-client-info, x-manhunt-admin-session';
     headers['Access-Control-Allow-Methods']='GET, POST, PATCH, DELETE, OPTIONS';
     const respond=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers});
@@ -127,7 +127,7 @@ export function createEdgeHandler({repository:repo,store,verify,origins,push,pat
       if(!auth?.startsWith('Bearer '))throw new HttpError(401,'Bitte melde dich an.');
       const identity=await verify(auth.slice(7)),id=identity.id;
       await store.quota(id,'api',120);
-      if(accounts&&(path==='/account'||path.startsWith('/account/')||path.startsWith('/admin/')))return respond(await accounts.handle(identity,auth.slice(7),path,method,['POST','PATCH','DELETE'].includes(method)?await jsonBody(request):{},new URL(request.url).searchParams,request.headers.get('x-manhunt-admin-session')));
+      if(accounts&&(path==='/traffic'||path==='/account'||path.startsWith('/account/')||path.startsWith('/admin/')))return respond(await accounts.handle(identity,auth.slice(7),path,method,['POST','PATCH','DELETE'].includes(method)?await jsonBody(request):{},new URL(request.url).searchParams,request.headers.get('x-manhunt-admin-session')));
       await accounts?.requireGame(identity);
       const profile=await repo.getProfile(identity);
       await store.touch(id);

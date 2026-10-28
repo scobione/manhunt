@@ -1,11 +1,14 @@
 import type {SupabaseClient} from '@supabase/supabase-js';
-import {HttpError} from './auth';
+import {HttpError,type Identity} from './auth';
 import {SupabaseEdgeStore} from './edge-store';
 import {SupabaseRepository} from './repository';
 import type {AccountStore,AdminSession,Control,Security} from './accounts';
 
 function checked(error:{code?:string;message?:string}|null){
  if(!error)return;
+ if(error.message?.includes('password_operation_busy'))throw new HttpError(409,'Eine Passwortänderung läuft bereits. Bitte kurz warten und dann erneut versuchen.');
+ if(error.message?.includes('reset_target_not_allowed'))throw new HttpError(400,'Dieses Konto kann hier nicht zurückgesetzt werden.');
+ if(error.message?.includes('admin_required'))throw new HttpError(403,'Die Administratorberechtigung ist nicht mehr gültig.');
  if(error.code==='23505')throw new HttpError(409,'Dieser Benutzername ist bereits vergeben.');
  if(error.message?.includes('invalid_setup_step'))throw new HttpError(409,'Dieser Einrichtungsschritt ist nicht mehr offen.');
  throw new HttpError(503,'Die Kontoverwaltung ist gerade nicht verfügbar. Bitte versuche es erneut.');
@@ -14,7 +17,7 @@ export class SupabaseAccountStore implements AccountStore {
  private quotaStore:SupabaseEdgeStore;
  private repository:SupabaseRepository;
  constructor(private db:SupabaseClient){this.quotaStore=new SupabaseEdgeStore(db);this.repository=new SupabaseRepository(db);}
- async control(id:string):Promise<Control>{const r=await this.db.from('account_controls').select('user_id,is_admin,disabled,setup_stage,source,email_verified_at,temporary_password_hash').eq('user_id',id).maybeSingle();checked(r.error);if(!r.data)throw new HttpError(403,'Die Kontoberechtigung konnte nicht bestätigt werden.');return r.data as Control;}
+ async control(id:string):Promise<Control>{const r=await this.db.from('account_controls').select('user_id,is_admin,disabled,setup_stage,source,email_verified_at,temporary_password_hash,password_return_stage,password_reset_pending').eq('user_id',id).maybeSingle();checked(r.error);if(!r.data)throw new HttpError(403,'Die Kontoberechtigung konnte nicht bestätigt werden.');return r.data as Control;}
  async sessionLive(user:string,session:string){const r=await this.db.rpc('account_session_live',{p_user:user,p_session:session});checked(r.error);return r.data===true;}
  async security():Promise<Security>{const r=await this.db.from('admin_security').select('code_hash,code_salt,revision').eq('id',1).single();checked(r.error);if(!r.data)throw new HttpError(503,'Die Admin-Konfiguration fehlt.');return r.data;}
  async saveSession(session:AdminSession){const cleanup=await this.db.from('admin_sessions').delete().lt('expires_at',new Date().toISOString());checked(cleanup.error);const r=await this.db.from('admin_sessions').insert(session);checked(r.error);}
@@ -43,17 +46,23 @@ export class SupabaseAccountStore implements AccountStore {
   const sessions=await this.db.from('admin_sessions').delete().eq('user_id',id);checked(sessions.error);
  }
  async resetPassword(email:string){const r=await this.db.auth.resetPasswordForEmail(email,{redirectTo:'https://manhunt-pwa.vercel.app/auth/callback'});if(r.error)throw new HttpError(r.error.status===429?429:503,'Die E-Mail konnte nicht angefordert werden. Das Versandkontingent kann ausgeschöpft sein; es wurde kein neues Passwort erzeugt.');}
+ async beginPasswordReset(actor:Identity,target:string,lock:string,hash:string){const r=await this.db.rpc('admin_begin_password_reset',{p_actor:actor.id,p_session:actor.sessionId,p_target:target,p_lock:lock,p_hash:hash});checked(r.error);}
+ async setTemporaryPassword(target:string,password:string){
+  const r=await this.db.auth.admin.updateUserById(target,{password});
+  if(r.error)throw new HttpError(503,'Das vorläufige Passwort konnte nicht bestätigt werden. Der Zugang bleibt gesperrt; bitte den manuellen Reset erneut ausführen.');
+ }
+ async finishPasswordReset(actor:Identity,target:string,lock:string,success:boolean){const r=await this.db.rpc('admin_finish_password_reset',{p_actor:actor.id,p_session:actor.sessionId,p_target:target,p_lock:lock,p_success:success});checked(r.error);}
  async email(id:string){const r=await this.db.auth.admin.getUserById(id);if(r.error||!r.data.user?.email)throw new HttpError(404,'Dieses E-Mail-Konto wurde nicht gefunden.');return r.data.user.email;}
  async lockPassword(id:string,lock:string){
   const now=new Date().toISOString();
-  const r=await this.db.from('account_controls').update({setup_lock:lock,setup_lock_until:new Date(Date.now()+60000).toISOString()}).eq('user_id',id).eq('setup_stage',0).eq('disabled',false).or(`setup_lock.is.null,setup_lock_until.lt.${now}`).select('user_id');checked(r.error);return r.data?.length===1;
+  const r=await this.db.from('account_controls').update({setup_lock:lock,setup_lock_until:new Date(Date.now()+60000).toISOString()}).eq('user_id',id).eq('setup_stage',0).eq('disabled',false).eq('password_reset_pending',false).or(`setup_lock.is.null,setup_lock_until.lt.${now}`).select('user_id');checked(r.error);return r.data?.length===1;
  }
  async changePassword(id:string,password:string,token:string){
   const r=await this.db.auth.admin.updateUserById(id,{password,app_metadata:{manhunt_temporary_password_hash:null}});
   if(r.error)throw new HttpError(400,'Das neue Passwort wurde abgelehnt. Verwende ein starkes, eigenes Passwort.');
   const revoke=await this.db.auth.admin.signOut(token,'others');if(revoke.error)throw new HttpError(503,'Andere Sitzungen konnten noch nicht beendet werden. Bitte wiederhole die Passwortänderung.');
  }
- async finishPassword(id:string,lock:string,success:boolean){const r=await this.db.from('account_controls').update({setup_lock:null,setup_lock_until:null,...(success?{setup_stage:1,temporary_password_hash:null}:{}),updated_at:new Date().toISOString()}).eq('user_id',id).eq('setup_lock',lock).select('user_id');checked(r.error);if(r.data?.length!==1)throw new HttpError(409,'Die Passwortänderung wird bereits in einer anderen Sitzung bearbeitet.');}
+ async finishPassword(id:string,lock:string,success:boolean){const r=await this.db.rpc('account_finish_password',{p_user:id,p_lock:lock,p_success:success});checked(r.error);}
  async setupStep(id:string,stage:1|2,name?:string){const r=await this.db.rpc('account_setup_step',{p_user:id,p_stage:stage,p_name:name??null});checked(r.error);}
  async profile(id:string){const profile=await this.repository.getProfile({id,expiresAt:Date.now()+60000});return{username:profile.username,avatar_url:profile.avatar_url};}
  async avatar(id:string,path:string){await this.repository.setAvatar(id,path);}

@@ -6,8 +6,9 @@ import {HttpError} from '../server/auth';
 import {MemoryRepository} from '../server/repository';
 export class TestAccountStore implements AccountStore {
  controls=new Map<string,Control>();sessions=new Map<string,AdminSession>();live=new Set<string>();passwords=new Map<string,string>();emails=new Map<string,string>();locks=new Map<string,string>();counters=new Map<string,number>();auditEvents:{actor:string;action:string;target?:string}[]=[];securityData:Security={code_hash:null,code_salt:null,revision:1};resetRequests:string[]=[];
+ sessionOwners=new Map<string,string>();
  constructor(readonly repo=new MemoryRepository()){}
- async seed(identity:Identity,email:string,password='Isolated-Password-123',admin=false){this.controls.set(identity.id,{user_id:identity.id,is_admin:admin,disabled:false,setup_stage:3,source:'legacy',email_verified_at:new Date().toISOString(),temporary_password_hash:null});this.emails.set(identity.id,email);this.passwords.set(identity.id,password);if(identity.sessionId)this.live.add(identity.sessionId);await this.repo.getProfile(identity);}
+ async seed(identity:Identity,email:string,password='Isolated-Password-123',admin=false){this.controls.set(identity.id,{user_id:identity.id,is_admin:admin,disabled:false,setup_stage:3,source:'legacy',email_verified_at:new Date().toISOString(),temporary_password_hash:null});this.emails.set(identity.id,email);this.passwords.set(identity.id,password);if(identity.sessionId){this.live.add(identity.sessionId);this.sessionOwners.set(identity.sessionId,identity.id);}await this.repo.getProfile(identity);}
  async control(id:string){const c=this.controls.get(id);if(!c)throw new HttpError(403,'Kontoberechtigung fehlt.');return structuredClone(c);}
  async sessionLive(user:string,session:string){return this.controls.has(user)&&this.live.has(session);}
  async security(){return structuredClone(this.securityData);}
@@ -25,10 +26,17 @@ export class TestAccountStore implements AccountStore {
  async create(email:string,password:string,passwordHash:string,_actor:string){if([...this.emails.values()].includes(email))throw new HttpError(409,'Dieses Konto existiert bereits.');const id=randomUUID();await this.seed({id,username:'Test_'+id.slice(0,8),expiresAt:Date.now()+3600000},email,password);this.controls.set(id,{user_id:id,is_admin:false,disabled:false,setup_stage:0,source:'admin',email_verified_at:null,temporary_password_hash:passwordHash});return{id,email};}
  async setDisabled(id:string,disabled:boolean){this.controls.get(id)!.disabled=disabled;}
  async resetPassword(email:string){this.resetRequests.push(email);}
+ revokeUser(id:string){for(const[s,u]of this.sessionOwners)if(u===id)this.live.delete(s);for(const[h,t]of this.sessions)if(t.user_id===id)this.sessions.delete(h);}
+ async beginPasswordReset(actor:Identity,target:string,lock:string,hash:string){
+  const c=this.controls.get(target)!;if(!this.controls.get(actor.id)?.is_admin||!this.live.has(actor.sessionId!))throw new HttpError(403,'Admin required');if(c.is_admin||target===actor.id)throw new HttpError(400,'Target not allowed');
+  if(this.locks.has(target))throw new HttpError(409,'Passwortänderung läuft bereits.');this.locks.set(target,lock);c.password_return_stage=c.setup_stage===0?(c.password_return_stage??1):c.setup_stage;c.setup_stage=0;c.password_reset_pending=true;c.temporary_password_hash=hash;this.revokeUser(target);
+ }
+ async setTemporaryPassword(target:string,password:string){this.passwords.set(target,password);}
+ async finishPasswordReset(_actor:Identity,target:string,lock:string,success:boolean){if(this.locks.get(target)!==lock)throw new HttpError(409,'Lock mismatch');this.locks.delete(target);this.controls.get(target)!.password_reset_pending=!success;this.revokeUser(target);}
  async email(id:string){const e=this.emails.get(id);if(!e)throw new HttpError(404,'Konto fehlt.');return e;}
- async lockPassword(id:string,lock:string){if(this.locks.has(id))return false;this.locks.set(id,lock);return true;}
+ async lockPassword(id:string,lock:string){if(this.locks.has(id)||this.controls.get(id)?.password_reset_pending)return false;this.locks.set(id,lock);return true;}
  async changePassword(id:string,password:string,_token:string){this.passwords.set(id,password);}
- async finishPassword(id:string,lock:string,success:boolean){if(this.locks.get(id)!==lock)throw new HttpError(409,'Lock mismatch');this.locks.delete(id);if(success){const c=this.controls.get(id)!;c.setup_stage=1;c.temporary_password_hash=null;}}
+ async finishPassword(id:string,lock:string,success:boolean){if(this.locks.get(id)!==lock)throw new HttpError(409,'Lock mismatch');this.locks.delete(id);if(success){const c=this.controls.get(id)!;c.setup_stage=c.password_return_stage??1;c.temporary_password_hash=null;}}
  async setupStep(id:string,stage:1|2,name?:string){const c=this.controls.get(id)!;if(c.disabled||c.setup_stage!==stage)throw new HttpError(409,'Schritt nicht erlaubt.');if(stage===1){if(!await this.available(name!,id))throw new HttpError(409,'Benutzername vergeben.');const p=this.repo.profiles.get(id)!;p.username=name!;}c.setup_stage=(stage+1) as 2|3;}
  async profile(id:string){const p=await this.repo.getProfile({id,expiresAt:Date.now()+60000});return{username:p.username,avatar_url:p.avatar_url};}
  async avatar(id:string,path:string){if(!path.startsWith(id+'/'))throw new HttpError(400,'Fremdes Profilbild.');}

@@ -1,4 +1,4 @@
-import {beforeEach,describe,it,expect} from 'vitest';
+import {beforeEach,describe,it,expect,vi} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {AccountService} from '../server/accounts';
 import type {Identity} from '../server/auth';
@@ -40,5 +40,34 @@ describe('ADMIN-HTTP: the real Edge router enforces the same boundary',()=>{
   expect((await request('/admin/access')).status).toBe(401);expect((await request('/admin/users','player','POST',{email:'bad@example.invalid'})).status).toBe(403);
   const access=await request('/admin/access','admin');expect(access.status).toBe(200);expect(access.headers.get('cache-control')).toBe('no-store');
   store.controls.get(player.id)!.setup_stage=0;for(const route of ['/sync','/profile','/social'])expect((await request(route,'player')).status).toBe(428);expect((await request('/account','player')).status).toBe(200);
+ });
+});
+
+describe('ADMIN-MRESET: prescribed temporary passwords',()=>{
+ const reset=async(password='Prescribed-Password-123',who=admin,target=player.id,ticket?:string)=>action(who,`/admin/users/${target}/temporary-password`,'POST',{password,confirmation:password},ticket??(await unlock()).sessionToken);
+ function newSession(){const identity={...player,sessionId:randomUUID()};store.live.add(identity.sessionId);store.sessionOwners.set(identity.sessionId,identity.id);return identity;}
+ it('MRESET-01 MRESET-02 MRESET-03 resets without mail, revokes old sessions and restores the same completed profile after mandatory change',async()=>{
+  const before=structuredClone(store.repo.profiles.get(player.id));const result=await reset();expect(result).toEqual({ok:true,requiresPasswordChange:true});expect(store.resetRequests).toEqual([]);expect(store.live.has(player.sessionId!)).toBe(false);expect(store.passwords.get(player.id)).toBe('Prescribed-Password-123');expect((await service.state(player))).toMatchObject({setupStage:0,passwordOnly:true,passwordResetPending:false});
+  await expect(action(player,'/account/setup/password','POST',{password:'Own-New-Password-123',confirmation:'Own-New-Password-123'})).rejects.toMatchObject({status:401});
+  const fresh=newSession();await expect(service.requireGame(fresh)).rejects.toMatchObject({status:428});await expect(action(fresh,'/account/setup/password','POST',{password:'Prescribed-Password-123',confirmation:'Prescribed-Password-123'})).rejects.toMatchObject({status:400});
+  await action(fresh,'/account/setup/password','POST',{password:'Own-New-Password-123',confirmation:'Own-New-Password-123'});await expect(service.requireGame(fresh)).resolves.toBeUndefined();expect(store.repo.profiles.get(player.id)).toEqual(before);expect(store.controls.get(player.id)?.temporary_password_hash).toBeNull();
+ });
+ it('MRESET-04 rejects players, stale admin sessions, admin targets and missing confirmation',async()=>{
+  const ticket=(await unlock()).sessionToken;
+  await expect(reset(undefined,player,admin.id,ticket)).rejects.toMatchObject({status:403});await expect(reset(undefined,admin,admin.id,ticket)).rejects.toMatchObject({status:400});
+  await expect(action(admin,`/admin/users/${player.id}/temporary-password`,'POST',{password:'short',confirmation:'short'},ticket)).rejects.toBeTruthy();await expect(action(admin,`/admin/users/${player.id}/temporary-password`,'POST',{password:'Strong-Password-123',confirmation:'Different-Password-123'},ticket)).rejects.toMatchObject({status:400});
+  store.live.delete(admin.sessionId!);await expect(reset(undefined,admin,player.id,ticket)).rejects.toMatchObject({status:401});
+ });
+ it('MRESET-05 retains incomplete setup, disabled state and unverified mailbox',async()=>{
+  const c=store.controls.get(player.id)!;c.setup_stage=2;c.disabled=true;c.email_verified_at=null;await reset();expect(c).toMatchObject({setup_stage:0,password_return_stage:2,disabled:true,email_verified_at:null,source:'legacy'});c.disabled=false;const fresh=newSession();await action(fresh,'/account/setup/password','POST',{password:'Own-New-Password-123',confirmation:'Own-New-Password-123'});expect(c.setup_stage).toBe(2);await expect(service.requireGame(fresh)).rejects.toMatchObject({status:428});
+ });
+ it('MRESET-06 serializes concurrent resets and keeps passwords out of responses and audits',async()=>{
+  const ticket=(await unlock()).sessionToken;const results=await Promise.allSettled([1,2].map(()=>reset(undefined,admin,player.id,ticket)));expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);expect(store.controls.get(player.id)?.temporary_password_hash).toMatch(/^pbkdf2\$/);expect(JSON.stringify(store.auditEvents)).not.toContain('Prescribed-Password-123');
+ });
+ it('MRESET-07 failed provider update remains gated until a successful administrator retry',async()=>{
+  const failure=vi.spyOn(store,'setTemporaryPassword').mockRejectedValueOnce(new Error('Auth unavailable'));await expect(reset()).rejects.toThrow('Auth unavailable');expect(store.controls.get(player.id)?.password_reset_pending).toBe(true);const fresh=newSession();await expect(action(fresh,'/account/setup/password','POST',{password:'Own-New-Password-123',confirmation:'Own-New-Password-123'})).rejects.toMatchObject({status:409});failure.mockRestore();await reset();expect(store.controls.get(player.id)).toMatchObject({password_reset_pending:false,password_return_stage:3});expect(store.live.has(fresh.sessionId)).toBe(false);
+ });
+ it('MRESET-08 salts prescribed password hashes and limits repeated admin resets',async()=>{
+  const ticket=(await unlock()).sessionToken;await reset(undefined,admin,player.id,ticket);const first=store.controls.get(player.id)!.temporary_password_hash;await reset(undefined,admin,player.id,ticket);expect(store.controls.get(player.id)?.temporary_password_hash).not.toBe(first);await reset(undefined,admin,player.id,ticket);await expect(reset(undefined,admin,player.id,ticket)).rejects.toMatchObject({status:429});
  });
 });

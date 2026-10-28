@@ -25,18 +25,18 @@ export default function AccountSetup(){
  });}
  if(!account)return null;
  return <main className="account-setup"><a href="/" className="brand"><ShieldCheck size={28}/> MANHUNT</a><section className="panel">
-  <span className="eyebrow">DEIN KONTO / {account.disabled?'ZUGANG GESPERRT':'ERSTEINRICHTUNG'}</span>
-  <h1>{account.disabled?'Dieses Konto ist deaktiviert.':'Mach MANHUNT zu deinem Spiel.'}</h1>
+  <span className="eyebrow">DEIN KONTO / {account.disabled?'ZUGANG GESPERRT':account.passwordOnly?'PASSWORT ÄNDERN':'ERSTEINRICHTUNG'}</span>
+  <h1>{account.disabled?'Dieses Konto ist deaktiviert.':account.passwordOnly?'Neues Passwort erforderlich.':'Mach MANHUNT zu deinem Spiel.'}</h1>
   {account.disabled?<p>Wende dich an den Administrator, um den Zugang wieder freizugeben.</p>:<>
-   <p>Richte dein Konto vollständig ein, bevor du einer Lobby beitrittst.</p>
-   <ol className="setup-steps">{[{name:'Passwort',icon:LockKeyhole},{name:'Benutzername',icon:UserRound},{name:'Profil',icon:ImagePlus}].map(({name,icon:Icon},i)=><li key={name} aria-current={account.setupStage===i?'step':undefined} className={account.setupStage>i?'complete':account.setupStage===i?'current':''}>{account.setupStage>i?<Check size={18}/>:<Icon size={18}/>}<span>{name}</span></li>)}</ol>
-   <form onSubmit={submit}>
+   <p>{account.passwordOnly?'Dein Passwort wurde vom Administrator zurückgesetzt. Wähle ein eigenes Passwort, um weiterzuspielen. Dein Profil bleibt erhalten.':'Richte dein Konto vollständig ein, bevor du einer Lobby beitrittst.'}</p>
+   {!account.passwordOnly&&<ol className="setup-steps">{[{name:'Passwort',icon:LockKeyhole},{name:'Benutzername',icon:UserRound},{name:'Profil',icon:ImagePlus}].map(({name,icon:Icon},i)=><li key={name} aria-current={account.setupStage===i?'step':undefined} className={account.setupStage>i?'complete':account.setupStage===i?'current':''}>{account.setupStage>i?<Check size={18}/>:<Icon size={18}/>}<span>{name}</span></li>)}</ol>}
+   {account.passwordResetPending?<p className="inline-warning" role="alert">Der manuelle Passwort-Reset ist noch nicht abgeschlossen. Bitte den Administrator um Wiederholung bitten.</p>:<form onSubmit={submit}>
     {account.setupStage===0&&<><h2>Dein eigenes Passwort</h2><p>Ersetze das vorläufige Passwort. Andere Sitzungen werden dabei abgemeldet.</p><label>Neues Passwort<input type="password" autoComplete="new-password" minLength={12} maxLength={128} required value={password} onChange={e=>setPassword(e.target.value)}/></label><label>Passwort bestätigen<input type="password" autoComplete="new-password" minLength={12} maxLength={128} required value={repeat} onChange={e=>setRepeat(e.target.value)}/></label><p className="fineprint">Mindestens 12 Zeichen, mit Groß- und Kleinbuchstaben sowie einer Zahl.</p></>}
     {account.setupStage===1&&<><h2>So kennt dich deine Crew</h2><UsernameInput value={username} onChange={setUsername} disabled={busy}/></>}
     {account.setupStage===2&&<><h2>Bereit für deine erste Runde</h2><p><strong>{account.username}</strong> · {account.email}</p><div className="setup-avatar">{account.avatarUrl?<img src={account.avatarUrl} alt="Dein Profilbild"/>:<UserRound size={42}/>}</div><label>Profilbild auswählen (optional)<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy||!supabase} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(!file||!supabase)return;void run(async()=>{const blob=await prepareAvatar(file);const {data}=await supabase!.auth.getUser();if(!data.user)throw new Error('Bitte erneut anmelden.');const path=`${data.user.id}/${crypto.randomUUID()}.webp`;const upload=await supabase!.storage.from('avatars').upload(path,blob,{contentType:'image/webp'});if(upload.error)throw new Error('Das Profilbild konnte nicht hochgeladen werden.');try{await api('/account/setup/avatar',{method:'POST',body:JSON.stringify({path})});}catch(error){await supabase!.storage.from('avatars').remove([path]);throw error;}});}}/></label><label className="toggle-row"><input type="checkbox" required checked={ack} onChange={e=>setAck(e.target.checked)}/><span>Ich habe die <a href="/privacy" target="_blank" rel="noopener">Datenschutzhinweise</a> und den <a href="/safety" target="_blank" rel="noopener">Outdoor-Kodex</a> gelesen. Standortfreigabe bleibt freiwillig.</span></label></>}
     {error&&<p role="alert" className="inline-warning">{error}</p>}
-    <button className="button primary" disabled={busy}>{busy?'Wird gespeichert…':account.setupStage===2?'Einrichtung abschließen':'Speichern & weiter'}</button>
-   </form>
+    <button className="button primary" disabled={busy}>{busy?'Wird gespeichert…':account.passwordOnly?'Neues Passwort speichern':account.setupStage===2?'Einrichtung abschließen':'Speichern & weiter'}</button>
+   </form>}
    {account.source==='admin'&&!account.emailVerified&&<p className="fineprint">Administrativ freigegeben. Der Besitz dieser E-Mail-Adresse wurde nicht durch einen E-Mail-Code bestätigt.</p>}
   </>}
   <button className="button subtle" onClick={()=>void logout().catch(e=>setError(e.message))}><LogOut size={16}/> Abmelden</button>

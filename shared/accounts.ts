@@ -5,6 +5,8 @@ export interface AccountState {
  isAdmin:boolean;
  source:'self'|'admin'|'legacy';
  emailVerified:boolean;
+ passwordOnly?:boolean;
+ passwordResetPending?:boolean;
  email?:string;
  username?:string;
  avatarUrl?:string|null;
