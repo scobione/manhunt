@@ -314,3 +314,17 @@ test('browser GPS starts only after consent and stopping sharing keeps the match
   await expect(guest.page.getByText('FREIGABE AKTIV',{exact:true})).toHaveCount(0);
  }finally{await dispose(host,guest);}
 });
+
+
+test('OFFLINE-LOAD: failed game module keeps offline UI and reloads the same match after reconnect',async({browser})=>{
+ const host=await actor(browser,'E2E_ModuleHost'),guest=await actor(browser,'E2E_ModuleGuest',true);
+ try{
+  await guest.page.route('**/assets/GamePage-*.js',async route=>{await guest.context.setOffline(true);await route.abort('internetdisconnected');});
+  await prepareMatch(host,[guest]);const id=(await view(host)).id;
+  await expect(guest.page.getByRole('heading',{name:'Ansicht konnte nicht geladen werden.'})).toBeVisible();
+  await expect(guest.page.getByRole('status').filter({hasText:'Du bist offline'})).toBeVisible();
+  await guest.page.unroute('**/assets/GamePage-*.js');await guest.context.setOffline(false);
+  await expect(guest.page.getByRole('heading',{name:'Die Jagd läuft.'})).toBeVisible();
+  await expect(guest.page.locator('.connection')).toHaveText('VERBUNDEN');expect((await view(host)).id).toBe(id);
+ }finally{await dispose(host,guest);}
+});

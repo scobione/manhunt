@@ -29,6 +29,12 @@ Die Migration `admin_only_traffic` ersetzt ausschließlich die Leseberechtigungs
 
 Die Browser-Auth- und Mailzustellung dieser Regressionstests sind ausschließlich lokal simuliert. Datenbankprüfungen verwenden echte Migrationen in PGlite. Echte Benutzerpasswörter werden für Tests nicht zurückgesetzt. Physische iPhone-/Android-Geräte und eine erneute Mailzustellung in ein persönliches Postfach sind hier nicht getestet. Die Live-Verfügbarkeit wird nach dem Deployment gesondert geprüft; der GitHub-Lauf „Published frontend smoke“ veröffentlicht die Browsernachweise.
 
+## Zusätzliche Prüfung nach Veröffentlichung
+
+Acht schreibgeschützte Browserprüfungen auf den echten Produktionsdomains bestanden: vier Spielprüfungen und vier Admin-/API-/PWA-Prüfungen. Passwort-Anzeigen/Verbergen und mobile Breite wurden zusätzlich auf beiden Domains im Browser geprüft, ohne Loginversuch oder Kontoveränderung. Die Datenbank bestätigt Adminprüfung und aktive RLS; direkte Browser-Leserechte fehlen.
+
+Der erste vollständige CI-Lauf fand beim bestehenden Offline-Test ein Zeitfenster: Der Browser ging offline, während die Spielansicht als JavaScript-Modul nachgeladen wurde. Die unaufgefangene Import-Ablehnung entfernte die gesamte React-Oberfläche. Eine Fehlergrenze erhält jetzt Navigation und Offline-Hinweis; nach Wiederverbindung wird die Ansicht neu geladen und das laufende Match wiederhergestellt. Sowohl der bestehende Wiederverbindungstest als auch der neue deterministische Test **OFFLINE-LOAD** (Spielmodul absichtlich offline abbrechen, Warnung prüfen, Verbindung wiederherstellen, dasselbe Match prüfen) sind lokal **BESTANDEN**. Der vollständige CI-Lauf wird mit dieser Korrektur erneut ausgeführt.
+
 ## Bereitstellung
 
 - Spiel: https://manhunt-pwa.vercel.app
