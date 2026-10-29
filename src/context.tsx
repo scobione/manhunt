@@ -28,7 +28,7 @@ const API_BASE = (import.meta.env.VITE_API_URL || defaults?.apiUrl || '').replac
 interface Config { configured:boolean; authConfigured:boolean; pushPublicKey?:string; transport?:'http'|'socket';accountControls?:boolean }
 interface AppContextValue {
   account:AccountState|null;accountChecking:boolean;refreshAccount:()=>Promise<void>;profile:Profile|null; token:string|null; lobby:LobbyView|null; connected:boolean; loading:boolean; config:Config|null;
-  identity:{id:string;email?:string;isGuest?:boolean}|null; authChecking:boolean; authError:string;
+  identity:{id:string;email?:string;isGuest?:boolean}|null; authChecking:boolean; authError:string;authCallbackError:boolean;
   reauthenticateAfterPasswordChange:(email:string,password:string)=>Promise<boolean>; passwordRecovery:boolean; finishPasswordRecovery:()=>void; clearAuthError:()=>void;
   notice:string; clearNotice:()=>void; notify:(message:string)=>void; api:<T=any>(path:string,options?:RequestInit)=>Promise<T>;
   emit:<T=LobbyView>(event:string,data?:unknown)=>Promise<T>; command:(command:Command)=>Promise<LobbyView>;
@@ -39,6 +39,7 @@ export function AppProvider({children}:{children:ReactNode}) {
  const [profile,setProfile]=useState<Profile|null>(null), [token,setToken]=useState<string|null>(TEST_MODE?sessionStorage.getItem('manhunt:test-token'):null);
  const [lobby,setLobby]=useState<LobbyView|null>(null),[connected,setConnected]=useState(false),[loading,setLoading]=useState(true),[config,setConfig]=useState<Config|null>(null),[notice,setNotice]=useState(''),[socialRevision,setSocialRevision]=useState(0);
  const [identity,setIdentity]=useState<{id:string;email?:string;isGuest?:boolean}|null>(null),[authChecking,setAuthChecking]=useState(false),[authError,setAuthError]=useState('');
+ const [authCallbackError,setAuthCallbackError]=useState(false);
  const [passwordRecovery,setPasswordRecovery]=useState(authReturn.recovery);
  const [account,setAccount]=useState<AccountState|null>(null),[accountChecking,setAccountChecking]=useState(false);
  const accountRefreshPending=useRef(false);const initializationError=useRef('');
@@ -63,7 +64,7 @@ export function AppProvider({children}:{children:ReactNode}) {
   try{
    const {data,error}=await supabase.auth.signInWithPassword({email,password});
    if(error||!data.session)throw error||new Error('No session');
-   tokenRef.current=data.session.access_token;setToken(data.session.access_token);initializationError.current='';setAuthError('');
+   tokenRef.current=data.session.access_token;setToken(data.session.access_token);initializationError.current='';setAuthError('');setAuthCallbackError(false);
    recoveryUser=null;writeRecoveryUser(null);setPasswordRecovery(false);
    return true;
   }catch{
@@ -92,7 +93,7 @@ export function AppProvider({children}:{children:ReactNode}) {
    initializationError.current=authInitializationMessage(authReturn,initialized.error||error,!!data.session);
    setAuthError(initializationError.current);
    if(data.session&&!initializationError.current&&(authReturn.recovery||recoveryUser===data.session.user.id||readRecoveryUser()===data.session.user.id)){writeRecoveryUser(data.session.user.id);setPasswordRecovery(true);}
-   if(initializationError.current&&authReturn.callback&&!authReturn.recovery)window.history.replaceState(window.history.state,'','/auth/callback');
+   setAuthCallbackError(!!initializationError.current&&authReturn.callback);
    clearAuthReturn();setLoading(false);
   })().catch(()=>{if(active){setAuthError('Die Anmeldung konnte nicht überprüft werden. Prüfe deine Verbindung und versuche es erneut.');clearAuthReturn();setLoading(false);}});
   const {data}=supabase.auth.onAuthStateChange((event,session)=>{setToken(session?.access_token||null);if(event==='PASSWORD_RECOVERY')setPasswordRecovery(true);if(event==='SIGNED_OUT')setPasswordRecovery(false);});
@@ -150,9 +151,9 @@ export function AppProvider({children}:{children:ReactNode}) {
  }),[]);
  const command=useCallback((command:Command)=>emit<LobbyView>('lobby:command',{command}),[emit]);
 
- async function logout(){if(tokenRef.current&&profile){const {detachPush}=await import('./push-client');await detachPush(api);}if(lobby && lobby.status!=='finished')await command({type:'leave'});if(supabase){const {error}=await supabase.auth.signOut();if(error)throw error;}sessionStorage.removeItem('manhunt:test-token');setToken(null);setIdentity(null);setProfile(null);setLobby(null);setAccount(null);setAuthError('');}
+ async function logout(){if(tokenRef.current&&profile){const {detachPush}=await import('./push-client');await detachPush(api);}if(lobby && lobby.status!=='finished')await command({type:'leave'});if(supabase){const {error}=await supabase.auth.signOut();if(error)throw error;}sessionStorage.removeItem('manhunt:test-token');setToken(null);setIdentity(null);setProfile(null);setLobby(null);setAccount(null);initializationError.current='';setAuthError('');setAuthCallbackError(false);}
  function setTestSession(id:string,name:string){if(!TEST_MODE)return;const value=`test:${id}:${name}`;sessionStorage.setItem('manhunt:test-token',value);setToken(value);}
- return <AppContext.Provider value={{account,accountChecking,refreshAccount,reauthenticateAfterPasswordChange,profile,token,lobby,connected,loading,identity,authChecking,authError,passwordRecovery,finishPasswordRecovery:()=>{recoveryUser=null;writeRecoveryUser(null);setPasswordRecovery(false);},clearAuthError:()=>{initializationError.current='';setAuthError('');},config,notice,clearNotice:()=>setNotice(''),notify,api,emit,command,logout,refreshProfile,setTestSession,socialRevision}}>{children}</AppContext.Provider>;
+ return <AppContext.Provider value={{account,accountChecking,refreshAccount,reauthenticateAfterPasswordChange,profile,token,lobby,connected,loading,identity,authChecking,authError,authCallbackError,passwordRecovery,finishPasswordRecovery:()=>{recoveryUser=null;writeRecoveryUser(null);setPasswordRecovery(false);},clearAuthError:()=>{initializationError.current='';setAuthError('');setAuthCallbackError(false);},config,notice,clearNotice:()=>setNotice(''),notify,api,emit,command,logout,refreshProfile,setTestSession,socialRevision}}>{children}</AppContext.Provider>;
 }
 export function useApp(){const value=useContext(AppContext);if(!value)throw new Error('AppProvider missing');return value;}
 export function useNow(){const [now,setNow]=useState(Date.now());useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[]);return now;}

@@ -1,20 +1,25 @@
 // Keep only callback classification, never OAuth codes or raw provider errors.
-export interface AuthReturn { callback:boolean; recovery:boolean; recoveryFragment:boolean; hasCode:boolean; problem:'cancelled'|'provider'|'other'|null }
+export interface AuthReturn { callback:boolean; recovery:boolean; recoveryFragment:boolean; hasCode:boolean; problem:'expired'|'cancelled'|'provider'|'other'|null }
 
 export function readAuthReturn(href:string):AuthReturn {
  const url=new URL(href);
  const hash=new URLSearchParams(url.hash.slice(1));
  const value=(key:string)=>url.searchParams.get(key)||hash.get(key)||'';
- const recovery=value('type')==='recovery'||url.pathname.replace(/\/$/,'')==='/auth/recovery';
- const callback=recovery||url.pathname.replace(/\/$/,'')==='/auth/callback'||!!value('code')||!!value('error');
+ const path=url.pathname.replace(/\/$/,'')||'/';
+ const recovery=value('type')==='recovery'||path==='/auth/recovery';
+ // Lobby invitation codes are not Auth codes. Only Auth routes and the site
+ // root are allowed return destinations; explicit recovery intent is retained.
+ const callback=recovery||path==='/auth/callback'||path==='/'&&['code','error','error_code','error_description'].some(key=>!!value(key));
  const error=value('error'),code=value('error_code'),description=value('error_description');
  const problem=!callback||!(error||code||description)?null
+  :['otp_expired','flow_state_expired','flow_state_not_found'].includes(code)?'expired'
   :/unable to exchange external code|invalid_client/i.test(description)||code==='provider_error'?'provider'
   :error==='access_denied'||code==='access_denied'?'cancelled':'other';
  return {callback,recovery,recoveryFragment:recovery&&!!value('access_token')&&!!value('refresh_token'),hasCode:callback&&!!value('code'),problem};
 }
 
 export function authInitializationMessage(result:AuthReturn,error:unknown,hasSession:boolean):string {
+ if(result.problem==='expired')return 'Dieser Bestätigungs- oder Reset-Link ist abgelaufen oder wurde bereits verwendet. Fordere bitte einen neuen Link an.';
  if(result.problem==='provider')return 'Diese externe Anmeldung ist nicht verfügbar. Melde dich mit deiner bisherigen E-Mail-Adresse an.';
  if(result.problem==='cancelled')return 'Die Anmeldung wurde abgebrochen. Melde dich mit deiner E-Mail-Adresse an.';
  if(result.problem==='other')return 'Die Anmeldung konnte nicht abgeschlossen werden. Bitte starte sie erneut oder fordere einen neuen Bestätigungslink an.';

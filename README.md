@@ -2,7 +2,7 @@
 
 **Deine Stadt. Dein Spielfeld.** Ein quelloffenes GPS-Verfolgungsspiel für private Gruppen — React, TypeScript, Socket.IO, Supabase und MapLibre. MIT-lizenziert.
 
-> **Stand 0.b1.105:** Die PWA ist auf Vercel veröffentlicht. Die Spiellogik läuft weiterhin in Supabase Edge Functions mit atomaren PostgreSQL-Checkpoints und authentifizierter Synchronisierung etwa alle zwei Sekunden. Accounts und Daten bleiben im bestehenden Supabase-Projekt. Google ist abgeschaltet; E-Mail und Gastzugang bleiben erhalten. Den nachgewiesenen Veröffentlichungsstand dokumentiert [DEPLOYMENT.md](docs/DEPLOYMENT.md).
+> **Stand 0.b1.106:** Die PWA ist auf Vercel veröffentlicht. Die Spiellogik läuft weiterhin in Supabase Edge Functions mit atomaren PostgreSQL-Checkpoints und authentifizierter Synchronisierung etwa alle zwei Sekunden. Accounts und Daten bleiben im bestehenden Supabase-Projekt. Google ist abgeschaltet; E-Mail und Gastzugang bleiben erhalten. Den nachgewiesenen Veröffentlichungsstand dokumentiert [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 **Vercel-Adresse:** [MANHUNT](https://manhunt-pwa.vercel.app). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Die bisherige Sites-Adresse leitet nach zehn Sekunden zur getesteten Vercel-Seite weiter.
 
@@ -113,3 +113,5 @@ Aktuelle Änderungen und Prüfgrenzen: [Beta 0.b1.102](docs/RELEASE-0.b1.102.md)
 Verbrauchsübersicht: [Messverfahren und Tests](docs/TRAFFIC.md). Ausschließlich Administratoren sehen den Verbrauch je Match und Spieler im Adminportal. Browser-Näherungswerte, keine Mobilfunkabrechnung.
 
 Passwort- und Reset-Korrekturen, Passwortsichtbarkeit und Admin-exklusiver Datenverbrauch: [Release 0.b1.105](docs/RELEASE-0.b1.105.md).
+
+Abgelaufene E-Mail-Links und erneuter Passwort-Reset: [Release 0.b1.106](docs/RELEASE-0.b1.106.md).

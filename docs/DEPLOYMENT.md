@@ -1,3 +1,7 @@
+# Aktuelle Korrektur 0.b1.106
+
+[Releasebericht](RELEASE-0.b1.106.md): Fehlerbehandlung für abgelaufene E-Mail-Links, direkte erneute Reset-Anforderung und unveränderte Kontodaten. Bestehende Domains und Supabase-Redirects bleiben gültig.
+
 # Aktuelle Erweiterung 0.b1.103
 
 Spiel: https://manhunt-pwa.vercel.app. Eigenständiges Admin-Portal: https://manhunt-admin-scobione.vercel.app. Beide Vercel-Projekte bauen automatisch aus demselben GitHub-Repository; das Admin-Projekt verwendet Root Directory `admin`. Dieselbe Supabase-Datenbank und Auth bleiben erhalten. Details und tatsächliche Prüfgrenzen: [Admin-Betrieb](ADMIN-PORTAL.md), [Admin-Testbericht](ADMIN-TEST-REPORT.md).

@@ -236,3 +236,28 @@ test('RESET-REG-03 expired recovery link cannot reuse a cached account to show a
  await seedSession(page,true);await page.goto('/#type=recovery&error=access_denied&error_code=otp_expired&error_description=Expired');
  await expect(page).toHaveURL(/\/auth\/recovery$/);await expect(page.getByRole('alert')).toBeVisible();await expect(page.getByLabel('Neues Passwort',{exact:true})).toHaveCount(0);
 });
+
+for(const cached of [false,true])test(`RESET-REG-05 expired link without recovery type (${cached?'existing account':'no session'}) explains failure and permits a fresh reset`,async({page})=>{
+ let profileLoaded=false;
+ if(cached){
+  await seedSession(page,true);
+  await page.route('**/api/config',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({configured:true,authConfigured:true,transport:'http'})}));
+  await page.route('**/api/profile',route=>{profileLoaded=true;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({id:testUser.id,username:'ExistingPlayer',avatar_url:null,friend_code:'ISOLATED',show_online:false})});});
+  await page.route('**/api/sync',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({lobby:null,socialRevision:0,serverTime:Date.now()})}));
+ }else{await page.route(`${origin}/**`,route=>route.abort());await page.route('**/api/config',route=>route.fulfill({status:503,body:'Unavailable'}));}
+ await page.goto('/#error=access_denied&error_code=otp_expired&error_description=Email%20link%20is%20invalid%20or%20has%20expired');
+ await expect(page).toHaveURL(/\/auth\/callback\/?$/);
+ if(cached)await expect.poll(()=>profileLoaded).toBe(true);
+ await expect(page.getByRole('alert')).toContainText('abgelaufen');
+ await expect(page.getByRole('heading',{name:'Anmeldung erfolgreich.'})).toHaveCount(0);
+ await expect(page.getByLabel('Neues Passwort',{exact:true})).toHaveCount(0);
+ await page.getByRole('link',{name:'Neuen Reset-Link anfordern',exact:true}).click();
+ await expect(page).toHaveURL(/\/login\?reset=1$/);await expect(page.getByRole('button',{name:'Link zum Zurücksetzen anfordern'})).toBeVisible();
+});
+
+test('RESET-REG-06 missing browser verifier on home-page callback opens an actionable error instead of home',async({page})=>{
+ await page.route(`${origin}/**`,route=>route.abort());await page.route('**/api/config',route=>route.fulfill({status:503,body:'Unavailable'}));
+ await page.goto('/?code=isolated-code-missing-verifier');await expect(page).toHaveURL(/\/auth\/callback\/?$/);
+ await expect(page.getByRole('alert')).toContainText('Der Anmeldenachweis fehlt in diesem Browser');
+ await page.getByRole('link',{name:'Zur Anmeldung',exact:true}).click();await expect(page.getByRole('button',{name:'Mit E-Mail anmelden',exact:true})).toBeVisible();
+});

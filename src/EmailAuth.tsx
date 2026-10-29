@@ -21,9 +21,9 @@ function errorMessage(error:unknown):string {
  return messages[code]||'Die Anfrage konnte nicht abgeschlossen werden. Prüfe deine Verbindung und versuche es erneut.';
 }
 
-export function EmailAuthForm(){
+export function EmailAuthForm({resetOnly=false}:{resetOnly?:boolean}){
  const {clearAuthError}=useApp();
- const [mode,setMode]=useState<'login'|'signup'|'reset'>('login');
+ const [mode,setMode]=useState<'login'|'signup'|'reset'>(resetOnly?'reset':'login');
  const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[repeat,setRepeat]=useState('');
  const [username,setUsername]=useState('');
  const [resendAt,setResendAt]=useState(0),[verifyAt,setVerifyAt]=useState(0),[attempts,setAttempts]=useState(0),[now,setNow]=useState(Date.now());
@@ -58,7 +58,7 @@ export function EmailAuthForm(){
   try{const {error}=await supabase.auth.resend({type:'signup',email:email.trim(),options:{emailRedirectTo:`${window.location.origin}/auth/callback`}});if(error)throw error;setResendAt(Date.now()+60000);setNow(Date.now());setMessage('Bestätigung erneut angefordert. Bitte prüfe dein Postfach und den Spam-Ordner.');}catch(error){setError(errorMessage(error));}finally{setBusy(false);}
  }
  return <section className="email-auth" aria-label="E-Mail-Anmeldung">
-  <div className="auth-mode-buttons"><button type="button" className={`button ${mode==='login'?'primary':''}`} aria-pressed={mode==='login'} disabled={busy} onClick={()=>switchMode('login')}>Anmelden</button><button type="button" className={`button ${mode==='signup'?'primary':''}`} aria-pressed={mode==='signup'} disabled={busy} onClick={()=>switchMode('signup')}>Registrieren</button></div>
+  {!resetOnly&&<div className="auth-mode-buttons"><button type="button" className={`button ${mode==='login'?'primary':''}`} aria-pressed={mode==='login'} disabled={busy} onClick={()=>switchMode('login')}>Anmelden</button><button type="button" className={`button ${mode==='signup'?'primary':''}`} aria-pressed={mode==='signup'} disabled={busy} onClick={()=>switchMode('signup')}>Registrieren</button></div>}
   {mode==='reset'&&<h3>Passwort vergessen?</h3>}
   <form onSubmit={submit}>
    <label>E-Mail-Adresse<input type="email" autoComplete="email" inputMode="email" maxLength={254} required value={email} onChange={event=>{setEmail(event.target.value);setRegistered(false);}} disabled={busy}/></label>
