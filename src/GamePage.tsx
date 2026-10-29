@@ -1,4 +1,3 @@
-import TrafficPanel from './TrafficPanel';
 import {distance} from '@turf/turf';
 import {rules,modeLabel,DEFAULT_XP} from '../shared/rules';
 import ChatPanel from './ChatPanel';
@@ -167,7 +166,6 @@ export default function GamePage() {
   if (lobby.status === 'finished' && lobby.result) return <>
     <PageHeader eyebrow="MISSION ABGESCHLOSSEN" title="Die Jagd ist vorbei." description="Gute Runde. Kommt sicher zurück und sammelt eure Crew."/>
     <section className="panel result-panel"><Trophy size={56} className="accent"/><span className="eyebrow">{modeName} / ERGEBNIS</span><h2>{({ hunters: 'DIE HUNTER GEWINNEN', hiders: 'DIE HIDER GEWINNEN', infected: 'DIE INFEKTION GEWINNT', zombies: 'DIE INFEKTION GEWINNT', draw: 'UNENTSCHIEDEN', aborted: 'MATCH OHNE WERTUNG BEENDET', deleted_player: 'DER SIEGER HAT SEIN KONTO GELÖSCHT', A: 'TEAM A GEWINNT', B: 'TEAM B GEWINNT', team_A: 'TEAM A GEWINNT', team_B: 'TEAM B GEWINNT' } as Record<string, string>)[lobby.result.winner] || `${(lobby.players.find(p=>p.id===lobby.result!.winner)?.username??lobby.result.winner).toUpperCase()} GEWINNT`}</h2><p>{lobby.result.reason}</p><div className="result-stats"><div><strong>{lobby.players.length}</strong><span>SPIELER</span></div><div><strong>{lobby.result.survivors.length}</strong><span>ÜBERLEBENDE</span></div><div><strong>{formatTime((lobby.result.endedAt - (lobby.startedAt ?? lobby.createdAt)) / 1000)}</strong><span>GESPIELT</span></div></div><p className="fineprint">Die Standortfreigabe ist beendet. GPS-Pins und Fangcodes werden aus dem Matchzustand entfernt.</p><div className="button-row"><button className="button primary" disabled={busy} onClick={leave}>Zur Übersicht <ArrowRight size={16}/></button><Link className="button" to="/history">Matchhistorie</Link></div></section>
-    <TrafficPanel matchId={lobby.id}/>
     <div className="panel"><h3>Deine Crew</h3>{lobby.players.map(player => <div className="player-row" key={player.id}><Avatar name={player.username} url={player.avatar_url}/><div className="player-info"><strong>{player.username}</strong><span>{ROLE_LABELS[player.role]}</span></div><span className={lobby.result!.survivors.includes(player.id) ? 'ready-badge' : 'waiting-badge'}>{lobby.result!.survivors.includes(player.id) ? 'ÜBERLEBT' : player.eliminated ? 'AUSGESCHIEDEN' : 'MATCH BEENDET'}</span></div>)}</div>
   </>;
 
@@ -200,7 +198,6 @@ export default function GamePage() {
       {host && lobby.settings.allowHealing && lobby.players.some(player => player.role === 'zombie' && !player.eliminated) && <section className="panel"><h3>Heilung</h3>{lobby.players.filter(player => player.role === 'zombie' && !player.eliminated).map(player => <button key={player.id} className="button full" disabled={busy || lobby.status !== 'active'} onClick={() => run(() => command({ type: 'heal', playerId: player.id }))}>{player.username} heilen</button>)}</section>}
     </aside></div>
     <div className="game-actions">{host&&<><button className="button" disabled={busy} onClick={()=>run(()=>command({type:lobby.status==='paused'?'resume':'pause'}))}>{lobby.status==='paused'?'Fortsetzen':'Spiel pausieren'}</button><button className="button danger-text" disabled={busy} onClick={()=>{if(window.confirm('Match ohne Wertung beenden?'))void run(()=>command({type:'end'}));}}>Spiel beenden</button></>}<button className="button subtle" disabled={busy} onClick={leave}><DoorOpen size={17}/> Match verlassen</button><Link className="text-link" to="/safety"><Shield size={15}/> Outdoor-Kodex</Link></div>
-    <TrafficPanel matchId={lobby.id}/>
     <section className="panel game-events"><div className="panel-heading"><h3>Live-Protokoll</h3><Radio size={18}/></div>{lobby.events.length ? [...lobby.events].reverse().slice(0, 15).map(event => <div className="game-event" key={event.id}><time dateTime={new Date(event.at).toISOString()}>{new Date(event.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</time><span>{event.message}</span></div>) : <p>Noch keine Match-Ereignisse.</p>}</section>
   </>;
 }

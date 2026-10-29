@@ -80,7 +80,7 @@ export class AccountService {
   if(path==='/traffic'){
    await this.requireGame(identity);if(!this.traffic)throw new HttpError(503,'Die Verbrauchsmessung ist hier nicht eingerichtet.');
    if(method==='POST'){const report=trafficSchema.parse(body);await this.store.quota(identity.id,'traffic-report',12);return this.traffic.report(identity,report);}
-   if(method==='GET'){const matchId=z.uuid().parse(query.get('matchId'));return this.traffic.read(identity,false,matchId,0);}
+   if(method==='GET')throw new HttpError(403,'Verbrauchsdaten sind ausschließlich im Adminportal verfügbar.');
    throw new HttpError(405,'Diese Methode ist nicht erlaubt.');
   }
   if(!path.startsWith('/admin/'))throw new HttpError(404,'Diese Verwaltungsroute existiert nicht.');

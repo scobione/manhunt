@@ -57,10 +57,13 @@ export class SupabaseAccountStore implements AccountStore {
   const now=new Date().toISOString();
   const r=await this.db.from('account_controls').update({setup_lock:lock,setup_lock_until:new Date(Date.now()+60000).toISOString()}).eq('user_id',id).eq('setup_stage',0).eq('disabled',false).eq('password_reset_pending',false).or(`setup_lock.is.null,setup_lock_until.lt.${now}`).select('user_id');checked(r.error);return r.data?.length===1;
  }
- async changePassword(id:string,password:string,token:string){
+ async changePassword(id:string,password:string,_token:string){
   const r=await this.db.auth.admin.updateUserById(id,{password,app_metadata:{manhunt_temporary_password_hash:null}});
   if(r.error)throw new HttpError(400,'Das neue Passwort wurde abgelehnt. Verwende ein starkes, eigenes Passwort.');
-  const revoke=await this.db.auth.admin.signOut(token,'others');if(revoke.error)throw new HttpError(503,'Andere Sitzungen konnten noch nicht beendet werden. Bitte wiederhole die Passwortänderung.');
+  // Admin password updates atomically revoke ALL Auth sessions. A second
+  // signOut with the now-revoked token fails with session_not_found and must
+  // never turn a successful password change into a failed setup step.
+  // The caller completes the setup checkpoint, then establishes a fresh login.
  }
  async finishPassword(id:string,lock:string,success:boolean){const r=await this.db.rpc('account_finish_password',{p_user:id,p_lock:lock,p_success:success});checked(r.error);}
  async setupStep(id:string,stage:1|2,name?:string){const r=await this.db.rpc('account_setup_step',{p_user:id,p_stage:stage,p_name:name??null});checked(r.error);}

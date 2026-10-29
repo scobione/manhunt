@@ -1,16 +1,17 @@
 // Keep only callback classification, never OAuth codes or raw provider errors.
-export interface AuthReturn { callback:boolean; hasCode:boolean; problem:'cancelled'|'provider'|'other'|null }
+export interface AuthReturn { callback:boolean; recovery:boolean; recoveryFragment:boolean; hasCode:boolean; problem:'cancelled'|'provider'|'other'|null }
 
 export function readAuthReturn(href:string):AuthReturn {
  const url=new URL(href);
- const callback=url.pathname.replace(/\/$/,'')==='/auth/callback';
  const hash=new URLSearchParams(url.hash.slice(1));
  const value=(key:string)=>url.searchParams.get(key)||hash.get(key)||'';
+ const recovery=value('type')==='recovery'||url.pathname.replace(/\/$/,'')==='/auth/recovery';
+ const callback=recovery||url.pathname.replace(/\/$/,'')==='/auth/callback'||!!value('code')||!!value('error');
  const error=value('error'),code=value('error_code'),description=value('error_description');
  const problem=!callback||!(error||code||description)?null
   :/unable to exchange external code|invalid_client/i.test(description)||code==='provider_error'?'provider'
   :error==='access_denied'||code==='access_denied'?'cancelled':'other';
- return {callback,hasCode:callback&&!!value('code'),problem};
+ return {callback,recovery,recoveryFragment:recovery&&!!value('access_token')&&!!value('refresh_token'),hasCode:callback&&!!value('code'),problem};
 }
 
 export function authInitializationMessage(result:AuthReturn,error:unknown,hasSession:boolean):string {
@@ -26,8 +27,8 @@ export function authInitializationMessage(result:AuthReturn,error:unknown,hasSes
 
 export function clearAuthReturn():void {
  const url=new URL(window.location.href);
- if(url.pathname.replace(/\/$/,'')!=='/auth/callback')return;
- for(const key of ['code','sb_flow_id','error','error_code','error_description'])url.searchParams.delete(key);
+ if(!readAuthReturn(url.href).callback)return;
+ for(const key of ['code','sb_flow_id','error','error_code','error_description','type','access_token','refresh_token','expires_in','expires_at','token_type'])url.searchParams.delete(key);
  url.hash='';
  window.history.replaceState(window.history.state,'',url.toString());
 }

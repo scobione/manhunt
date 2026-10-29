@@ -1,6 +1,6 @@
-# Datenverbrauch — 0.b1.104
+# Datenverbrauch — 0.b1.105
 
-Im [Admin-Portal](https://manhunt-admin-scobione.vercel.app/#traffic) öffnet **Datenverbrauch** die paginierte Matchliste. Ein Match zeigt die gemeldeten Mengen je Spieler, aufgeteilt in WLAN, Mobilfunk, Kabel und nicht erkennbare Verbindung. Im Spiel und auf dem Ergebnisbildschirm gibt es **Datenverbrauch dieses Matches** für die Teilnehmer dieses Matches.
+Im [Admin-Portal](https://manhunt-admin-scobione.vercel.app/#traffic) öffnet **Datenverbrauch** die paginierte Matchliste. Ein Match zeigt die gemeldeten Mengen je Spieler, aufgeteilt in WLAN, Mobilfunk, Kabel und nicht erkennbare Verbindung. Die Übersicht ist ausschließlich im geschützten Adminportal verfügbar. Spiel- und Ergebnisansicht zeigen keine Verbrauchsdaten. Der frühere Spieler-Lesezugang wird in API und Datenbank abgewiesen.
 
 ## Was die Werte bedeuten
 
@@ -16,9 +16,9 @@ Im [Admin-Portal](https://manhunt-admin-scobione.vercel.app/#traffic) öffnet **
 
 `match_traffic` enthält ausschließlich Match-, Spieler-, zufällige Mess-ID, Netzwerkklasse, Sequenz und Zähler. Keine URLs, SSIDs, IP-Adressen, Inhalte oder neuen Standortdaten. 30 Tage sichtbare Aufbewahrung; ältere Datensätze werden bei der nächsten Messmeldung gelöscht. Löschen eines Accounts entfernt zugehörige Messdaten über Foreign Keys. Noch keine Messung ist ein eigener Zustand, kein angeblicher Nullverbrauch.
 
-Das Backend leitet die Spieler-ID aus der authentifizierten Sitzung ab und prüft Spielteilnahme, aktuellen Accountstatus sowie die echte Auth-Sitzung. Spieler lesen nur ihr eigenes Match, Administratoren die Übersicht nach dem bestehenden Admin-Ticket und erneuter serverseitiger Rollenprüfung. Direkter Browserzugriff auf Tabelle/RPCs ist gesperrt; RLS bleibt aktiviert. Metriken sind untrusted Clientdiagnostik und beeinflussen keine Rollen, Resultate oder XP. Eingaben, Datenmengen und Meldungsfrequenz sind begrenzt; SQL verarbeitet kumulative Zähler atomar und monoton.
+Das Backend leitet die Spieler-ID aus der authentifizierten Sitzung ab und prüft Spielteilnahme, aktuellen Accountstatus sowie die echte Auth-Sitzung. Ausschließlich Administratoren lesen die Übersicht nach dem bestehenden Admin-Ticket und erneuter serverseitiger Rollenprüfung. Spieler können nur ihre eigenen Messwerte melden; auch Matchteilnehmer erhalten keinen Lesezugriff. Direkter Browserzugriff auf Tabelle/RPCs ist gesperrt; RLS bleibt aktiviert. Metriken sind untrusted Clientdiagnostik und beeinflussen keine Rollen, Resultate oder XP. Eingaben, Datenmengen und Meldungsfrequenz sind begrenzt; SQL verarbeitet kumulative Zähler atomar und monoton.
 
-Die additive Migration ändert keine Accounts, Freundschaften, Lobbys oder Spielstatistiken. Gemeinsame Darstellung und Typen liegen unter `admin/shared`, damit das separate Vercel-Projekt ohne Dateien außerhalb seiner Projektwurzel gebaut werden kann; das Spiel verwendet dieselben Module.
+Die additive Migration ändert keine Accounts, Freundschaften, Lobbys oder Spielstatistiken. Gemeinsame Darstellung und Typen liegen unter `admin/shared`, damit das separate Vercel-Projekt ohne Dateien außerhalb seiner Projektwurzel gebaut werden kann; das Spiel verwendet ausschließlich die gemeinsamen Messdatentypen.
 
 ## Automatisierte Prüfungen
 
@@ -33,8 +33,8 @@ Die additive Migration ändert keine Accounts, Freundschaften, Lobbys oder Spiel
 | TRAFFIC-DB-02 | Fremdes Match, veraltete Admin-Sitzung und direkte SQL/RPC-Zugriffe versuchen | BESTANDEN: verweigert; echte Adminrolle darf lesen |
 | TRAFFIC-DB-03 | Ungemessenes Match lesen, Grenzen verletzen, 31 Tage alte Zähler und zu spät beendetes Match verwenden | BESTANDEN: keine Fake-Werte, Grenzen/Löschung/Fristen eingehalten |
 
-| TRAFFIC-E2E | Zwei mobile Browser spielen, senden reale Browser-Zähler und wechseln den simulierten Netztyp; Admin öffnet die Matchdetails | BESTANDEN: beide Spieler, WLAN/Mobilfunk und Spielanzeige; kein horizontales Überlaufen |
+| TRAFFIC-E2E | Zwei mobile Browser spielen, senden reale Browser-Zähler und wechseln den simulierten Netztyp; Admin öffnet die Matchdetails | BESTANDEN: beide Spieler und WLAN/Mobilfunk im Adminportal; Spieler-Lesezugriff verweigert und keine Spielanzeige; kein horizontales Überlaufen |
 
-Gesamtlauf lokal: **235 Unit-/Integrationsfälle, 6 Admin-/Mehrbrowserfälle und 18 öffentliche Browserfälle bestanden**. Beide Produktionsbuilds erfolgreich.
+Gesamtlauf lokal: **235 Unit-/Integrationsfälle, 6 Admin-/Mehrbrowserfälle und 18 öffentliche Browserfälle bestanden** (Stand 0.b1.104; den aktuellen Prüfbericht enthält [0.b1.105](RELEASE-0.b1.105.md)). Beide Produktionsbuilds erfolgreich.
 
 SQL-Tests verwenden die unveränderten Migrationen mit PGlite. Browserprüfungen benutzen echte React-Clients, API-Routing und Spielengine mit lokal simulierten Auth-, Speicher- und Netzwerktypdaten. Sie ersetzen weder eine Mobilfunkabrechnung noch eine Messung auf einem echten iPhone. Produktive Benutzerpasswörter werden nicht zu Testzwecken geändert.

@@ -58,16 +58,18 @@ afterAll(async()=>{await db?.close();});
 
 describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
  it('TRAFFIC-DB-01 cumulative reports are idempotent, isolated by player and survive reloads',async()=>{
+  await db.query('update account_controls set is_admin=true where user_id=$1',[c]);
   const lobby=state();await rpc('save_game_checkpoint',[lobby]);const client=randomUUID(),buckets=emptyBuckets();buckets.wifi.down=1024;buckets.wifi.requests=2;
   await rpc('record_match_traffic',[a,a,lobby.id,client,1,buckets]);await rpc('record_match_traffic',[a,a,lobby.id,client,1,buckets]);
   buckets.wifi.down=2048;await rpc('record_match_traffic',[a,a,lobby.id,client,2,buckets]);buckets.wifi.down=8000;await rpc('record_match_traffic',[a,a,lobby.id,client,1,buckets]);
   buckets.wifi.down=512;await rpc('record_match_traffic',[a,a,lobby.id,client,3,buckets]);await rpc('record_match_traffic',[b,b,lobby.id,randomUUID(),1,buckets]);
-  const r=(await rpc('read_match_traffic',[a,a,false,lobby.id,0])).rows[0].value as any;expect(r.match.bytes).toBe(2560);expect(r.match.reporters).toBe(2);expect(r.players).toHaveLength(2);expect(r.rows.find((r:any)=>r.userId===a&&r.network==='wifi').down).toBe(2048);
-  await rpc('record_match_traffic',[a,a,lobby.id,randomUUID(),1,buckets]);expect(((await rpc('read_match_traffic',[a,a,false,lobby.id,0])).rows[0].value as any).match.bytes).toBe(3072);
+  const r=(await rpc('read_match_traffic',[c,c,true,lobby.id,0])).rows[0].value as any;expect(r.match.bytes).toBe(2560);expect(r.match.reporters).toBe(2);expect(r.players).toHaveLength(2);expect(r.rows.find((r:any)=>r.userId===a&&r.network==='wifi').down).toBe(2048);
+  await rpc('record_match_traffic',[a,a,lobby.id,randomUUID(),1,buckets]);expect(((await rpc('read_match_traffic',[c,c,true,lobby.id,0])).rows[0].value as any).match.bytes).toBe(3072);
  });
  it('TRAFFIC-DB-02 foreign matches, stale sessions, normal-user admin reads and direct SQL are denied',async()=>{
   const lobby=state();await rpc('save_game_checkpoint',[lobby]);const buckets=emptyBuckets();
   await expect(rpc('record_match_traffic',[c,c,lobby.id,randomUUID(),1,buckets])).rejects.toThrow(/traffic_forbidden/);
+  await expect(rpc('read_match_traffic',[a,a,false,lobby.id,0])).rejects.toThrow(/traffic_forbidden/);
   await expect(rpc('read_match_traffic',[c,c,false,lobby.id,0])).rejects.toThrow(/traffic_forbidden/);
   await expect(rpc('read_match_traffic',[a,a,true,null,0])).rejects.toThrow(/traffic_forbidden/);
   await expect(userRole(a,'select * from match_traffic')).rejects.toThrow(/permission denied/);
@@ -76,11 +78,12 @@ describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
   await db.query('delete from auth.sessions where id=$1',[c]);await expect(rpc('read_match_traffic',[c,c,true,null,0])).rejects.toThrow(/traffic_forbidden/);
  });
  it('TRAFFIC-DB-03 no retroactive values, bounded writes and expired diagnostics are removed',async()=>{
-  const lobby=state();await rpc('save_game_checkpoint',[lobby]);const empty=(await rpc('read_match_traffic',[a,a,false,lobby.id,0])).rows[0].value as any;expect(empty.match.reporters).toBe(0);expect(empty.rows).toEqual([]);expect(empty.players.every((p:any)=>p.updatedAt===null)).toBe(true);
+  await db.query('update account_controls set is_admin=true where user_id=$1',[c]);
+  const lobby=state();await rpc('save_game_checkpoint',[lobby]);const empty=(await rpc('read_match_traffic',[c,c,true,lobby.id,0])).rows[0].value as any;expect(empty.match.reporters).toBe(0);expect(empty.rows).toEqual([]);expect(empty.players.every((p:any)=>p.updatedAt===null)).toBe(true);
   const client=randomUUID(),buckets=emptyBuckets();buckets.cellular.up=500;
   await expect(rpc('record_match_traffic',[a,a,lobby.id,client,0,buckets])).rejects.toThrow(/traffic_invalid/);
   await expect(rpc('record_match_traffic',[a,a,lobby.id,client,1,{...buckets,ssid:'private'}])).rejects.toThrow(/traffic_invalid/);
-  await rpc('record_match_traffic',[a,a,lobby.id,client,1,buckets]);await db.query("update match_traffic set updated_at=now()-interval '31 days'");expect(((await rpc('read_match_traffic',[a,a,false,lobby.id,0])).rows[0].value as any).rows).toEqual([]);
+  await rpc('record_match_traffic',[a,a,lobby.id,client,1,buckets]);await db.query("update match_traffic set updated_at=now()-interval '31 days'");expect(((await rpc('read_match_traffic',[c,c,true,lobby.id,0])).rows[0].value as any).rows).toEqual([]);
   await rpc('record_match_traffic',[a,a,lobby.id,randomUUID(),1,emptyBuckets()]);expect((await db.query('select * from match_traffic where client_id=$1',[client])).rows).toHaveLength(0);
   await db.query("update game_sessions set ended_at=now()-interval '7 hours' where id=$1",[lobby.id]);await expect(rpc('record_match_traffic',[a,a,lobby.id,randomUUID(),1,buckets])).rejects.toThrow(/traffic_forbidden/);
  });

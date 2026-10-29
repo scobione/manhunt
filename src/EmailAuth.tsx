@@ -1,3 +1,4 @@
+import {PasswordField} from '../admin/shared/PasswordField';
 import { useState, useEffect, type FormEvent } from 'react';
 import {UsernameInput} from './AccountSetup';
 import {USERNAME_PATTERN} from '../shared/accounts';
@@ -62,8 +63,8 @@ export function EmailAuthForm(){
   <form onSubmit={submit}>
    <label>E-Mail-Adresse<input type="email" autoComplete="email" inputMode="email" maxLength={254} required value={email} onChange={event=>{setEmail(event.target.value);setRegistered(false);}} disabled={busy}/></label>
    {mode==='signup'&&!registered&&<UsernameInput value={username} onChange={setUsername} disabled={busy}/>}
-   {mode!=='reset'&&!registered&&<label>Passwort<input type="password" autoComplete={mode==='signup'?'new-password':'current-password'} minLength={mode==='signup'?12:undefined} maxLength={128} required value={password} onChange={event=>setPassword(event.target.value)} disabled={busy}/></label>}
-   {mode==='signup'&&!registered&&<><label>Passwort wiederholen<input type="password" autoComplete="new-password" minLength={mode==='signup'?12:8} maxLength={128} required value={repeat} onChange={event=>setRepeat(event.target.value)} disabled={busy}/></label><p className="muted">Mindestens 12 Zeichen. Verwende ein Passwort, das du nur hier nutzt.</p></>}
+   {mode!=='reset'&&!registered&&<PasswordField label="Passwort" autoComplete={mode==='signup'?'new-password':'current-password'} minLength={mode==='signup'?12:undefined} maxLength={128} required value={password} onChange={event=>setPassword(event.target.value)} disabled={busy}/>}
+   {mode==='signup'&&!registered&&<><PasswordField label="Passwort wiederholen" autoComplete="new-password" minLength={mode==='signup'?12:8} maxLength={128} required value={repeat} onChange={event=>setRepeat(event.target.value)} disabled={busy}/><p className="muted">Mindestens 12 Zeichen. Verwende ein Passwort, das du nur hier nutzt.</p></>}
    {error&&<p className="inline-warning" role="alert">{error}</p>}
    {message&&<p className="auth-feedback" role="status">{message}</p>}
    {!registered&&<button className="button primary" disabled={busy||!supabase}>{busy?'Bitte warten…':mode==='login'?'Mit E-Mail anmelden':mode==='signup'?'Konto erstellen':'Link zum Zurücksetzen anfordern'}</button>}
@@ -82,5 +83,5 @@ export function PasswordChangeForm({onDone}:{onDone:()=>void}){
   setBusy(true);setError('');
   try{const {error}=await supabase.auth.updateUser({password});if(error)throw error;setPassword('');setRepeat('');onDone();}catch(error){setError(errorMessage(error));}finally{setBusy(false);}
  }
- return <form className="email-auth password-change" onSubmit={submit}><h3>Neues Passwort festlegen</h3><label>Neues Passwort<input type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={password} onChange={event=>setPassword(event.target.value)} disabled={busy}/></label><label>Neues Passwort wiederholen<input type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={repeat} onChange={event=>setRepeat(event.target.value)} disabled={busy}/></label>{error&&<p role="alert" className="inline-warning">{error}</p>}<button className="button primary" disabled={busy}>{busy?'Wird gespeichert…':'Neues Passwort speichern'}</button></form>;
+ return <form className="email-auth password-change" onSubmit={submit}><h3>Neues Passwort festlegen</h3><PasswordField label="Neues Passwort" autoComplete="new-password" minLength={8} maxLength={128} required value={password} onChange={event=>setPassword(event.target.value)} disabled={busy}/><PasswordField label="Neues Passwort wiederholen" autoComplete="new-password" minLength={8} maxLength={128} required value={repeat} onChange={event=>setRepeat(event.target.value)} disabled={busy}/>{error&&<p role="alert" className="inline-warning">{error}</p>}<button className="button primary" disabled={busy}>{busy?'Wird gespeichert…':'Neues Passwort speichern'}</button></form>;
 }

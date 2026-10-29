@@ -1,3 +1,4 @@
+import {SupabaseAccountStore} from '../server/account-store';
 import {beforeEach,describe,it,expect,vi} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {AccountService} from '../server/accounts';
@@ -70,4 +71,12 @@ describe('ADMIN-MRESET: prescribed temporary passwords',()=>{
  it('MRESET-08 salts prescribed password hashes and limits repeated admin resets',async()=>{
   const ticket=(await unlock()).sessionToken;await reset(undefined,admin,player.id,ticket);const first=store.controls.get(player.id)!.temporary_password_hash;await reset(undefined,admin,player.id,ticket);expect(store.controls.get(player.id)?.temporary_password_hash).not.toBe(first);await reset(undefined,admin,player.id,ticket);await expect(reset(undefined,admin,player.id,ticket)).rejects.toMatchObject({status:429});
  });
+});
+
+it('RESET-REG-01 admin password update does not log out a session already revoked by Supabase',async()=>{
+ const updateUserById=vi.fn(async()=>({data:{user:{}},error:null}));
+ const signOut=vi.fn(async()=>({error:{code:'session_not_found',status:403}}));
+ const adapter=new SupabaseAccountStore({auth:{admin:{updateUserById,signOut}}} as any);
+ await expect(adapter.changePassword(player.id,'Own-Private-Password123','already-revoked-token')).resolves.toBeUndefined();
+ expect(updateUserById).toHaveBeenCalledOnce();expect(signOut).not.toHaveBeenCalled();
 });

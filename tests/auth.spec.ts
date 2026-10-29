@@ -210,3 +210,29 @@ test('a guest joins a private lobby without email or password and survives reloa
  await page.reload();await expect(page.getByTestId('lobby-code')).toHaveText(lobby.code);expect(anonymousRequests).toBe(1);
  const forbidden=await handler(new Request('http://isolated/api/events',{method:'POST',headers:{Authorization:`Bearer ${guestSession.access_token}`},body:JSON.stringify({event:'lobby:create',data:{}})}));expect(forbidden.status).toBe(403);
 });
+
+for(const landing of ['/', '/auth/callback'])test(`RESET-REG-02 recovery fragment on ${landing} opens password page and survives reload`,async({page})=>{
+ await page.setViewportSize({width:390,height:844});const session=sessionFixture();let changed=0;
+ await page.route(`${origin}/**`,route=>{
+  if(new URL(route.request().url()).pathname==='/auth/v1/user'){
+   if(route.request().method()==='PUT')changed++;
+   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(testUser)});
+  }
+  return route.abort();
+ });
+ await page.route('**/api/config',route=>route.fulfill({status:503,body:'Unavailable'}));
+ const fragment=new URLSearchParams({access_token:session.access_token,refresh_token:session.refresh_token,expires_in:'3600',token_type:'bearer',type:'recovery'});
+ await page.goto(`${landing}#${fragment}`);
+ await expect(page).toHaveURL(/\/auth\/recovery$/);await expect(page.getByRole('heading',{name:'Neues Passwort festlegen'})).toBeVisible();
+ await page.reload();await expect(page.getByRole('heading',{name:'Neues Passwort festlegen'})).toBeVisible();
+ const password=page.getByLabel('Neues Passwort',{exact:true});await password.fill('New-Isolated-Password123');await expect(password).toHaveAttribute('type','password');
+ await page.getByRole('button',{name:'Neues Passwort anzeigen',exact:true}).click();await expect(password).toHaveAttribute('type','text');expect(changed).toBe(0);
+ await page.getByRole('button',{name:'Neues Passwort verbergen',exact:true}).click();await expect(password).toHaveAttribute('type','password');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'test-results-public/recovery-mobile.png',fullPage:true});
+ await page.getByLabel('Neues Passwort wiederholen',{exact:true}).fill('New-Isolated-Password123');await page.getByRole('button',{name:'Neues Passwort speichern'}).click();
+ await expect(page.getByRole('status')).toContainText('Dein Passwort wurde gespeichert');expect(changed).toBe(1);await page.reload();await expect(page.getByRole('heading',{name:'Neues Passwort festlegen'})).toHaveCount(0);
+});
+test('RESET-REG-03 expired recovery link cannot reuse a cached account to show a password form',async({page})=>{
+ await seedSession(page,true);await page.goto('/#type=recovery&error=access_denied&error_code=otp_expired&error_description=Expired');
+ await expect(page).toHaveURL(/\/auth\/recovery$/);await expect(page.getByRole('alert')).toBeVisible();await expect(page.getByLabel('Neues Passwort',{exact:true})).toHaveCount(0);
+});
