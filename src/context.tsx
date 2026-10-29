@@ -12,7 +12,7 @@ const authReturn=readAuthReturn(window.location.href);
 const defaults = import.meta.env.MODE === 'production' ? publicConfig : null;
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || defaults?.supabaseUrl;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || (!import.meta.env.VITE_SUPABASE_URL ? defaults?.supabasePublishableKey : undefined);
-export const supabase:SupabaseClient|null = supabaseUrl && supabaseKey ? createClient(supabaseUrl,supabaseKey,{auth:{flowType:authReturn.recoveryFragment?'implicit':'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}) : null;
+export const supabase:SupabaseClient|null = supabaseUrl && supabaseKey ? createClient(supabaseUrl,supabaseKey,{auth:{flowType:authReturn.recoveryFragment?'implicit':'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:authReturn.callback}}) : null;
 // Capture the SDK event even when it fires before React mounts. Store only a
 // user-bound recovery intent, never a password or recovery token.
 const recoveryKey='manhunt:password-recovery-user';

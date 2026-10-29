@@ -261,3 +261,13 @@ test('RESET-REG-06 missing browser verifier on home-page callback opens an actio
  await expect(page.getByRole('alert')).toContainText('Der Anmeldenachweis fehlt in diesem Browser');
  await page.getByRole('link',{name:'Zur Anmeldung',exact:true}).click();await expect(page.getByRole('button',{name:'Mit E-Mail anmelden',exact:true})).toBeVisible();
 });
+
+test('AUTH-RETURN-05 pending email verifier never exchanges a six-character lobby code',async({page})=>{
+ const verifier='isolated-pending-email-verifier-'.repeat(2);let exchanges=0;
+ await page.addInitScript(({key,verifier})=>localStorage.setItem(key,JSON.stringify(verifier)),{key:`${storageKey}-code-verifier`,verifier});
+ await page.route(`${origin}/**`,route=>{if(new URL(route.request().url()).pathname==='/auth/v1/token'){exchanges++;return route.fulfill({status:400,headers:apiHeaders,contentType:'application/json',body:JSON.stringify({code:'bad_code_verifier',msg:'Invalid verifier'})});}return route.abort();});
+ await page.route('**/api/config',route=>route.fulfill({status:503,body:'Unavailable'}));
+ await page.goto('/join?code=K7M4XP');await expect(page.getByRole('button',{name:'Als Gast beitreten',exact:true})).toBeEnabled();
+ expect(exchanges).toBe(0);await expect(page.getByLabel('Lobby-Code',{exact:true})).toHaveValue('K7M4XP');
+ expect(await page.evaluate(key=>localStorage.getItem(key),`${storageKey}-code-verifier`)).toBe(JSON.stringify(verifier));
+});
