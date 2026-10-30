@@ -28,7 +28,7 @@ test('mobile warning stays full screen, return swipe needs GPS, no emergency pau
  await event(request,pt,'lobby:join',{code:lobby.code});await event(request,ot,'lobby:join',{code:lobby.code});
  await command(request,ht,{type:'zone',zone:{feature:circle([13.405,52.52],.03),excluded:[],name:'ISOLATED GPS TEST',confirmed:true}});
  await command(request,ht,{type:'assign',playerId:host,role:'hunter',team:'A'});
- for(const token of [ht,pt,ot])await command(request,token,{type:'ready',ready:true});await command(request,ht,{type:'start'});
+ for(const token of [ht,pt,ot]){await command(request,token,{type:'location_check',location:{longitude:13.405,latitude:52.52,accuracy:3,timestamp:Date.now()}});await command(request,token,{type:'ready',ready:true});}await command(request,ht,{type:'start'});
  for(const token of [ht,ot])await command(request,token,{type:'location',location:{latitude:52.52,longitude:13.405,accuracy:5,timestamp:Date.now()}});
  await page.route('**/*',route=>['127.0.0.1','localhost'].includes(new URL(route.request().url()).hostname)?route.continue():route.abort());
  await page.addInitScript(token=>{
@@ -37,7 +37,7 @@ test('mobile warning stays full screen, return swipe needs GPS, no emergency pau
  },pt);
  await page.goto('/game');await expect(page.getByRole('heading',{name:'Die Jagd läuft.'})).toBeVisible();
  await expect(page.locator(`[data-player-id="${other}"]`)).toBeVisible();
- await page.getByRole('checkbox',{name:/Ich teile meinen Standort/}).check();await page.getByRole('button',{name:'GPS aktivieren',exact:true}).click();
+ await page.getByRole('checkbox',{name:/Ich erlaube die Standortverarbeitung für dieses Match:/}).check();await page.getByRole('button',{name:'GPS aktivieren',exact:true}).click();
  const fix=async(longitude:number,accuracy=5)=>{
   const response=page.waitForResponse(r=>r.url().endsWith('/api/events')&&r.request().postDataJSON()?.data?.command?.type==='location');
   await page.evaluate(({longitude,accuracy})=>(window as any).__gpsCallback({coords:{latitude:52.52,longitude,accuracy},timestamp:Date.now()}),{longitude,accuracy});return(await response).status();

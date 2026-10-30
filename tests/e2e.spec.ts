@@ -107,6 +107,8 @@ async function prepareMatch(host: Actor, others: Actor[], mode: Mode = 'normal',
   for (const player of [host, ...others]) {
     await player.page.goto('/lobby');
     await expect(player.page.locator('.connection')).toHaveText('VERBUNDEN');
+    await player.page.getByRole('checkbox',{name:/Ich aktiviere meinen Standort für diese Lobby/}).check();
+    await player.page.getByRole('button',{name:'Standort freigeben',exact:true}).click();
     await player.page.getByRole('button', { name: 'Bereit', exact: true }).click();
     await expect.poll(async () => (await view(player)).self.ready).toBe(true);
   }
@@ -121,7 +123,7 @@ test('public app renders on mobile and explicitly marks isolated test authentica
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
-  await expect(page.getByRole('heading', { name:'Raus aus dem Alltag.',exact:true })).toBeVisible();
+  await expect(page.getByRole('heading', { name:'MANHUNT',exact:true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBeTruthy();
   await page.goto('/login');
   await expect(page.getByRole('button', { name: /Google/i })).toHaveCount(0);
@@ -223,6 +225,7 @@ test('apocalypse shrinks safely and uncertain GPS never blindly eliminates a bro
   const host = await actor(browser, 'E2E_ApoHunter');
   const guest = await actor(browser, 'E2E_ApoHider', true);
   try {
+    await guest.context.setGeolocation({...TEST_GPS,longitude:TEST_GPS.longitude+.01});
     await prepareMatch(host, [guest], 'apocalypse', {
       phases: [{ afterSeconds: 0, scale: 1 }, { afterSeconds: 3, scale: 0.5 }],
       outsideGraceSeconds: 15,
@@ -231,7 +234,8 @@ test('apocalypse shrinks safely and uncertain GPS never blindly eliminates a bro
     const initial = (await view(host)).zone!.feature;
     await expect.poll(async () => area((await view(host)).activeZone!), { timeout: 10_000 }).toBeLessThan(area(initial) * 0.3);
     expect(booleanWithin((await view(host)).activeZone!, initial)).toBeTruthy();
-    // The first outside fix is synthetic and deliberately >300 m from the center.
+    await guest.page.getByRole('button',{name:'Standortfreigabe beenden',exact:true}).click();
+    // The outside fix is synthetic and deliberately >300 m from the center.
     const outside = { ...TEST_GPS, longitude: TEST_GPS.longitude + 0.01, timestamp: Date.now() };
     await command(guest, { type: 'location', location: outside });
     expect((await view(guest)).self.outsideSince).toBeDefined();
@@ -299,14 +303,16 @@ test('mobile app shows offline state and browser reconnect synchronizes the acti
 });
 
 
-test('browser GPS starts only after consent and stopping sharing keeps the match running',async({browser})=>{
+test('lobby GPS consent carries into play and stopping sharing keeps the match running',async({browser})=>{
  const host=await actor(browser,'E2E_GpsHunter');const guest=await actor(browser,'E2E_GpsHider',true);
  try{
   await prepareMatch(host,[guest]);
-  expect((await view(guest)).self.location).toBeUndefined();
-  await expect(guest.page.getByRole('button',{name:'GPS aktivieren',exact:true})).toBeDisabled();
-  await guest.page.getByRole('checkbox',{name:/Ich teile meinen Standort/}).check();
-  await guest.page.getByRole('button',{name:'GPS aktivieren',exact:true}).click();
+  await expect(guest.page.getByRole('button',{name:'GPS aktivieren',exact:true})).toHaveCount(0);
+  await guest.page.bringToFront();
+  await expect(guest.page.getByText('FREIGABE AKTIV',{exact:true})).toBeVisible();
+  // Chromium's fixed GPS override emits a fresh reading when explicitly updated.
+  // The lobby grant must already be active; no second permission action is taken.
+  await guest.context.setGeolocation(TEST_GPS);
   await expect.poll(async()=>(await view(guest)).self.location?.latitude).toBe(TEST_GPS.latitude);
   await expect(guest.page.getByText('FREIGABE AKTIV',{exact:true})).toBeVisible();
   await guest.page.getByRole('button',{name:'Standortfreigabe beenden',exact:true}).click();

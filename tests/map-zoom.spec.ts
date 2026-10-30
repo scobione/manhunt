@@ -38,7 +38,7 @@ for(const mobile of [true,false])test(`MAP-ZOOM-${mobile?'MOBILE':'DESKTOP'}: fi
   const patched=await request.patch('http://127.0.0.1:3002/api/profile',{headers:{Authorization:`Bearer ${token(mate)}`},data:{avatar_url:avatar}});expect(patched.status()).toBe(200);
   await command(request,token(host),{type:'zone',zone:{feature:circle([13.405,52.52],.7),excluded:[],name:'AUTOMATED MAP TEST — SYNTHETIC GPS',confirmed:true}});
   await command(request,token(host),{type:'assign',playerId:host.id,role:'hunter',team:'A'});
-  for(const a of [host,self,mate])await command(request,token(a),{type:'ready',ready:true});
+  for(const a of [host,self,mate]){await command(request,token(a),{type:'location_check',location:{longitude:13.405,latitude:52.52,accuracy:3,timestamp:Date.now()}});await command(request,token(a),{type:'ready',ready:true});}
   const started=await command(request,token(host),{type:'start'}),target=started.xpHunt.point;expect(target).toBeTruthy();
   await command(request,token(host),{type:'xp_confirm',pointId:target.id});
   await command(request,token(mate),{type:'location',location:{longitude:target.longitude,latitude:target.latitude,accuracy:3,timestamp:Date.now()}});
@@ -50,7 +50,7 @@ for(const mobile of [true,false])test(`MAP-ZOOM-${mobile?'MOBILE':'DESKTOP'}: fi
    return ['127.0.0.1','localhost'].includes(new URL(url).hostname)?route.continue():route.abort();
   });
   await page.goto('/game');await expect(page.locator('.mh-xp-pin')).toBeVisible();
-  await page.getByRole('checkbox',{name:/Ich teile meinen Standort/}).check();await page.getByRole('button',{name:'GPS aktivieren',exact:true}).click();
+  await page.getByRole('checkbox',{name:/Ich erlaube die Standortverarbeitung für dieses Match:/}).check();await page.getByRole('button',{name:'GPS aktivieren',exact:true}).click();
   await expect(page.locator('.mh-pin-own')).toBeVisible();await aligned(page);
   const map=page.getByTestId('game-map');await map.scrollIntoViewIfNeeded();
   for(const name of ['Zoom in','Zoom in','Zoom out','Zoom out']){await map.getByRole('button',{name,exact:true}).click();await aligned(page);}

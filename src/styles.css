@@ -30,3 +30,7 @@ label{display:flex;flex-direction:column;gap:9px;font-size:11px;color:#9eafb5;ma
 @media(max-width:560px){.form-grid{grid-template-columns:minmax(0,1fr)}}
 
 .account-setup{max-width:640px;margin:0 auto;padding:32px 20px;min-height:100dvh}.account-setup>.brand{margin-bottom:32px}.account-setup h1{font-size:clamp(24px,6vw,36px)}.account-setup label{display:grid;gap:8px;margin:20px 0}.account-setup form{margin:24px 0}.account-setup .toggle-row{display:flex;align-items:start}.account-setup .toggle-row input{width:22px;flex-shrink:0}.setup-steps{display:flex;list-style:none;padding:0;gap:12px;margin:28px 0}.setup-steps li{flex:1;display:grid;gap:8px;padding:12px 8px;border-top:2px solid #334046;color:#8b9b9f;font-size:12px}.setup-steps .current{border-color:#00ff9c;color:#00ff9c}.setup-steps .complete{border-color:#00b8ff;color:#00b8ff}.setup-avatar{width:84px;height:84px;border-radius:50%;background:#182a30;display:grid;place-items:center;overflow:hidden}.setup-avatar img{width:100%;height:100%;object-fit:cover}
+
+.not-found{text-align:center;padding:clamp(32px,8vw,88px) 20px}.not-found-code{display:block;font:800 clamp(72px,18vw,180px)/1 monospace;color:var(--accent,#00ff9c);letter-spacing:-.08em;opacity:.28}.not-found h1{margin:20px 0 28px;font-size:clamp(24px,5vw,36px)}
+
+.setup-legal{display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:center;margin:20px 0}.setup-legal a{display:inline-flex;align-items:center;min-height:44px;color:#b4c6ca}.setup-legal a:hover{color:var(--green)}

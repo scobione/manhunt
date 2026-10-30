@@ -19,7 +19,7 @@ async function match(mode='normal'){
  expect(made.status).toBe(200);await event(guest,'lobby:join',{code:made.body.lobby.code});
  await command(host,{type:'zone',zone:{feature:circle([13.405,52.52],.6),excluded:[],name:'AUTOMATED TEST ZONE',confirmed:true}});
  await command(host,{type:'assign',playerId:host,role:'hunter',team:'A'});
- await command(host,{type:'ready',ready:true});await command(guest,{type:'ready',ready:true});
+ {await command(host,{type:'location_check',location:{longitude:13.405,latitude:52.52,accuracy:3,timestamp:store.clock}});await command(host,{type:'ready',ready:true});}{await command(guest,{type:'location_check',location:{longitude:13.405,latitude:52.52,accuracy:3,timestamp:store.clock}});await command(guest,{type:'ready',ready:true});}
  expect((await command(host,{type:'start'})).status).toBe(200);
 }
 describe('stateless Edge multiplayer transport (isolated)',()=>{
@@ -60,7 +60,7 @@ describe('STRESS: concurrent authoritative commands (isolated)',()=>{
  const paths=[{longitude:13.405,latitude:52.52,pathId:'test-footway-a',label:'ISOLATED PATH A'},{longitude:13.408,latitude:52.52,pathId:'test-footway-b',label:'ISOLATED PATH B'}];
  async function xpMatch(loader:()=>Promise<typeof paths>){
   handler=createEdgeHandler({store,repository:repo,origins:['https://manhunt.test'],verify:async token=>{if(![host,guest,stranger].includes(token))throw new HttpError(401,'Test identity rejected');return{id:token,username:'IsolatedPlayer',expiresAt:Date.now()+3600000};},pathLoader:loader});
-  const made=await event(host,'lobby:create',{settings:{...DEFAULT_SETTINGS,rules:{zombie:true,apocalypse:true,xpHunt:true},preparationSeconds:0,headStartSeconds:0,randomRoles:false,phases:[{afterSeconds:0,scale:1},{afterSeconds:10,scale:.25}]}});await event(guest,'lobby:join',{code:made.body.lobby.code});await command(host,{type:'zone',zone:{feature:circle([13.405,52.52],.6),excluded:[],name:'ISOLATED XP RACE',confirmed:true}});await command(host,{type:'assign',playerId:host,role:'hunter',team:'A'});for(const id of [host,guest])await command(id,{type:'ready',ready:true});const started=await command(host,{type:'start'});expect(started.status).toBe(200);const p=started.body.lobby.xpHunt.point;expect(p).toBeTruthy();await command(host,{type:'xp_confirm',pointId:p.id});await command(guest,{type:'location',location:{longitude:p.longitude,latitude:p.latitude,accuracy:3,timestamp:store.clock}});return p;
+  const made=await event(host,'lobby:create',{settings:{...DEFAULT_SETTINGS,rules:{zombie:true,apocalypse:true,xpHunt:true},preparationSeconds:0,headStartSeconds:0,randomRoles:false,phases:[{afterSeconds:0,scale:1},{afterSeconds:10,scale:.25}]}});await event(guest,'lobby:join',{code:made.body.lobby.code});await command(host,{type:'zone',zone:{feature:circle([13.405,52.52],.6),excluded:[],name:'ISOLATED XP RACE',confirmed:true}});await command(host,{type:'assign',playerId:host,role:'hunter',team:'A'});for(const id of [host,guest]){await command(id,{type:'location_check',location:{longitude:13.405,latitude:52.52,accuracy:3,timestamp:store.clock}});await command(id,{type:'ready',ready:true});}const started=await command(host,{type:'start'});expect(started.status).toBe(200);const p=started.body.lobby.xpHunt.point;expect(p).toBeTruthy();await command(host,{type:'xp_confirm',pointId:p.id});await command(guest,{type:'location',location:{longitude:p.longitude,latitude:p.latitude,accuracy:3,timestamp:store.clock}});return p;
  }
  it('STRESS-END: ending concurrently with XP collection cannot award after the final checkpoint',async()=>{
   const p=await xpMatch(async()=>paths);const replies=await Promise.all([command(host,{type:'end'}),command(guest,{type:'xp_collect',pointId:p.id})]);expect(replies[0].status).toBe(200);expect([200,400]).toContain(replies[1].status);const final=(await request(guest,'/sync')).body.lobby;expect(final.result.winner).toBe('aborted');expect(final.status).toBe('finished');const progress=final.xpHunt.collected;expect([0,1]).toContain(progress);expect((await command(guest,{type:'xp_collect',pointId:p.id})).status).toBe(400);expect((await request(guest,'/sync')).body.lobby.xpHunt.collected).toBe(progress);
@@ -68,4 +68,13 @@ describe('STRESS: concurrent authoritative commands (isolated)',()=>{
  it('STRESS-SHRINK: shrinking while path data loads cannot restore an out-of-zone point or lose progress',async()=>{
   let release!:()=>void,entered!:()=>void,count=0;const waiting=new Promise<void>(r=>entered=r),gate=new Promise<void>(r=>release=r);const p=await xpMatch(async()=>{if(++count>1){entered();await gate;}return paths;});expect((await command(guest,{type:'xp_collect',pointId:p.id})).status).toBe(200);const pending=command(host,{type:'xp_regenerate'});await waiting;store.clock+=11000;await request(guest,'/sync');release();expect((await pending).status).toBe(200);const after=(await request(guest,'/sync')).body.lobby;expect(after.xpHunt.collected).toBe(1);if(after.xpHunt.point){expect(after.xpHunt.point.longitude).toBe(13.405);}expect(after.activeZone).not.toEqual(after.zone.feature);
  });
+});
+
+// Synthetic GPS in an isolated durable Edge store, never production.
+it('LOBBY-GPS-EDGE: rejected accuracy check persists revocation without persisting coordinates or GPS audit noise',async()=>{
+ await event(host,'lobby:create');await command(host,{type:'location_check',location:{longitude:13.401234,latitude:52.501234,accuracy:4,timestamp:store.clock}});
+ expect((await command(host,{type:'ready',ready:true})).status).toBe(200);store.clock++;
+ expect((await command(host,{type:'location_check',location:{longitude:13.401234,latitude:52.501234,accuracy:500,timestamp:store.clock}})).status).toBe(400);
+ expect((await request(host,'/sync')).body.lobby.self).toMatchObject({ready:false,locationReady:false});
+ expect(JSON.stringify([...store.lobbies.values()])).not.toContain('13.401234');expect(JSON.stringify(repo.audits)).not.toContain('location_check');
 });

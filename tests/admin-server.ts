@@ -21,6 +21,8 @@ function verify(token:string){const i=tokens.get(token);if(!i||!store.live.has(i
 store.changePassword=async(id,password,token)=>{store.passwords.set(id,password);store.revokeUser(id);};
 const handler=createEdgeHandler({repository:store.repo,store:edge,accounts:service,origins:['http://127.0.0.1:4175','http://127.0.0.1:5176'],verify:async t=>verify(t)});
 const server=createServer(async(req,res)=>{
+ // Browser GPS and server freshness checks use the same progressing test clock.
+ edge.clock=Date.now();
  const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(Buffer.from(chunk));const bodyText=Buffer.concat(chunks).toString(),body=bodyText?JSON.parse(bodyText):{},url=new URL(req.url!,'http://127.0.0.1:3003');
  const headers={'Content-Type':'application/json','Cache-Control':'no-store','Access-Control-Allow-Origin':req.headers.origin??'*','Access-Control-Allow-Headers':'authorization,apikey,content-type,x-client-info,x-supabase-api-version,x-manhunt-admin-session','Access-Control-Allow-Methods':'GET,POST,PATCH,DELETE,OPTIONS'};
  const respond=(value:unknown,status=200)=>{res.writeHead(status,headers);res.end(JSON.stringify(value));};

@@ -1,3 +1,5 @@
+import {trafficAllowed,useTrafficConsent} from './traffic-consent';
+import {useMatchLocation} from './useMatchLocation';
 import {beginTraffic,startTraffic,socketTraffic} from './traffic-meter';
 import type {AccountState} from '../shared/accounts';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
@@ -27,6 +29,7 @@ export const TEST_MODE = import.meta.env.MODE === 'test' && import.meta.env.VITE
 const API_BASE = (import.meta.env.VITE_API_URL || defaults?.apiUrl || '').replace(/\/$/,'');
 interface Config { configured:boolean; authConfigured:boolean; pushPublicKey?:string; transport?:'http'|'socket';accountControls?:boolean }
 interface AppContextValue {
+  gps:ReturnType<typeof useMatchLocation>;
   account:AccountState|null;accountChecking:boolean;refreshAccount:()=>Promise<void>;profile:Profile|null; token:string|null; lobby:LobbyView|null; connected:boolean; loading:boolean; config:Config|null;
   identity:{id:string;email?:string;isGuest?:boolean}|null; authChecking:boolean; authError:string;authCallbackError:boolean;
   reauthenticateAfterPasswordChange:(email:string,password:string)=>Promise<boolean>; passwordRecovery:boolean; finishPasswordRecovery:()=>void; clearAuthError:()=>void;
@@ -54,11 +57,13 @@ export function AppProvider({children}:{children:ReactNode}) {
    if(!response.ok) throw Object.assign(new Error(body?.error||'Der Server ist gerade nicht erreichbar. Bitte versuche es erneut.'),{status:response.status});
    return body as T;
  },[]);
+ const trafficConsent=useTrafficConsent(profile?.id);
  useEffect(()=>{
-  if(!profile?.id||!lobby?.startedAt||!['active','preparing','paused'].includes(lobby.status))return;
-  const meter=startTraffic(lobby.id,API_BASE,report=>api('/traffic',{method:'POST',body:JSON.stringify(report),keepalive:true}));
-  return()=>meter.stop();
- },[profile?.id,lobby?.id,!!lobby?.startedAt,lobby?.status==='finished'||lobby?.status==='closed',api]);
+  if(!trafficConsent||!profile?.id||!lobby?.startedAt||!['active','preparing','paused'].includes(lobby.status))return;
+  const userId=profile.id;
+  const meter=startTraffic(lobby.id,API_BASE,(report,signal)=>api('/traffic',{method:'POST',body:JSON.stringify(report),signal}),()=>trafficAllowed(userId));
+  return()=>meter?.cancel();
+ },[trafficConsent,profile?.id,lobby?.id,!!lobby?.startedAt,lobby?.status==='finished'||lobby?.status==='closed',api]);
  const reauthenticateAfterPasswordChange=useCallback(async(email:string,password:string)=>{
   if(!supabase)return false;
   try{
@@ -150,10 +155,11 @@ export function AppProvider({children}:{children:ReactNode}) {
   });
  }),[]);
  const command=useCallback((command:Command)=>emit<LobbyView>('lobby:command',{command}),[emit]);
+ const gps=useMatchLocation(lobby,connected,command,notify);
 
  async function logout(){if(tokenRef.current&&profile){const {detachPush}=await import('./push-client');await detachPush(api);}if(lobby && lobby.status!=='finished')await command({type:'leave'});if(supabase){const {error}=await supabase.auth.signOut();if(error)throw error;}sessionStorage.removeItem('manhunt:test-token');setToken(null);setIdentity(null);setProfile(null);setLobby(null);setAccount(null);initializationError.current='';setAuthError('');setAuthCallbackError(false);}
  function setTestSession(id:string,name:string){if(!TEST_MODE)return;const value=`test:${id}:${name}`;sessionStorage.setItem('manhunt:test-token',value);setToken(value);}
- return <AppContext.Provider value={{account,accountChecking,refreshAccount,reauthenticateAfterPasswordChange,profile,token,lobby,connected,loading,identity,authChecking,authError,authCallbackError,passwordRecovery,finishPasswordRecovery:()=>{recoveryUser=null;writeRecoveryUser(null);setPasswordRecovery(false);},clearAuthError:()=>{initializationError.current='';setAuthError('');setAuthCallbackError(false);},config,notice,clearNotice:()=>setNotice(''),notify,api,emit,command,logout,refreshProfile,setTestSession,socialRevision}}>{children}</AppContext.Provider>;
+ return <AppContext.Provider value={{gps,account,accountChecking,refreshAccount,reauthenticateAfterPasswordChange,profile,token,lobby,connected,loading,identity,authChecking,authError,authCallbackError,passwordRecovery,finishPasswordRecovery:()=>{recoveryUser=null;writeRecoveryUser(null);setPasswordRecovery(false);},clearAuthError:()=>{initializationError.current='';setAuthError('');setAuthCallbackError(false);},config,notice,clearNotice:()=>setNotice(''),notify,api,emit,command,logout,refreshProfile,setTestSession,socialRevision}}>{children}</AppContext.Provider>;
 }
 export function useApp(){const value=useContext(AppContext);if(!value)throw new Error('AppProvider missing');return value;}
 export function useNow(){const [now,setNow]=useState(Date.now());useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[]);return now;}

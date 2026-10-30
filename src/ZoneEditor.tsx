@@ -325,7 +325,7 @@ export default function ZoneEditor({ value = null, onChange, onSave, readOnly = 
       <div className="mh-zone-map-instruction"><MapPin size={15} />{readOnly ? 'Bestätigtes Spielgebiet' : placingTarget ? 'Tippe in die sichere Zone, um den Schrumpfpunkt zu setzen' : drawingExclusion ? `Sperrbereich: ${exclusionPoints.length} Punkte gesetzt` : placingCenter ? 'Tippe auf die Karte, um den Mittelpunkt zu setzen' : shape === 'circle' ? 'Radius einstellen oder Mittelpunkt neu setzen' : 'Eckpunkte ziehen oder mit Pfeiltasten verschieben'}</div>
       {drawingExclusion && <div className="mh-zone-draw-tools">
         <button type="button" onClick={() => setExclusionPoints(points => points.slice(0, -1))} disabled={!exclusionPoints.length}><Undo2 size={16} />Zurück</button>
-        <button type="button" onClick={finishExclusion} disabled={exclusionPoints.length < (exclusionShape==='polygon'?3:2)}><Check size={16} />Abschließen</button>
+        <button type="button" onClick={finishExclusion} disabled={exclusionPoints.length < (exclusionShape==='polygon'?3:2)}><Check size={16} />Sperrzone übernehmen</button>
         <button type="button" onClick={() => { setDrawingExclusion(false); setExclusionPoints([]); }}><X size={16} />Abbrechen</button>
       </div>}
       {draft && <button type="button" className="mh-zone-fit" aria-label="Zone auf Karte zentrieren" onClick={() => mapRef.current && fitZone(mapRef.current, draft)}><Crosshair size={18} /></button>}

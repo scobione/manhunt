@@ -44,6 +44,7 @@ export const commandSchema=z.discriminatedUnion('type',[
  z.object({type:z.literal('zone'),zone:zoneSchema}).strict(),z.object({type:z.literal('assign'),playerId:userId,role:z.enum(['hunter','hider','zombie','spectator']),team:z.enum(['A','B'])}).strict(),
  z.object({type:z.literal('kick'),playerId:userId}).strict(),z.object({type:z.literal('transfer'),playerId:userId}).strict(),
  ...(['start','leave','close','infection_ack','stop_location','zone_return_ack','pause','resume','end','draw_teams','xp_regenerate'] as const).map(type=>z.object({type:z.literal(type)}).strict()),
+ z.object({type:z.literal('location_check'),location:locationSchema}).strict(),
  z.object({type:z.literal('location'),location:locationSchema,publish:z.boolean().optional()}).strict(),
  z.object({type:z.literal('capture'),targetId:userId,code:z.string().regex(/^[0-9]{6}$/).optional(),qrToken:z.string().regex(/^[A-Za-z0-9_-]{43}$/).optional()}).strict(),
  z.object({type:z.literal('confirm_capture'),captureId:userId,accept:z.boolean()}).strict(),

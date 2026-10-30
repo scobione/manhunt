@@ -37,7 +37,7 @@ function lastSurvivor():Lobby{
  profiles.slice(1).forEach(p=>engine.join(l.code,p));
  engine.command(l.id,a,{type:'zone',zone:{feature:circle([13.405,52.52],.6),excluded:[],name:'ISOLATED ERASURE TEST',confirmed:true}});
  engine.command(l.id,a,{type:'assign',playerId:a,role:'hunter',team:'A'});
- [a,b,c].forEach(id=>engine.command(l.id,id,{type:'ready',ready:true}));engine.command(l.id,a,{type:'start'});
+ [a,b,c].forEach(id=>{engine.command(l.id,id,{type:'location_check',location:{longitude:13.405,latitude:52.52,accuracy:3,timestamp:Date.now()}});engine.command(l.id,id,{type:'ready',ready:true});});engine.command(l.id,a,{type:'start'});
  engine.command(l.id,a,{type:'capture',targetId:b});engine.command(l.id,b,{type:'confirm_capture',captureId:l.captures[0].id,accept:true});
  expect(l.result?.winner).toBe(c);return l;
 }

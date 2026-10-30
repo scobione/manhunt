@@ -32,7 +32,7 @@ test('mobile planned zone continues into a real lobby and both browsers start a 
   await guest.page.goto(`/join?code=${code}`);await guest.page.getByRole('button',{name:'Lobby beitreten',exact:true}).click();
   await expect(host.page.locator('.player-row')).toHaveCount(2);
   await command(host.page,host.token,{type:'settings',settings:{...DEFAULT_SETTINGS,captureMethod:'confirmation',preparationSeconds:0,headStartSeconds:0}});
-  await host.page.getByRole('button',{name:'Bereit',exact:true}).click();await guest.page.getByRole('button',{name:'Bereit',exact:true}).click();
+  for(const actor of [host,guest]){await actor.context.grantPermissions(['geolocation']);await actor.context.setGeolocation({latitude:52.52,longitude:13.405,accuracy:5});await actor.page.getByRole('checkbox',{name:/Ich aktiviere meinen Standort für diese Lobby/}).check();await actor.page.getByRole('button',{name:'Standort freigeben',exact:true}).click();await actor.page.getByRole('button',{name:'Bereit',exact:true}).click();}
   await expect(host.page.getByRole('button',{name:'Match starten',exact:true})).toBeEnabled();
   await host.page.getByRole('button',{name:'Match starten',exact:true}).click();
   await expect(host.page).toHaveURL(/\/game$/);await expect(guest.page).toHaveURL(/\/game$/);
@@ -72,7 +72,7 @@ test('deleting a Last Survivor winner anonymizes the result for the remaining br
   for(const p of [caught,winner]){const joined=await p.page.request.post('http://127.0.0.1:3002/api/events',{headers:{Authorization:`Bearer ${p.token}`},data:{event:'lobby:join',data:{code:lobby.code}}});expect(joined.status()).toBe(200);}
   await command(host.page,host.token,{type:'zone',zone:{feature:circle([13.405,52.52],.6),excluded:[],confirmed:true,name:'ISOLATED ERASURE TEST'}});
   await command(host.page,host.token,{type:'assign',playerId:host.id,role:'hunter',team:'A'});
-  for(const p of [host,caught,winner])await command(p.page,p.token,{type:'ready',ready:true});await command(host.page,host.token,{type:'start'});
+  for(const p of [host,caught,winner]){await command(p.page,p.token,{type:'location_check',location:{longitude:13.405,latitude:52.52,accuracy:3,timestamp:Date.now()}});await command(p.page,p.token,{type:'ready',ready:true});}await command(host.page,host.token,{type:'start'});
   const requested=await command(host.page,host.token,{type:'capture',targetId:caught.id});await command(caught.page,caught.token,{type:'confirm_capture',captureId:requested.captures[0].id,accept:true});
   await host.page.goto('/game');await expect(host.page.getByRole('heading',{name:'Die Jagd ist vorbei.'})).toBeVisible();
   await winner.page.goto('/settings');await winner.page.getByText('Konto dauerhaft löschen',{exact:true}).click();
@@ -104,7 +104,7 @@ test('a hunter scans the hiders actual rendered QR and captures without a reques
   const response=await host.page.request.post('http://127.0.0.1:3002/api/events',{headers:{Authorization:`Bearer ${host.token}`},data:{event:'lobby:create',data:{settings:{...DEFAULT_SETTINGS,randomRoles:false,preparationSeconds:0,headStartSeconds:0}}}});expect(response.status()).toBe(200);const l=(await response.json()).lobby;
   await guest.page.request.post('http://127.0.0.1:3002/api/events',{headers:{Authorization:`Bearer ${guest.token}`},data:{event:'lobby:join',data:{code:l.code}}});
   await command(host.page,host.token,{type:'zone',zone:{feature:circle([13.405,52.52],.6),excluded:[],confirmed:true,name:'ISOLATED QR TEST'}});await command(host.page,host.token,{type:'assign',playerId:host.id,role:'hunter',team:'A'});
-  for(const p of [host,guest])await command(p.page,p.token,{type:'ready',ready:true});await command(host.page,host.token,{type:'start'});
+  for(const p of [host,guest]){await command(p.page,p.token,{type:'location_check',location:{longitude:13.405,latitude:52.52,accuracy:3,timestamp:Date.now()}});await command(p.page,p.token,{type:'ready',ready:true});}await command(host.page,host.token,{type:'start'});
   await guest.page.goto('/game');await host.page.goto('/game');await guest.page.getByRole('button',{name:'Fang-QR anzeigen'}).click();
   const image=guest.page.getByRole('img',{name:'Dein persönlicher Fang-QR-Code'});await expect(image).toBeVisible();await image.evaluate(async e=>{await (e as HTMLImageElement).decode();e.scrollIntoView({block:'center'});});const buffer=await image.screenshot({animations:'disabled'});await test.info().attach('rendered-qr',{body:buffer,contentType:'image/png'});
   await host.page.getByRole('button',{name:'Fang-QR scannen',exact:true}).click();

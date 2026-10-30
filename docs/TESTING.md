@@ -1,3 +1,7 @@
+# Prüfung 0.b1.107
+
+326 lokal bestandene Fälle einschließlich 13 neuer GPS-/Berechtigungsfälle und 4 zusätzlicher Diagnose-Einwilligungsfälle: [Release und Testschritte](RELEASE-0.b1.107.md). Neue Browserfälle verwenden ausschließlich isolierte Testidentitäten und GPS-Koordinaten. Umsetzung und offene rechtliche Angaben: [Entscheidungsstand](TEXTENTSCHEIDUNGEN-0.b1.107.md).
+
 # Aktuell: b.0.69.48
 
 Der vollständige [Abnahmebericht mit 134 Test-IDs](ACCEPTANCE-b.0.69.48.md) dokumentiert Voraussetzungen, Schritte, Soll, Ist, Status und Fehler. [Maschinelle Ergebnisse](verification-b.0.69.48.json). [Release und verbleibende Prüfungen](RELEASE-b.0.69.48.md).

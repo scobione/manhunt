@@ -41,7 +41,7 @@ export function createEdgeHandler({repository:repo,store,verify,origins,push,pat
     if(event==='lobby:sync')empty.parse(raw??{});
     if(event==='lobby:create')await store.quota(id,'create',5);
     if(event==='lobby:join')await store.quota(id,'join',12);
-    if(command?.type==='location')await store.quota(id,'gps',30);
+    if(command&&(command.type==='location'||command.type==='location_check'))await store.quota(id,'gps',30);
     if(command&&['capture','confirm_capture'].includes(command.type))await store.quota(id,'capture',20);
     let pathData:{zone:string;candidates:PathCandidate[]}|undefined;
     if(command&&['start','xp_regenerate'].includes(command.type)){
@@ -93,7 +93,7 @@ export function createEdgeHandler({repository:repo,store,verify,origins,push,pat
       if(active&&self&&(self.username!==profile.username||self.avatar_url!==profile.avatar_url)){
         self.username=profile.username;self.avatar_url=profile.avatar_url;active.revision++;changed.set(active.id,active);
       }
-      const audit=command&&command.type!=='location'&&!failure&&lobby?{actorId:id,action:`lobby.${command.type}`,lobbyId:lobby.id}:undefined;
+      const audit=command&&command.type!=='location'&&command.type!=='location_check'&&!failure&&lobby?{actorId:id,action:`lobby.${command.type}`,lobbyId:lobby.id}:undefined;
       // Even no-op commands check revision: a stale snapshot must never acknowledge
       // permissions or membership invalidated by a simultaneous kick/close.
       if(!await store.commit(snapshot.revision,[...changed.values()],audit))continue;

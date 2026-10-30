@@ -1,3 +1,7 @@
+# Erweiterung 0.b1.107
+
+[Releasebericht](RELEASE-0.b1.107.md): Standortpflicht vor dem Spielstart, freiwilliges Push im Warteraum und explizit genehmigte Textänderungen. Frontend: bestehendes Vercel-Spielprojekt. Backend: bestehende Supabase Edge Function. Keine neuen Umgebungsvariablen, Migrationen oder kostenpflichtigen Ressourcen. Laufende Matches bleiben erhalten. Admin-Anwendung und Admin-Konfiguration bleiben unverändert.
+
 # Aktuelle Korrektur 0.b1.106
 
 [Releasebericht](RELEASE-0.b1.106.md): Fehlerbehandlung für abgelaufene E-Mail-Links, direkte erneute Reset-Anforderung und unveränderte Kontodaten. Bestehende Domains und Supabase-Redirects bleiben gültig.

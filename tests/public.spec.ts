@@ -3,7 +3,7 @@ import {test,expect} from '@playwright/test';
 // No synthetic users, no GPS simulation, no authentication bypass in these production checks.
 test('production landing, all modes and privacy pages render without browser errors',async({page})=>{
  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
- await page.goto('/');await expect(page.getByRole('heading',{name:'Raus aus dem Alltag.',exact:true})).toBeVisible();
+ await page.goto('/');
  const expectedVersion=RELEASE_VERSION;
  if(process.env.PUBLIC_URL){
   test.setTimeout(240000);
@@ -11,6 +11,7 @@ test('production landing, all modes and privacy pages render without browser err
   // the requested version, then run assertions against the published frontend.
   await expect.poll(async()=>{await page.reload();return await page.locator('.sidebar-foot').textContent();},{timeout:180000,intervals:[2000,5000,10000]}).toContain(expectedVersion);
  }else await expect(page.locator('.sidebar-foot')).toContainText(expectedVersion);
+ await expect(page.getByRole('heading',{name:'MANHUNT',exact:true})).toBeVisible();
  await page.screenshot({path:'test-results-public/public-desktop.png',fullPage:true});
  await page.goto('/modes');await expect(page.locator('.all-modes article')).toHaveCount(8);
  await page.goto('/login');await expect(page.getByTestId('test-login')).toHaveCount(0);
@@ -18,8 +19,8 @@ test('production landing, all modes and privacy pages render without browser err
  await expect(page.getByRole('button',{name:'Mit E-Mail anmelden',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Registrieren',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:/Google/})).toHaveCount(0);
- await page.goto('/privacy');await expect(page.getByRole('heading',{name:'Dein Standort gehört dir.'})).toBeVisible();
- await page.goto('/safety');await expect(page.getByRole('heading',{name:'Gutes Spiel. Sicher draußen.'})).toBeVisible();
+ await page.goto('/privacy');await expect(page.getByRole('heading',{name:'Datenschutzerklärung'})).toBeVisible();
+ await page.goto('/safety');await expect(page.getByRole('heading',{name:'Sicherheit beim Spielen'})).toBeVisible();
  expect(errors).toEqual([]);
 });
 test('public zone editor creates, edits, confirms and exports actual GeoJSON',async({page})=>{
@@ -56,7 +57,7 @@ test('public zone editor creates, edits, confirms and exports actual GeoJSON',as
 });
 test('mobile production layout and PWA metadata work without test login',async({page})=>{
  await page.setViewportSize({width:390,height:844});await page.goto('/');
- await expect(page.getByRole('heading',{name:'Raus aus dem Alltag.'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'MANHUNT'})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBeTruthy();
  await page.getByRole('button',{name:'Menü öffnen'}).click();await expect(page.getByRole('link',{name:'Manhunt Übersicht'})).toBeVisible();
  await page.goto('/settings');await expect(page.getByRole('heading',{name:'MANHUNT installieren'})).toBeVisible();

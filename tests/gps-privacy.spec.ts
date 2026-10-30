@@ -17,7 +17,7 @@ async function setup(page:Page,api:APIRequestContext){
  await event(api,hiderToken,'lobby:join',{code:lobby.code});
  await cmd(api,hunterToken,{type:'zone',zone:{feature:circle([13.405,52.52],.6),excluded:[],name:'ISOLATED SECURITY TEST',confirmed:true}});
  await cmd(api,hunterToken,{type:'assign',playerId:hunter,role:'hunter',team:'A'});
- await cmd(api,hunterToken,{type:'ready',ready:true});await cmd(api,hiderToken,{type:'ready',ready:true});
+ {await cmd(api,hunterToken,{type:'location_check',location:{longitude:13.405,latitude:52.52,accuracy:3,timestamp:Date.now()}});await cmd(api,hunterToken,{type:'ready',ready:true});}{await cmd(api,hiderToken,{type:'location_check',location:{longitude:13.405,latitude:52.52,accuracy:3,timestamp:Date.now()}});await cmd(api,hiderToken,{type:'ready',ready:true});}
  await cmd(api,hunterToken,{type:'start'});
  await page.route('**/*',route=>['127.0.0.1','localhost'].includes(new URL(route.request().url()).hostname)?route.continue():route.abort());
  await page.addInitScript(token=>{
@@ -29,7 +29,7 @@ async function setup(page:Page,api:APIRequestContext){
   }});
  },hiderToken);
  await page.goto('/game');await expect(page.getByRole('heading',{name:'Die Jagd läuft.'})).toBeVisible();
- await page.getByRole('checkbox',{name:/Ich teile meinen Standort/}).check();
+ await page.getByRole('checkbox',{name:/Ich erlaube die Standortverarbeitung für dieses Match:/}).check();
  await page.getByRole('button',{name:'GPS aktivieren',exact:true}).click();
  await page.getByRole('button',{name:'Standort jetzt prüfen',exact:true}).click();
  expect(await page.evaluate(()=>!!(window as any).__auditGps.pending)).toBe(true);
@@ -56,7 +56,7 @@ test('does not transmit a delayed GPS callback after explicit stop while the mat
  await expect.poll(async()=> (await event(request,hiderToken,'lobby:sync')).status).toBe('active');
   await expect(page.locator('.safety-pause')).not.toBeVisible();
  await expect(page.getByRole('heading',{name:'Die Jagd läuft.'})).toBeVisible();
- await expect(page.getByRole('checkbox',{name:/Ich teile meinen Standort/})).not.toBeChecked();
+ await expect(page.getByRole('checkbox',{name:/Ich erlaube die Standortverarbeitung für dieses Match:/})).not.toBeChecked();
  await expect(page.getByRole('button',{name:'GPS aktivieren',exact:true})).toBeDisabled();
  const transmitted:string[]=[];page.on('request',request=>{if(request.url().endsWith('/api/events')&&request.postDataJSON()?.data?.command?.type==='location')transmitted.push(request.url());});
  await completeDelayedFix(page);await page.waitForTimeout(1200);expect(transmitted).toEqual([]);

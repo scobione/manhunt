@@ -271,13 +271,13 @@ export async function createBackend(options:BackendOptions={}){
     event('lobby:sync',async raw=>{emptyBody.parse(raw??{});return sync();});
     event('lobby:command',async raw=>{
       requireReady();const{command}=commandEnvelope.parse(raw);const lobby=engine.lobbyFor(id)??(['leave','close'].includes(command.type)?latestLobby():undefined);if(!lobby)throw new HttpError(404,'Du bist in keiner Lobby.');
-      if(command.type==='location')limiter.take(`gps:${id}`,30,60_000);
+      if(command.type==='location'||command.type==='location_check')limiter.take(`gps:${id}`,30,60_000);
       if(command.type==='capture'||command.type==='confirm_capture')limiter.take(`capture:${id}`,20,60_000);
       if(['start','xp_regenerate'].includes(command.type)&&lobby.hostId===id&&lobby.zone&&rules(lobby.settings).xpHunt){limiter.take(`xp-paths:${id}`,3,60000);engine.prepareXp(lobby.id,await loadXpPaths(lobby.zone).catch(()=>[]));}
       const oldPlayers=lobby.players.map(p=>p.id);
       const view=await commit(()=>{const next=engine.command(lobby.id,id,command as Command);let data=null;try{data=engine.view(next.id,id);}catch{}return{lobby:next,data};});
       for(const userId of oldPlayers){if(command.type==='close'||!engine.lobbies.get(lobby.id)?.players.some(p=>p.id===userId)||command.type==='leave'&&userId===id)send(userId,'lobby:left',{});}
-      if(command.type!=='location')await repo().audit(id,`lobby.${command.type}`,{lobbyId:lobby.id});
+      if(command.type!=='location'&&command.type!=='location_check')await repo().audit(id,`lobby.${command.type}`,{lobbyId:lobby.id});
       return view;
     });
     void serialize(async()=>{const lobby=engine.lobbyFor(id);if(lobby)await commit(()=>({lobby:engine.setConnected(id,true)!,data:null}));if(socket.data.profile.show_online)await notifySocial((await repo().social(id)).friends.map(f=>f.id));}).catch(()=>send(id,'notice',{message:'Die Verbindung wird wiederhergestellt. Bitte synchronisiere die Lobby.'}));
