@@ -12,6 +12,7 @@ import { Avatar, EmptyState, PageHeader } from './App';
 import { formatTime, useApp, useNow } from './context';
 import MapView from './MapView';
 import {FullScreenNotice, SwipeConfirm} from './SafetyOverlays';
+import MatchStartCountdown from './MatchStartCountdown';
 
 const ROLE_LABELS: Record<Role, string> = { hunter: 'HUNTER', hider: 'HIDER', zombie: 'ZOMBIE', spectator: 'ZUSCHAUER' };
 const ROLE_INFO: Record<Role, string> = {
@@ -22,6 +23,11 @@ const ROLE_INFO: Record<Role, string> = {
 };
 
 export default function GamePage() {
+  const {lobby} = useApp();
+  return <MatchStartCountdown lobby={lobby}><GameView/></MatchStartCountdown>;
+}
+
+function GameView() {
   const [scanningCapture,setScanningCapture]=useState(false);
   const { lobby, profile, connected, command, notify, gps } = useApp();
   const navigate = useNavigate();
@@ -35,7 +41,7 @@ export default function GamePage() {
   const [acknowledgedAt, setAcknowledgedAt] = useState<number | null>(null);
   const [showCode, setShowCode] = useState(false);
   const alive=useRef(true);
-  const serverClock = useRef({ serverTime: Date.now(), receivedAt: Date.now() });
+  const serverClock = useRef({ serverTime: lobby?.serverTime ?? Date.now(), receivedAt: Date.now() });
   useEffect(() => { if (lobby) serverClock.current = { serverTime: lobby.serverTime, receivedAt: Date.now() }; }, [lobby]);
   const now = serverClock.current.serverTime + clock - serverClock.current.receivedAt;
 

@@ -1,3 +1,7 @@
+# Erweiterung 0.b1.108
+
+Fünfsekündiger Vollbild-Countdown vor der Rollenanzeige. Weiterhin dasselbe Vercel-Spielprojekt und Supabase-Projekt; keine Migration, neuen Variablen oder Dienste. Siehe [Releasebericht](RELEASE-0.b1.108.md).
+
 # Erweiterung 0.b1.107
 
 [Releasebericht](RELEASE-0.b1.107.md): Standortpflicht vor dem Spielstart, freiwilliges Push im Warteraum und explizit genehmigte Textänderungen. Frontend: bestehendes Vercel-Spielprojekt. Backend: bestehende Supabase Edge Function. Keine neuen Umgebungsvariablen, Migrationen oder kostenpflichtigen Ressourcen. Laufende Matches bleiben erhalten. Admin-Anwendung und Admin-Konfiguration bleiben unverändert.

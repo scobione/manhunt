@@ -2,7 +2,7 @@
 
 **Deine Stadt. Dein Spielfeld.** Ein quelloffenes GPS-Verfolgungsspiel für private Gruppen — React, TypeScript, Socket.IO, Supabase und MapLibre. MIT-lizenziert.
 
-> **Stand 0.b1.107:** Die PWA ist auf Vercel veröffentlicht. Die Spiellogik läuft weiterhin in Supabase Edge Functions mit atomaren PostgreSQL-Checkpoints und authentifizierter Synchronisierung etwa alle zwei Sekunden. Accounts und Daten bleiben im bestehenden Supabase-Projekt. Google ist abgeschaltet; E-Mail und Gastzugang bleiben erhalten. Den nachgewiesenen Veröffentlichungsstand dokumentiert [DEPLOYMENT.md](docs/DEPLOYMENT.md).
+> **Stand 0.b1.108:** Die PWA ist auf Vercel veröffentlicht. Die Spiellogik läuft weiterhin in Supabase Edge Functions mit atomaren PostgreSQL-Checkpoints und authentifizierter Synchronisierung etwa alle zwei Sekunden. Accounts und Daten bleiben im bestehenden Supabase-Projekt. Google ist abgeschaltet; E-Mail und Gastzugang bleiben erhalten. Den nachgewiesenen Veröffentlichungsstand dokumentiert [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 **Vercel-Adresse:** [MANHUNT](https://manhunt-pwa.vercel.app). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Die bisherige Sites-Adresse leitet nach zehn Sekunden zur getesteten Vercel-Seite weiter.
 
@@ -117,3 +117,5 @@ Passwort- und Reset-Korrekturen, Passwortsichtbarkeit und Admin-exklusiver Daten
 Abgelaufene E-Mail-Links und erneuter Passwort-Reset: [Release 0.b1.106](docs/RELEASE-0.b1.106.md).
 
 Standort- und Push-Freigabe vor dem Spiel, genehmigte Textänderungen: [Release 0.b1.107](docs/RELEASE-0.b1.107.md).
+
+Vollbild-Countdown vor der Rollenanzeige: [Release 0.b1.108](docs/RELEASE-0.b1.108.md).

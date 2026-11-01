@@ -34,3 +34,15 @@ label{display:flex;flex-direction:column;gap:9px;font-size:11px;color:#9eafb5;ma
 .not-found{text-align:center;padding:clamp(32px,8vw,88px) 20px}.not-found-code{display:block;font:800 clamp(72px,18vw,180px)/1 monospace;color:var(--accent,#00ff9c);letter-spacing:-.08em;opacity:.28}.not-found h1{margin:20px 0 28px;font-size:clamp(24px,5vw,36px)}
 
 .setup-legal{display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:center;margin:20px 0}.setup-legal a{display:inline-flex;align-items:center;min-height:44px;color:#b4c6ca}.setup-legal a:hover{color:var(--green)}
+
+/* Fullscreen start sequence. Match content is mounted only after the countdown. */
+.safety-start{background:radial-gradient(ellipse at center,#00ff9c0d,transparent 65%),#080b0d}
+.safety-start .safety-content{gap:24px}
+.safety-start .eyebrow{color:#00ff9c;letter-spacing:.3em}
+.safety-start h2{font-size:clamp(24px,6vw,40px);font-weight:700}
+.start-countdown-ring{display:grid;place-items:center;width:min(65vw,300px);aspect-ratio:1;border:1px solid #00ff9c50;border-radius:50%;box-shadow:0 0 65px #00ff9c0c,inset 0 0 45px #00ff9c08;position:relative}
+.start-countdown-ring:before{content:'';position:absolute;inset:12px;border:1px dashed #00ff9c24;border-radius:50%}
+.start-countdown-number{font:800 clamp(100px,30vw,180px)/1 ui-monospace,monospace;font-variant-numeric:tabular-nums;color:#00ff9c;animation:startNumber .32s ease-out both}
+.safety-start p{color:#a1b7b1}
+@keyframes startNumber{from{opacity:.35;transform:scale(.88)}to{opacity:1;transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.start-countdown-number{animation:none}}

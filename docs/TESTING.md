@@ -1,3 +1,7 @@
+# Prüfung 0.b1.108
+
+Vollbild-Countdown, Rollenanzeige, Neuladen und Pause: [Release mit Akzeptanzschritten](RELEASE-0.b1.108.md). Lokal 255 Unit-/Serverfälle, 28 Edge- und 9 Socket-Browserfälle bestanden. Keine simulierten Identitäten oder GPS-Daten im Produktivbetrieb.
+
 # Prüfung 0.b1.107
 
 326 lokal bestandene Fälle einschließlich 13 neuer GPS-/Berechtigungsfälle und 4 zusätzlicher Diagnose-Einwilligungsfälle: [Release und Testschritte](RELEASE-0.b1.107.md). Neue Browserfälle verwenden ausschließlich isolierte Testidentitäten und GPS-Koordinaten. Umsetzung und offene rechtliche Angaben: [Entscheidungsstand](TEXTENTSCHEIDUNGEN-0.b1.107.md).
