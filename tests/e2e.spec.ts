@@ -31,7 +31,7 @@ async function ack<T>(socket: Socket, event: string, data: unknown = {}): Promis
   });
 }
 
-async function actor(browser: Browser, username: string, mobile = false): Promise<Actor> {
+async function actor(browser: Browser, username: string, mobile = false, serviceWorkers:'allow'|'block'='allow'): Promise<Actor> {
   const id = randomUUID();
   username = `${username}_${id.slice(0, 4)}`;
   const token = `test:${id}:${username}`;
@@ -40,6 +40,7 @@ async function actor(browser: Browser, username: string, mobile = false): Promis
     viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 },
     isMobile: mobile,
     hasTouch: mobile,
+    serviceWorkers,
     // Explicitly synthetic GPS; never supplied to a live game.
     geolocation: TEST_GPS,
     permissions: ['geolocation'],
@@ -209,8 +210,8 @@ test('server registers zombie infection before acknowledgement in three browser 
     await victim.page.getByRole('button',{name:'Fang bestätigen',exact:true}).click();
     await expect.poll(async () => (await view(victim)).self.role).toBe('zombie');
     await expect.poll(async () => (await view(survivor)).players.find(player => player.id === victim.id)?.role).toBe('zombie');
-    await victim.page.getByLabel('Infektion bestätigen',{exact:true}).focus();
-    await victim.page.getByLabel('Infektion bestätigen',{exact:true}).press('End');
+    await victim.page.getByLabel('Zur Wiederbelebung schieben',{exact:true}).focus();
+    await victim.page.getByLabel('Zur Wiederbelebung schieben',{exact:true}).press('End');
     await expect(victim.page.getByRole('heading',{name:'DU WURDEST INFIZIERT.',exact:true})).toHaveCount(0);
     expect((await view(victim)).self.role).toBe('zombie');
     await command(victim, { type: 'capture', targetId: survivor.id });
@@ -323,7 +324,10 @@ test('lobby GPS consent carries into play and stopping sharing keeps the match r
 
 
 test('OFFLINE-LOAD: failed game module keeps offline UI and reloads the same match after reconnect',async({browser})=>{
- const host=await actor(browser,'E2E_ModuleHost'),guest=await actor(browser,'E2E_ModuleGuest',true);
+ // This test isolates a failed route chunk, not the offline service-worker page.
+ // Chromium restores a page and its worker network emulation separately; the
+ // worker can otherwise return its offline fallback during the online reload.
+ const host=await actor(browser,'E2E_ModuleHost'),guest=await actor(browser,'E2E_ModuleGuest',true,'block');
  try{
   await guest.page.route('**/assets/GamePage-*.js',async route=>{await guest.context.setOffline(true);await route.abort('internetdisconnected');});
   await prepareMatch(host,[guest]);const id=(await view(host)).id;

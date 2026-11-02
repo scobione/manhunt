@@ -1,0 +1,26 @@
+.swipe-confirm{
+ --swipe-height:84px;--swipe-grip-width:76px;--swipe-inset:6px;
+ --swipe-accent:#00efa3;--swipe-bright:#7dffd6;--swipe-ink:#052c22;
+ --swipe-edge:#238e72;--swipe-surface:linear-gradient(110deg,#113e32,#0c231f 72%);
+ width:100%;max-width:440px;min-width:0;margin:8px auto;color:#e7fff5;
+}
+.swipe-danger{--swipe-accent:#cb747e;--swipe-bright:#ed9da6;--swipe-ink:#38151e;--swipe-edge:#8c414f;--swipe-surface:linear-gradient(110deg,#45202a,#241017 75%)}
+.swipe-zombie{--swipe-accent:#b3f54b;--swipe-bright:#deff91;--swipe-ink:#24370c;--swipe-edge:#6c9239;--swipe-surface:linear-gradient(110deg,#303e1d,#172116 75%)}
+.swipe-track{position:relative;isolation:isolate;height:var(--swipe-height);width:100%;border:1px solid var(--swipe-edge);border-radius:22px;background:var(--swipe-surface);box-shadow:inset 0 1px 0 #ffffff0a,0 6px 20px #0002;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.swipe-fill{position:absolute;left:var(--swipe-inset);top:var(--swipe-inset);bottom:var(--swipe-inset);width:calc(var(--swipe-grip-width) + var(--swipe-offset));border-radius:16px;background:var(--swipe-accent);opacity:.1;pointer-events:none;transition:width .24s cubic-bezier(.2,.75,.25,1)}
+.swipe-copy{position:absolute;inset:0 12px 0 calc(var(--swipe-grip-width) + var(--swipe-inset) + 8px);display:flex;align-items:center;justify-content:center;text-align:center;font-size:14px;font-weight:650;line-height:1.35;letter-spacing:.01em;opacity:var(--swipe-copy-opacity);pointer-events:none;transition:opacity .12s ease}
+.swipe-grip{position:absolute;z-index:1;left:var(--swipe-inset);top:var(--swipe-inset);bottom:var(--swipe-inset);width:var(--swipe-grip-width);display:grid;place-items:center;border:1px solid #ffffff55;border-radius:16px;background:linear-gradient(145deg,var(--swipe-bright),var(--swipe-accent) 80%);box-shadow:inset 0 1px 1px #fff6,0 4px 12px #0004;transform:translate3d(var(--swipe-offset),0,0);transition:transform .24s cubic-bezier(.2,.75,.25,1),box-shadow .2s;touch-action:none;cursor:grab;-webkit-tap-highlight-color:transparent;outline:none;color:var(--swipe-ink)}
+.swipe-grip>svg{width:30px;height:30px;stroke-width:3;color:var(--swipe-ink);pointer-events:none}
+.swipe-grip:focus-visible{outline:3px solid var(--swipe-bright);outline-offset:3px;box-shadow:0 0 0 7px #080b0d,0 4px 12px #0004}
+.swipe-confirm[data-phase=dragging] .swipe-grip{cursor:grabbing;transition:none;box-shadow:0 5px 18px #0006}
+.swipe-confirm[data-phase=dragging] .swipe-fill{transition:none}
+.swipe-confirm[data-phase=confirming] .swipe-copy,.swipe-confirm[data-phase=pending] .swipe-copy,.swipe-confirm[data-phase=success] .swipe-copy{inset-inline:12px calc(var(--swipe-grip-width) + var(--swipe-inset) + 8px)}
+.swipe-grip[aria-disabled=true]{cursor:default}
+.swipe-confirm[data-disabled=true] .swipe-track{opacity:.58;box-shadow:inset 0 1px 0 #ffffff08}
+.swipe-confirm[data-disabled=true] .swipe-grip{box-shadow:none}
+.swipe-hint,.swipe-error{display:block;font-size:12px;line-height:1.5;text-align:center;margin:10px 4px 0;color:#dab0b5}
+.swipe-error{color:#ffb5b9}
+.swipe-spinner{animation:swipeSpin .8s linear infinite}
+@keyframes swipeSpin{to{transform:rotate(360deg)}}
+@media(max-width:360px){.swipe-confirm{--swipe-height:78px;--swipe-grip-width:72px}.swipe-copy{font-size:12px;inset-inline-end:8px}.swipe-grip>svg{width:28px;height:28px}}
+@media(prefers-reduced-motion:reduce){.swipe-grip,.swipe-fill,.swipe-copy{transition:none}.swipe-spinner{animation:none}}
