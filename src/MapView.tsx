@@ -52,7 +52,7 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
   const finalZone=useMemo(()=>{if(!showEndZone||!zone||!zone.shrinkTarget&&!zone.randomCorners)return null;try{return endZone(zone,finalScale);}catch{return null;}},[zone,finalScale,showEndZone]);
   const hostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const markersRef = useRef<maplibregl.Marker[]>([]);
+  const markersRef = useRef(new Map<string,maplibregl.Marker>());
   const initiallyFitted = useRef(false);
   const latest = useRef({ zone, activeZone, location });
   latest.current = { zone, activeZone, location };
@@ -130,7 +130,7 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
     return () => {
       resize?.disconnect();
       markersRef.current.forEach(marker => marker.remove());
-      markersRef.current = [];
+      markersRef.current.clear();
       mapRef.current?.remove();
       mapRef.current = null;
       initiallyFitted.current = false;
@@ -165,16 +165,19 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
   useEffect(() => {
     const map = mapRef.current;
     if (!loaded || !map) return;
-    markersRef.current.forEach(marker => marker.remove());
-    markersRef.current = [];
+    // Preserve marker identity and an open popup across live synchronization.
+    // MapLibre alone owns each marker's transform, including during zoom.
+    const retained=new Set<string>();
+    const markerFor=(key:string,tag:'div'|'button')=>{retained.add(key);let marker=markersRef.current.get(key);if(!marker){const element=document.createElement(tag);if(element instanceof HTMLButtonElement)element.type='button';marker=new maplibregl.Marker({element}).setLngLat([0,0]).addTo(map);markersRef.current.set(key,marker);}return marker;};
+    const classes=(element:HTMLElement,value:string)=>{element.className=[...element.classList].filter(c=>c.startsWith('maplibregl-')).join(' ')+' '+value;};
     (map.getSource('xp-radius') as GeoJSONSource)?.setData(xpPoint?circle([xpPoint.longitude,xpPoint.latitude],xpPoint.radiusMeters/1000):featureCollection([]));
-    if(xpPoint){const el=document.createElement('div');el.className='mh-xp-pin';el.textContent=xpPoint.confirmed?'XP':'?';el.setAttribute('aria-label',`XP-Punkt ${xpPoint.id}`);markersRef.current.push(new maplibregl.Marker({element:el}).setLngLat([xpPoint.longitude,xpPoint.latitude]).addTo(map));}
+    if(xpPoint){const marker=markerFor(`xp:${xpPoint.id}`,'div'),el=marker.getElement();classes(el,'mh-xp-pin');el.textContent=xpPoint.confirmed?'XP':'?';el.setAttribute('aria-label',`XP-Punkt ${xpPoint.id}`);marker.setLngLat([xpPoint.longitude,xpPoint.latitude]);}
     if (location) {
-      const element = document.createElement('div');
-      element.className = `mh-pin mh-pin-own mh-pin-${role}`;
+      const marker=markerFor('own','div'),element=marker.getElement();
+      classes(element,`mh-pin mh-pin-own mh-pin-${role}`);
       element.setAttribute('role', 'img');
       element.setAttribute('aria-label', `Dein Standort, Genauigkeit ${Math.round(location.accuracy)} Meter`);
-      markersRef.current.push(new maplibregl.Marker({ element }).setLngLat([location.longitude, location.latitude]).addTo(map));
+      marker.setLngLat([location.longitude, location.latitude]);
       const accuracy = Number.isFinite(location.accuracy) && location.accuracy > 0 && location.accuracy <= 10000
         ? circle([location.longitude, location.latitude], location.accuracy / 1000, { steps: 48 })
         : featureCollection([]);
@@ -183,10 +186,10 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
       (map.getSource('accuracy') as GeoJSONSource)?.setData(featureCollection([]));
     }
     for (const pin of pins.filter(pin => pin.expiresAt > now)) {
-      const element = document.createElement('button');
-      element.type = 'button';
+      const marker=markerFor(`pin:${pin.id}`,'button'),element=marker.getElement();
+      element.replaceChildren();
       const observedAt=pin.observedAt??pin.createdAt;const stale=!!pin.stale||now-observedAt>15000;
-      element.className = `mh-pin mh-pin-${pin.role} ${stale?'mh-pin-old':''} ${pin.kind==='live'?'mh-pin-live':''}`;
+      classes(element,`mh-pin mh-pin-${pin.role} ${stale?'mh-pin-old':''} ${pin.kind==='live'?'mh-pin-live':''}`);
       element.dataset.testid='map-player-pin';element.dataset.playerId=pin.playerId;
       const time = new Date(observedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       element.setAttribute('aria-label', `${pin.username}, ${pin.role}, ${stale?'letzter bekannter Standort':pin.kind==='live'?'Live-Position':'Standortmeldung'} ${time}`);
@@ -206,11 +209,12 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
         range.textContent = `${formatDistance(distance([location.longitude, location.latitude], [pin.longitude, pin.latitude], { units: 'meters' }))} Luftlinie`;
         popup.append(range);
       }
-      const marker = new maplibregl.Marker({ element }).setLngLat([pin.longitude, pin.latitude])
-        .setPopup(new maplibregl.Popup({ offset: 16, closeButton: true }).setDOMContent(popup)).addTo(map);
-      markersRef.current.push(marker);
+      marker.setLngLat([pin.longitude,pin.latitude]);
+      if(marker.getPopup())marker.getPopup().setDOMContent(popup);
+      else marker.setPopup(new maplibregl.Popup({offset:16,closeButton:true}).setDOMContent(popup));
     }
-  // Rebuild only when pin membership/data or own GPS changes, not once every second.
+    for(const [key,marker] of markersRef.current)if(!retained.has(key)){marker.remove();markersRef.current.delete(key);}
+  // Update data in place; remove pins immediately when permission or membership changes.
   }, [loaded, pins, xpPoint, location, role, Math.floor(now / 30_000)]);
 
   useEffect(() => {

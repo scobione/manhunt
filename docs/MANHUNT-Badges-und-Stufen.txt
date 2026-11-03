@@ -1,0 +1,75 @@
+MANHUNT – BADGES UND HERAUSFORDERUNGEN
+Stand: 3. November 2026 · Version 0.b1.110
+
+Alle Schwellen sind Gesamtwerte seit Einführung des Systems. Es werden keine historischen Erfolge erfunden. Vor der ersten erfüllten Voraussetzung bleibt das Badge gesperrt. Registrierte Konten speichern den Fortschritt dauerhaft. Gäste erhalten keine dauerhaften Badges.
+
+BETA-TESTER
+Sende Feedback ab. Einzelne Fragen dürfen übersprungen werden; jede Bewertung zählt gleichermaßen.
+Einmalig – Beta-Tester: 1 Feedback
+
+HUNTER
+Fange Spieler in gültig abgeschlossenen Matches.
+I – Erster Fang: 1 Fang
+II – Spurenleser: 20 Fänge
+III – Verfolger: 50 Fänge
+IV – Jäger: 100 Fänge
+V – Pro Hunter: 200 Fänge
+VI – Fährtenmeister: 350 Fänge
+VII – Nachtjäger: 550 Fänge
+VIII – Elite Hunter: 800 Fänge
+IX – Meisterjäger: 1.200 Fänge
+X – Ultimate Hunter: 2.000 Fänge
+
+HIDER
+Gewinne als überlebender Hider gültig abgeschlossene Matches.
+I – Entkommen: 1 Hider-Sieg
+II – Unentdeckt: 5 Hider-Siege
+III – Leise Schritte: 10 Hider-Siege
+IV – Schatten: 20 Hider-Siege
+V – Pro Hider: 35 Hider-Siege
+VI – Phantom: 55 Hider-Siege
+VII – Unsichtbar: 80 Hider-Siege
+VIII – Elite Hider: 120 Hider-Siege
+IX – Schattenmeister: 175 Hider-Siege
+X – Ultimate Hider: 250 Hider-Siege
+
+VETERAN
+Spiele gültige Matches bis zum Ende mit.
+I – Debüt: 1 Match
+II – Wieder dabei: 5 Matches
+III – Erfahren: 10 Matches
+IV – Stammspieler: 20 Matches
+V – Ausdauernd: 35 Matches
+VI – Veteran: 50 Matches
+VII – Routinier: 75 Matches
+VIII – Feldprofi: 100 Matches
+IX – Legende: 150 Matches
+X – Manhunt X: 250 Matches
+
+XP-SCOUT
+Sammle XP-Jagd-Punkte in gültig abgeschlossenen Matches. Account-XP zählen hierfür nicht.
+I – Erster Punkt: 1 XP-Jagd-Punkt
+II – Entdecker: 10 XP-Jagd-Punkte
+III – Pfadfinder: 25 XP-Jagd-Punkte
+IV – Sammler: 50 XP-Jagd-Punkte
+V – Scout: 100 XP-Jagd-Punkte
+VI – Navigator: 175 XP-Jagd-Punkte
+VII – Zielsicher: 275 XP-Jagd-Punkte
+VIII – Wegmeister: 400 XP-Jagd-Punkte
+IX – Elite Scout: 600 XP-Jagd-Punkte
+X – Ultimate Scout: 1.000 XP-Jagd-Punkte
+
+WAS ZÄHLT?
+
+Beta-Tester: „Feedback absenden“ nach einem regulär abgeschlossenen Spiel. Positive und negative Bewertungen zählen gleichermaßen. Jede einzelne Frage darf übersprungen werden, auch alle Fragen. Nur „Gesamtes Feedback überspringen“ vergibt kein Badge. Mehrfaches Absenden erzeugt keine zusätzlichen Badges. Kein Account-XP-Bonus wird dafür versprochen.
+
+Hunter: Serverseitig bestätigte Fänge in gewerteten Matches.
+Hider: Gewertetes Match als überlebender Hider gewinnen; bloßes Mitspielen reicht nicht.
+Veteran: Gewertete Matches bis zum Ende mitspielen.
+XP-Scout: Tatsächlich eingesammelte XP-Jagd-Punkte. Account-XP zählen hierfür nicht.
+
+Für diese vier Spiel-Badges: Match mindestens fünf Minuten, mindestens zwei registrierte Teilnehmer, höchstens fünf gewertete Matches pro Tag und Konto. Abgebrochene Matches, Zuschauer und vorzeitig ausgetretene Spieler zählen nicht. Pro Match werden höchstens 40 Fänge und 100 XP-Jagd-Punkte angerechnet. Simulationen zählen niemals für echte Konten. Diese Grenzen gelten nicht für das Feedback-Angebot oder Beta-Tester.
+
+Im Profil werden Symbol, Name, höchste Stufe, Voraussetzungen, Freischaltdatum und Fortschritt zur nächsten Stufe angezeigt. Ein freigeschaltetes Badge kann für Lobby und Spiel als Profil-Badge ausgewählt werden. Stufe X ist das Maximum. Namen und Schwellen lassen sich zentral im Adminportal anpassen; diese Datei beschreibt die ausgelieferten Standardwerte.
+
+Badge-Stufen I–X sind vom bereits vorhandenen Account-Level und dessen XP-Fortschritt unabhängig.

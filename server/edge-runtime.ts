@@ -90,8 +90,8 @@ export function createEdgeHandler({repository:repo,store,verify,origins,push,pat
       const active=engine.lobbyFor(id);
       const self=active?.players.find(p=>p.id===id);
       if(active&&self){self.lastSeen=snapshot.now;changed.set(active.id,active);}
-      if(active&&self&&(self.username!==profile.username||self.avatar_url!==profile.avatar_url)){
-        self.username=profile.username;self.avatar_url=profile.avatar_url;active.revision++;changed.set(active.id,active);
+      if(active&&self&&(self.username!==profile.username||self.avatar_url!==profile.avatar_url||JSON.stringify(self.badge)!==JSON.stringify(profile.badge))){
+        self.username=profile.username;self.avatar_url=profile.avatar_url;self.badge=profile.badge;active.revision++;changed.set(active.id,active);
       }
       const audit=command&&command.type!=='location'&&command.type!=='location_check'&&!failure&&lobby?{actorId:id,action:`lobby.${command.type}`,lobbyId:lobby.id}:undefined;
       // Even no-op commands check revision: a stale snapshot must never acknowledge
@@ -127,7 +127,7 @@ export function createEdgeHandler({repository:repo,store,verify,origins,push,pat
       if(!auth?.startsWith('Bearer '))throw new HttpError(401,'Bitte melde dich an.');
       const identity=await verify(auth.slice(7)),id=identity.id;
       await store.quota(id,'api',120);
-      if(accounts&&(path==='/traffic'||path==='/account'||path.startsWith('/account/')||path.startsWith('/admin/')))return respond(await accounts.handle(identity,auth.slice(7),path,method,['POST','PATCH','DELETE'].includes(method)?await jsonBody(request):{},new URL(request.url).searchParams,request.headers.get('x-manhunt-admin-session')));
+      if(accounts&&(path==='/badges'||path.startsWith('/badges/')||path==='/feedback'||path.startsWith('/feedback/')||path==='/traffic'||path==='/account'||path.startsWith('/account/')||path.startsWith('/admin/')))return respond(await accounts.handle(identity,auth.slice(7),path,method,['POST','PATCH','DELETE'].includes(method)?await jsonBody(request):{},new URL(request.url).searchParams,request.headers.get('x-manhunt-admin-session')));
       await accounts?.requireGame(identity);
       const profile=await repo.getProfile(identity);
       await store.touch(id);

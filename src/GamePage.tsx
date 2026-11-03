@@ -1,3 +1,5 @@
+import {ProfileBadge} from './Badges';
+import FeedbackPanel from './FeedbackPanel';
 import {distance} from '@turf/turf';
 import {rules,modeLabel,DEFAULT_XP} from '../shared/rules';
 import ChatPanel from './ChatPanel';
@@ -8,8 +10,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { AlertTriangle, ArrowRight, Check, Crosshair, DoorOpen, Eye, Flag, LocateFixed, MapPin, Radio, Shield, Skull, Timer, Trophy, Users, X } from 'lucide-react';
 import type { Command, LocationSample, Role } from '../shared/types';
 import { MODES } from '../shared/types';
-import { Avatar, EmptyState, PageHeader } from './App';
-import { formatTime, useApp, useNow } from './context';
+import { Avatar, EmptyState, PageHeader } from './UI';
+import { formatTime, useApp, useNow } from './game-context';
 import MapView from './MapView';
 import {FullScreenNotice} from './SafetyOverlays';
 import SwipeConfirm from './SwipeConfirm';
@@ -81,7 +83,8 @@ function GameView() {
   if (lobby.status === 'finished' && lobby.result) return <>
     <PageHeader title="Die Jagd ist vorbei." description="Kehrt auf einem sicheren Weg zum vereinbarten Treffpunkt zurück."/>
     <section className="panel result-panel"><Trophy size={56} className="accent"/><span className="eyebrow">{modeName} / ERGEBNIS</span><h2>{({ hunters: 'DIE HUNTER GEWINNEN', hiders: 'DIE HIDER GEWINNEN', infected: 'DIE INFEKTION GEWINNT', zombies: 'DIE INFEKTION GEWINNT', draw: 'UNENTSCHIEDEN', aborted: 'MATCH OHNE WERTUNG BEENDET', deleted_player: 'DER SIEGER HAT SEIN KONTO GELÖSCHT', A: 'TEAM A GEWINNT', B: 'TEAM B GEWINNT', team_A: 'TEAM A GEWINNT', team_B: 'TEAM B GEWINNT' } as Record<string, string>)[lobby.result.winner] || `${(lobby.players.find(p=>p.id===lobby.result!.winner)?.username??lobby.result.winner).toUpperCase()} GEWINNT`}</h2><p>{lobby.result.reason}</p><div className="result-stats"><div><strong>{lobby.players.length}</strong><span>SPIELER</span></div><div><strong>{lobby.result.survivors.length}</strong><span>ÜBERLEBENDE</span></div><div><strong>{formatTime((lobby.result.endedAt - (lobby.startedAt ?? lobby.createdAt)) / 1000)}</strong><span>GESPIELT</span></div></div><p className="fineprint">Die Standortfreigabe ist beendet. GPS-Pins und Fangcodes werden aus dem Matchzustand entfernt.</p><div className="button-row"><button className="button primary" disabled={busy} onClick={leave}>Zur Übersicht <ArrowRight size={16}/></button><Link className="button" to="/history">Matchhistorie</Link></div></section>
-    <div className="panel"><h3>Deine Crew</h3>{lobby.players.map(player => <div className="player-row" key={player.id}><Avatar name={player.username} url={player.avatar_url}/><div className="player-info"><strong>{player.username}</strong><span>{ROLE_LABELS[player.role]}</span></div><span className={lobby.result!.survivors.includes(player.id) ? 'ready-badge' : 'waiting-badge'}>{lobby.result!.survivors.includes(player.id) ? 'ÜBERLEBT' : player.eliminated ? 'AUSGESCHIEDEN' : 'MATCH BEENDET'}</span></div>)}</div>
+    {lobby.result.winner!=='aborted'&&<FeedbackPanel key={lobby.id} matchId={lobby.id}/>}
+    <div className="panel"><h3>Deine Crew</h3>{lobby.players.map(player => <div className="player-row" key={player.id}><Avatar name={player.username} url={player.avatar_url}/><div className="player-info"><strong>{player.username}</strong><ProfileBadge badge={player.badge}/><span>{ROLE_LABELS[player.role]}</span></div><span className={lobby.result!.survivors.includes(player.id) ? 'ready-badge' : 'waiting-badge'}>{lobby.result!.survivors.includes(player.id) ? 'ÜBERLEBT' : player.eliminated ? 'AUSGESCHIEDEN' : 'MATCH BEENDET'}</span></div>)}</div>
   </>;
 
   return <>

@@ -4,6 +4,9 @@ import {trafficSchema,type TrafficStore} from './traffic';
 import {HttpError,type Identity} from './auth';
 import type {AccountState,SetupStage} from '../shared/accounts';
 import {USERNAME_PATTERN,PASSWORD_MIN_LENGTH} from '../shared/accounts';
+import type {FeatureService} from './features';
+
+export interface SimulationHandler {handle(identity:Identity,path:string,method:string,body:unknown,query:URLSearchParams):Promise<unknown>;}
 
 export interface Control {
  user_id:string;is_admin:boolean;disabled:boolean;setup_stage:SetupStage;
@@ -47,7 +50,7 @@ function sameHash(a:string,b:string){const x=Buffer.from(a,'hex'),y=Buffer.from(
 function temporaryHash(password:string){const salt=randomBytes(24).toString('hex');return `pbkdf2$${salt}$${codeHash(password,salt)}`;}
 function isTemporaryPassword(password:string,hash:string){const [algorithm,salt,digest]=hash.split('$');return algorithm==='pbkdf2'&&salt&&digest?sameHash(codeHash(password,salt),digest):sameHash(sha(password),hash);}
 export class AccountService {
- constructor(readonly store:AccountStore,private now=Date.now,private traffic?:TrafficStore){}
+ constructor(readonly store:AccountStore,private now=Date.now,private traffic?:TrafficStore,private features?:FeatureService,private simulations?:SimulationHandler){}
  async state(identity:Identity):Promise<AccountState>{
   const c=await this.store.control(identity.id);
   const p=await this.store.profile(identity.id);
@@ -76,6 +79,10 @@ export class AccountService {
  }
  async handle(identity:Identity,token:string,path:string,method:string,body:unknown,query:URLSearchParams,ticket:string|null):Promise<unknown>{
   if(path==='/account'&&method==='GET')return this.state(identity);
+  if(path==='/badges'||path.startsWith('/badges/')||path==='/feedback'||path.startsWith('/feedback/')){
+   await this.requireGame(identity);if(!this.features)throw new HttpError(503,'Feedback und Badges sind noch nicht eingerichtet.');
+   await this.store.quota(identity.id,'features',90);return this.features.player(identity,path,method,body,query);
+  }
   if(path.startsWith('/account/setup/'))return this.setup(identity,token,path,method,body);
   if(path==='/traffic'){
    await this.requireGame(identity);if(!this.traffic)throw new HttpError(503,'Die Verbrauchsmessung ist hier nicht eingerichtet.');
@@ -97,6 +104,15 @@ export class AccountService {
   }
   if(path==='/admin/session'&&method==='DELETE'){empty.parse(body);if(ticket)await this.store.revokeSession(sha(ticket),identity.id);return{ok:true};}
   await this.ticket(identity,ticket);
+  if(path==='/admin/simulations'||path.startsWith('/admin/simulations/')){
+   if(!this.simulations)throw new HttpError(503,'Die Spielsimulation ist noch nicht eingerichtet.');
+   await this.store.quota(identity.id,'admin-simulation',90);return this.simulations.handle(identity,path,method,body,query);
+  }
+  if(path==='/admin/badges'||path==='/admin/feedback'||path.startsWith('/admin/feedback/')){
+   if(!this.features)throw new HttpError(503,'Feedback und Badges sind noch nicht eingerichtet.');
+   await this.store.quota(identity.id,'admin-features',60);const result=await this.features.admin(path,method,body,query);
+   if(method!=='GET')await this.store.audit(identity.id,'admin.features_changed');return result;
+  }
   if(path==='/admin/traffic'&&method==='GET'){
    if(!this.traffic)throw new HttpError(503,'Die Verbrauchsübersicht ist hier nicht eingerichtet.');
    const matchId=query.has('matchId')?z.uuid().parse(query.get('matchId')):null;const page=z.coerce.number().int().min(0).max(10000).parse(query.get('page')??0);

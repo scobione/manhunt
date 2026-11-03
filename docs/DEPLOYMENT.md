@@ -1,3 +1,9 @@
+# Erweiterung 0.b1.110
+
+Simulation, Feedback für alle Teilnehmer und Badge-Stufen I–X: [Releasebericht](RELEASE-0.b1.110.md), [ausgeführte Tests](TEST-REPORT-0.b1.110.md). Bestehende Domains: https://manhunt-pwa.vercel.app und https://manhunt-admin-scobione.vercel.app. Zwei additive Datenbankmigrationen, 45 RLS-geschützte Anwendungstabellen, Supabase-Edge-Revision 18 (ACTIVE, Health `0.b1.110`). Keine neuen Geheimnisse oder kostenpflichtigen Dienste.
+
+Das Admin-Vercel-Projekt hat `sourceFilesOutsideRootDirectory` aktiviert, Root Directory `admin`, Install `npm ci --prefix .. && npm ci`, Build `npm run build`, Ausgabe `dist`. Dadurch verwendet die geschützte Simulationsansicht dieselbe Engine und dieselben UI-Komponenten wie das Spiel. Beide Projekte bleiben mit GitHub `scobione/manhunt`, Branch `main`, verbunden. Live-Verifikation der Frontends folgt auf den Git-Push; deren Abschlussstatus steht im Veröffentlichungsbericht des ausführenden Agenten.
+
 # Erweiterung 0.b1.108
 
 Fünfsekündiger Vollbild-Countdown vor der Rollenanzeige. Weiterhin dasselbe Vercel-Spielprojekt und Supabase-Projekt; keine Migration, neuen Variablen oder Dienste. Siehe [Releasebericht](RELEASE-0.b1.108.md).

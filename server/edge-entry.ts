@@ -1,3 +1,6 @@
+import {FeatureService} from './features';
+import {SupabaseFeatureStore} from './feature-store';
+import {SimulationService,SupabaseSimulationStore} from './simulations';
 import {SupabaseTrafficStore} from './traffic';
 import { createClient } from '@supabase/supabase-js';
 import { authenticate } from './auth';
@@ -18,7 +21,7 @@ const db=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false
 Deno.serve(createEdgeHandler({
   repository:new SupabaseRepository(db),store:new SupabaseEdgeStore(db),
   verify:token=>authenticate(token,db),
-  accounts:new AccountService(new SupabaseAccountStore(db),Date.now,new SupabaseTrafficStore(db)),
+  accounts:new AccountService(new SupabaseAccountStore(db),Date.now,new SupabaseTrafficStore(db),new FeatureService(new SupabaseFeatureStore(db)),new SimulationService(new SupabaseSimulationStore(db),Date.now,new SupabaseFeatureStore(db))),
   push:new SupabasePushService(db,'https://manhunt-pwa.vercel.app',`${url}/functions/v1/manhunt-api/api/push/dispatch`),
   origins:['https://manhunt-fieldgame.scobione.chatgpt.site','https://manhunt-pwa.vercel.app','https://manhunt-pwa-djj10-4253.vercel.app','https://manhunt-pwa-git-b48-preview-djj10-4253.vercel.app','https://manhunt-admin-scobione.vercel.app'],
 }));

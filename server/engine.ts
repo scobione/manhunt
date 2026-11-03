@@ -68,7 +68,7 @@ export class GameEngine {
   }
   private player(profile:Profile,lobby:EngineLobby):Player {
     lobby._engine.players[profile.id]=metadata();
-    return {id:profile.id,username:profile.username,avatar_url:profile.avatar_url,ready:false,role:'hider',team:lobby.players.length%2?'B':'A',connected:true,eliminated:false,lastSeen:this.now()};
+    return {id:profile.id,username:profile.username,avatar_url:profile.avatar_url,badge:profile.badge,ready:false,role:'hider',team:lobby.players.length%2?'B':'A',connected:true,eliminated:false,lastSeen:this.now()};
   }
   create(profile:Profile,settings:Partial<Settings>={}):Lobby{
     if(this.lobbyFor(profile.id))fail('ALREADY_IN_LOBBY','Verlasse zuerst deine aktuelle Lobby.');
@@ -127,7 +127,7 @@ export class GameEngine {
       visibleLocations.push({id:`live:${player.id}`,playerId:player.id,username:player.username,role:player.role,avatar_url:player.avatar_url,...sample,observedAt,createdAt:observedAt,expiresAt:observedAt+l.settings.fallbackPinMaxAgeSeconds*1000,stale:now-observedAt>15_000||!!l._engine.players[player.id].unreliableLocation,kind:'live'});
     }
     return clone({id:l.id,code:l.code,hostId:l.hostId,status:l.status,
-      players:l.players.map(p=>({id:p.id,username:p.username,avatar_url:p.avatar_url,ready:p.ready,locationReady:l.status==='waiting'&&this.lobbyGpsReady(l,p),role:p.role,muted:p.muted,infectionPending:p.infectionPending,team:p.team,connected:p.connected,eliminated:p.eliminated,infectedAt:p.infectedAt,lastSeen:p.lastSeen})),
+      players:l.players.map(p=>({id:p.id,username:p.username,avatar_url:p.avatar_url,badge:p.badge,ready:p.ready,locationReady:l.status==='waiting'&&this.lobbyGpsReady(l,p),role:p.role,muted:p.muted,infectionPending:p.infectionPending,team:p.team,connected:p.connected,eliminated:p.eliminated,infectedAt:p.infectedAt,lastSeen:p.lastSeen})),
       settings:l.settings,zone:l.zone,activeZone:l.activeZone,createdAt:l.createdAt,startedAt:l.startedAt,endsAt:l.endsAt,pausedAt:l.pausedAt,previousStatus:l.previousStatus,
       xpHunt:l.xpHunt,chat:(l._engine.chat??[]).filter(m=>m.channel==='all'||m.channel===teamChannel(self,l.settings)),pins,visibleLocations,events:l.events,captures:l.captures.filter(c=>c.targetId===userId||c.hunterId===userId),result:l.result,revision:l.revision,
       self:{...self,locationReady:l.status==='waiting'&&this.lobbyGpsReady(l,self),...(self.role==='hider'&&!self.eliminated&&l.settings.captureMethod==='qr'&&l._engine.players[self.id].captureSecret?{captureQr:{token:this.qrToken(l,self,Math.floor(now/30000)),expiresAt:(Math.floor(now/30000)+2)*30000}}:{})},serverTime:now});

@@ -2,7 +2,7 @@ import {trafficAllowed,useTrafficConsent} from './traffic-consent';
 import {useMatchLocation} from './useMatchLocation';
 import {beginTraffic,startTraffic,socketTraffic} from './traffic-meter';
 import type {AccountState} from '../shared/accounts';
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { io, type Socket } from 'socket.io-client';
 import type { Command, LobbyView, Profile } from '../shared/types';
@@ -27,17 +27,9 @@ supabase?.auth.onAuthStateChange((event,session)=>{
 });
 export const TEST_MODE = import.meta.env.MODE === 'test' && import.meta.env.VITE_TEST_AUTH === 'true';
 const API_BASE = (import.meta.env.VITE_API_URL || defaults?.apiUrl || '').replace(/\/$/,'');
-interface Config { configured:boolean; authConfigured:boolean; pushPublicKey?:string; transport?:'http'|'socket';accountControls?:boolean }
-interface AppContextValue {
-  gps:ReturnType<typeof useMatchLocation>;
-  account:AccountState|null;accountChecking:boolean;refreshAccount:()=>Promise<void>;profile:Profile|null; token:string|null; lobby:LobbyView|null; connected:boolean; loading:boolean; config:Config|null;
-  identity:{id:string;email?:string;isGuest?:boolean}|null; authChecking:boolean; authError:string;authCallbackError:boolean;
-  reauthenticateAfterPasswordChange:(email:string,password:string)=>Promise<boolean>; passwordRecovery:boolean; finishPasswordRecovery:()=>void; clearAuthError:()=>void;
-  notice:string; clearNotice:()=>void; notify:(message:string)=>void; api:<T=any>(path:string,options?:RequestInit)=>Promise<T>;
-  emit:<T=LobbyView>(event:string,data?:unknown)=>Promise<T>; command:(command:Command)=>Promise<LobbyView>;
-  logout:()=>Promise<void>; refreshProfile:()=>Promise<void>; setTestSession:(id:string,name:string)=>void; socialRevision:number;
-}
-const AppContext=createContext<AppContextValue|null>(null);
+import {AppContext,type AppContextValue} from './game-context';
+type Config=NonNullable<AppContextValue['config']>;
+export {useApp,useNow,formatTime} from './game-context';
 export function AppProvider({children}:{children:ReactNode}) {
  const [profile,setProfile]=useState<Profile|null>(null), [token,setToken]=useState<string|null>(TEST_MODE?sessionStorage.getItem('manhunt:test-token'):null);
  const [lobby,setLobby]=useState<LobbyView|null>(null),[connected,setConnected]=useState(false),[loading,setLoading]=useState(true),[config,setConfig]=useState<Config|null>(null),[notice,setNotice]=useState(''),[socialRevision,setSocialRevision]=useState(0);
@@ -161,6 +153,3 @@ export function AppProvider({children}:{children:ReactNode}) {
  function setTestSession(id:string,name:string){if(!TEST_MODE)return;const value=`test:${id}:${name}`;sessionStorage.setItem('manhunt:test-token',value);setToken(value);}
  return <AppContext.Provider value={{gps,account,accountChecking,refreshAccount,reauthenticateAfterPasswordChange,profile,token,lobby,connected,loading,identity,authChecking,authError,authCallbackError,passwordRecovery,finishPasswordRecovery:()=>{recoveryUser=null;writeRecoveryUser(null);setPasswordRecovery(false);},clearAuthError:()=>{initializationError.current='';setAuthError('');setAuthCallbackError(false);},config,notice,clearNotice:()=>setNotice(''),notify,api,emit,command,logout,refreshProfile,setTestSession,socialRevision}}>{children}</AppContext.Provider>;
 }
-export function useApp(){const value=useContext(AppContext);if(!value)throw new Error('AppProvider missing');return value;}
-export function useNow(){const [now,setNow]=useState(Date.now());useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[]);return now;}
-export const formatTime=(seconds:number)=>{const n=Math.max(0,Math.ceil(seconds));return `${Math.floor(n/60).toString().padStart(2,'0')}:${(n%60).toString().padStart(2,'0')}`;};

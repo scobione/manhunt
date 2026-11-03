@@ -50,11 +50,71 @@ beforeAll(async()=>{
  }
 },30000);
 beforeEach(async()=>{
- await db.exec('truncate auth.users cascade');
+ await db.exec('truncate auth.users cascade; truncate feature_match_events cascade');
  for(const id of [a,b,c])await db.query('insert into auth.users(id,raw_user_meta_data,email_confirmed_at) values($1,$2,now())',[id,{username:'Player_'+id.slice(0,8)}]);
  for(const id of [a,b,c])await db.query('insert into auth.sessions(id,user_id) values($1,$1)',[id]);
 });
 afterAll(async()=>{await db?.close();});
+
+describe('feedback and achievement persistence (isolated PostgreSQL)',()=>{
+ async function finished(captures=1,seconds=600){
+  const l=state() as Lobby&{_engine:unknown};l.code=randomUUID().replaceAll('-','').slice(0,6).toUpperCase();l.players.push({...l.players[1],id:c,username:'TestThird'});
+  l.status='finished';l.startedAt=Date.now()-seconds*1000;l.result={winner:'hunters',reason:'Isolated test',endedAt:Date.now(),survivors:[]};
+  l._engine={players:{},leftIds:[],stats:{[a]:{captures,points:0},[b]:{captures:0,points:0},[c]:{captures:0,points:0}}};
+  await rpc('save_game_checkpoint',[l]);return l;
+ }
+ const answers={overall:{rating:1},location:{rating:1},clarity:{rating:2},design:{rating:1},recommend:'Nein'};
+ it('FEED-ALL-01 every participant including guests gets one offer even after a short real match',async()=>{
+  await db.query('update auth.users set is_anonymous=true where id=$1',[c]);const l=await finished(1,20);
+  let offers=await db.query<{user_id:string}>('select user_id from feedback_offers where match_id=$1',[l.id]);expect(offers.rows.map(r=>r.user_id).sort()).toEqual([a,b,c]);
+  await rpc('save_game_checkpoint',[{...l,revision:2}]);offers=await db.query('select user_id from feedback_offers where match_id=$1',[l.id]);expect(offers.rows).toHaveLength(3);
+  expect((await db.query('select * from achievement_counters')).rows).toHaveLength(0);
+  const next=await finished(1,20);expect((await db.query('select * from feedback_offers where match_id=$1',[next.id])).rows).toHaveLength(3);
+ });
+ it('FEED-02 BADGE-01 negative completed feedback awards Beta-Tester once; skips and guests do not',async()=>{
+  await db.query('update auth.users set is_anonymous=true where id=$1',[c]);const l=await finished();
+  const offers=(await db.query<{id:string;user_id:string}>('select id,user_id from feedback_offers where match_id=$1',[l.id])).rows;
+  const own=offers.find(o=>o.user_id===a)!.id;
+  await rpc('respond_game_feedback',[a,own,false,answers]);await rpc('respond_game_feedback',[a,own,false,answers]);
+  await rpc('respond_game_feedback',[b,offers.find(o=>o.user_id===b)!.id,true,{}]);
+  await rpc('respond_game_feedback',[c,offers.find(o=>o.user_id===c)!.id,false,answers]);
+  const badges=(await db.query<any>('select * from player_badges where badge_id=\'beta-tester\'')).rows;expect(badges).toHaveLength(1);expect(badges[0].user_id).toBe(a);
+  expect((await db.query<any>('select feedback from achievement_counters where user_id=$1',[a])).rows[0].feedback).toBe(1);
+  const report=(await rpc('read_feedback_report',[new Date(Date.now()-86400000).toISOString(),new Date(Date.now()+86400000).toISOString(),null,null,0])).rows[0].value as any;
+  expect(report.offered).toBe(3);expect(report.completed).toBe(2);expect(report.skipped).toBe(1);expect(report.average).toBe(1);expect(report.recommendations.Nein).toBe(2);
+ });
+ it('BADGE-02 BADGE-03 BADGE-04 locked at zero, Hunter II at twenty, maximum X, durable selection and no duplicate match credit',async()=>{
+  let v=(await rpc('read_player_badges',[a])).rows[0].value as any;expect(v.badges.every((b:any)=>b.level===0)).toBe(true);
+  await expect(rpc('choose_profile_badge',[a,'hunter'])).rejects.toThrow();
+  await finished(1);v=(await rpc('read_player_badges',[a])).rows[0].value as any;expect(v.badges.find((b:any)=>b.id==='hunter').level).toBe(1);
+  const l=await finished(19);await rpc('save_game_checkpoint',[{...l,revision:2}]);v=(await rpc('choose_profile_badge',[a,'hunter'])).rows[0].value as any;
+  expect(v.selected.level).toBe(2);expect(v.badges.find((b:any)=>b.id==='hunter').progress).toBe(20);
+  expect(((await rpc('read_player_badges',[a])).rows[0].value as any).selected.id).toBe('hunter');
+  await db.query('update achievement_counters set captures=100000 where user_id=$1',[a]);await rpc('refresh_player_badges',[a]);
+  expect(((await rpc('read_player_badges',[a])).rows[0].value as any).selected.level).toBe(10);
+ });
+ it('FEED-SKIP-01 individual omissions including all omitted questions still earn Beta-Tester; whole-form skip does not',async()=>{
+  const l=await finished(0,20);const offers=(await db.query<{id:string;user_id:string}>('select id,user_id from feedback_offers where match_id=$1',[l.id])).rows;
+  await rpc('respond_game_feedback',[a,offers.find(o=>o.user_id===a)!.id,false,{}]);
+  await rpc('respond_game_feedback',[b,offers.find(o=>o.user_id===b)!.id,false,{recommend:'Nein'}]);
+  await rpc('respond_game_feedback',[c,offers.find(o=>o.user_id===c)!.id,true,{}]);
+  expect((await db.query<{user_id:string}>("select user_id from player_badges where badge_id='beta-tester' order by user_id")).rows.map(r=>r.user_id)).toEqual([a,b]);
+  expect((await db.query('select * from feedback_answers where overall is null')).rows).toHaveLength(2);
+  const config=(await db.query<any>('select questions from feedback_questionnaires order by version desc limit 1')).rows[0];expect(config.questions.every((q:any)=>q.required===false)).toBe(true);
+ });
+ it('FEED-03 saved questionnaire snapshots survive admin changes and foreign access is denied',async()=>{
+  const l=await finished();const offer=(await db.query<any>('select * from feedback_offers where user_id=$1 and match_id=$2',[a,l.id])).rows[0];
+  const questions=structuredClone(offer.questions);questions[0].label='Geänderte Frage für spätere Spiele';await rpc('configure_feedback',[offer.version,questions]);
+  const unchanged=(await db.query<any>('select questions from feedback_offers where id=$1',[offer.id])).rows[0].questions;expect(unchanged[0].label).not.toBe(questions[0].label);
+  await expect(rpc('respond_game_feedback',[b,offer.id,false,answers])).rejects.toThrow();
+  for(const sql of ['select * from feedback_offers','select * from feedback_answers','select * from admin_simulations','select public.read_player_badges(\''+b+'\')','update achievement_counters set captures=999','update player_badges set level=10'])await expect(userRole(a,sql)).rejects.toThrow();
+ });
+ it('SIM-DATA-01 storing a finished simulated match cannot affect live checkpoints, feedback, badges or notifications',async()=>{
+  const l=state();l.status='finished';l.result={winner:'hunters',reason:'Simulation',endedAt:Date.now(),survivors:[]};
+  await db.query('insert into admin_simulations(id,owner_id,state) values($1,$2,$3)',[randomUUID(),a,{lobby:l,simulation:true}]);
+  for(const table of ['game_checkpoints','feature_match_events','feedback_offers','player_badges','badge_notices','account_progress','push_jobs','notifications'])expect((await db.query(`select * from ${table}`)).rows).toHaveLength(0);
+ });
+});
 
 describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
  it('TRAFFIC-DB-01 cumulative reports are idempotent, isolated by player and survive reloads',async()=>{
@@ -204,7 +264,7 @@ describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
  });
  it('executes the full unchanged migration and enables RLS on every application table',async()=>{
   const tables=await db.query<{tablename:string;rowsecurity:boolean}>("select tablename,rowsecurity from pg_tables where schemaname='public'");
-  expect(tables.rows.length).toBe(33);
+  expect(tables.rows.length).toBe(45);
   expect(tables.rows.every(t=>t.rowsecurity)).toBe(true);
   expect((await db.query('select * from profiles')).rows).toHaveLength(3);
   expect(await friendCode(a)).toMatch(/^[A-Z0-9]{12}$/);

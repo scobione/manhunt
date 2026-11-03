@@ -90,7 +90,7 @@ export class SupabaseRepository implements Repository {
   }
   async getProfile(identity:Identity):Promise<Profile> {
     const {data,error}=await this.db.from('profiles').select(profileColumns).eq('id',identity.id).maybeSingle();check(error);
-    if(data){const progress=await this.db.from('account_progress').select('total_xp,games,wins,losses,draws,captures,survivals,hunt_points').eq('user_id',identity.id).maybeSingle();check(progress.error);return this.withAvatar({...data,...(progress.data?{progress:progress.data}:{})} as Profile);}
+    if(data){const badge=await this.db.from('badge_equipped').select('badge_id,player_badges(level,badge_definitions(definition))').eq('user_id',identity.id).maybeSingle();check(badge.error);const equipped=badge.data as any;const def=equipped?.player_badges?.badge_definitions?.definition;const selected=def?{id:def.id,name:def.name,icon:def.icon,level:equipped.player_badges.level,stageName:def.stageNames[equipped.player_badges.level-1]}:null;const progress=await this.db.from('account_progress').select('total_xp,games,wins,losses,draws,captures,survivals,hunt_points').eq('user_id',identity.id).maybeSingle();check(progress.error);return this.withAvatar({...data,badge:selected,...(progress.data?{progress:progress.data}:{})} as Profile);}
     // Covers externally provisioned accounts as well as auth-trigger bootstrap.
     const base=(identity.username ?? 'spieler').normalize('NFKD').replace(/[^a-zA-Z0-9_]/g,'').slice(0,16) || 'spieler';
     const avatar = typeof identity.avatarUrl==='string' && /^https:\/\/[^/]*googleusercontent\.com\//.test(identity.avatarUrl) ? identity.avatarUrl : null;

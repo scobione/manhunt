@@ -1,0 +1,96 @@
+MANHUNT – FRAGEBOGEN NACH DEM SPIEL
+Stand: 3. November 2026
+
+Nach jedem abgeschlossenen, gewerteten Spiel wird der Fragebogen allen
+Teilnehmern angeboten – auch Gästen. Die Teilnahme ist freiwillig.
+Es gibt keine richtigen oder falschen Antworten. Jede Frage ist freiwillig.
+„Frage überspringen“ lässt nur die aktuelle Frage aus.
+„Gesamtes Feedback überspringen“ beendet die Abfrage ohne Badge.
+Eine Fortschrittsanzeige zeigt die aktuelle Frage an.
+
+FRAGEN FÜR ALLE SPIELMODI
+
+1. Wie hat dir das Spiel insgesamt gefallen?
+   Antwort: 1 bis 5 Sterne.
+
+2. Wie zuverlässig haben Karte und Standort funktioniert?
+   Antwort: 1 bis 5 Sterne.
+
+3. Wie verständlich waren Rollen, Regeln und Spielablauf?
+   Antwort: 1 bis 5 Sterne.
+
+4. Wie findest du Bedienung und Design?
+   Antwort: 1 bis 5 Sterne.
+
+5. Was sollten wir verbessern?
+   Freiwillige Mehrfachauswahl:
+   [ ] Karte
+   [ ] Spielmodi
+   [ ] Rollen
+   [ ] Standort
+   [ ] Bedienung
+   [ ] Stabilität
+
+6. Würdest du das Spiel weiterempfehlen?
+   Genau eine Antwort:
+   ( ) Ja
+   ( ) Vielleicht
+   ( ) Nein
+
+7. Möchtest du uns noch etwas mitteilen?
+   Freiwilliges Freitextfeld, höchstens 2.000 Zeichen.
+
+ZUSÄTZLICHE FRAGEN ZU GESPIELTEN MODI
+
+Diese Fragen erscheinen nach Frage 3 und vor der Frage zu Bedienung und Design.
+Bei kombinierten Modi werden alle passenden Zusatzfragen gestellt.
+
+Zombie:
+„Wie gut haben Infektion und Teamwechsel funktioniert?“
+Antwort: 1 bis 5 Sterne.
+
+Apokalypse:
+„Wie gut haben Schrumpfzonen und Zonenwarnungen funktioniert?“
+Antwort: 1 bis 5 Sterne.
+
+XP-Jagd:
+„Wie gut haben XP-Punkte und das Einsammeln funktioniert?“
+Antwort: 1 bis 5 Sterne.
+
+BEDEUTUNG DER STERNE
+
+1 Stern:  Sehr schlecht
+2 Sterne: Eher schlecht
+3 Sterne: In Ordnung
+4 Sterne: Gut
+5 Sterne: Sehr gut
+
+Bei 1 oder 2 Sternen erscheint zusätzlich das freiwillige Textfeld:
+„Was können wir verbessern?“
+
+Bei 4 oder 5 Sternen erscheint zusätzlich das freiwillige Textfeld:
+„Was hat dir besonders gefallen?“
+
+Bei 3 Sternen erscheint kein zusätzliches Textfeld.
+Alle zusätzlichen Textfelder sind freiwillig und auf 2.000 Zeichen begrenzt.
+
+ABSCHLUSS UND BADGE
+
+Alle Fragen dürfen einzeln übersprungen werden, auch Sternebewertungen und
+Weiterempfehlung. Angegebene Bewertungen müssen zwischen 1 und 5 liegen.
+
+Registrierte Spieler erhalten nach ihrem ersten abgesendeten Feedback das
+dauerhafte „Beta-Tester“-Badge. Positive und negative Bewertungen zählen
+gleichermaßen. Einzelne ausgelassene Fragen verhindern das Badge nicht.
+Auch wenn alle Fragen einzeln ausgelassen wurden, zählt das abschließende
+„Feedback absenden“ als abgegebenes Feedback.
+
+Nur „Gesamtes Feedback überspringen“ vergibt kein Badge. Gäste dürfen antworten,
+erhalten aber kein dauerhaftes Badge.
+
+Die Antworten werden mit Match, Spielmodi, Zeitpunkt, Fragebogenversion und
+Spielerzuordnung gespeichert. Nur berechtigte Administratoren können sie
+auswerten. Bitte keine sensiblen persönlichen Angaben in Freitextfeldern senden.
+
+Der aktive Fragenkatalog kann im Admin-Portal angepasst werden. Bereits
+abgegebene Antworten behalten ihre ursprünglichen Fragen und Versionsnummern.
