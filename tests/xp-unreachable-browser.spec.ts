@@ -5,7 +5,7 @@ import {circle,distance} from '@turf/turf';
 import {DEFAULT_SETTINGS} from '../shared/types';
 import {DEFAULT_XP} from '../shared/rules';
 const API='http://127.0.0.1:3002/api/events';
-async function event(api:APIRequestContext,token:string,event:string,data:unknown={}){const r=await api.post(API,{headers:{Authorization:`Bearer ${token}`},data:{event,data}});expect(r.status(),await r.text()).toBe(200);return(await r.json()).lobby;}
+async function event(api:APIRequestContext,token:string,event:string,data:unknown={}){const r=await api.post(API,{maxRetries:event==='lobby:sync'?1:0,headers:{Authorization:`Bearer ${token}`},data:{event,data}});expect(r.status(),await r.text()).toBe(200);return(await r.json()).lobby;}
 const command=(api:APIRequestContext,token:string,command:unknown)=>event(api,token,'lobby:command',{command});
 for(const width of [320,1440])test(`XP-AUTO-BROWSER-${width}: no approval, farther replacement, durable personal count and direct collection`,async({browser,request})=>{
  const ids=[randomUUID(),randomUUID(),randomUUID()],tokens=ids.map((id,i)=>`test:${id}:XpAuto${i}`);

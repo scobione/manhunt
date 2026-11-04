@@ -25,6 +25,10 @@ Die Browserfälle prüfen zusätzlich: grün/graue Schalter in Einstellungen, Pe
 
 Ein durch die neuen Rollentests sichtbar gewordener Fehler im lokalen SQL-Testhelfer wurde korrigiert: Service-Role-Aufrufe verwenden jetzt passende Service-Role-JWT-Claims statt einer zuvor simulierten Benutzeridentität. Produktionsauthentifizierung wurde dafür nicht verändert.
 
+## Nachprüfung bestehender Ansichten
+
+Der bestehende Level-Browsertest prüft jetzt den neuen Profilkopf statt des entfernten `.level-card`-Layouts: 250 Account-XP ergeben weiterhin Level 2, 150 XP bis Level 3 und 50 % Fortschritt. Zusätzliche Profilstatistiken bleiben aufklappbar vorhanden. Der korrigierte Level-Fall und beide XP-Jagd-Browserabläufe wurden erneut erfolgreich ausgeführt. Ein einmaliger lokaler ECONNRESET beim lesenden Synchronisieren wird ausschließlich für diesen idempotenten Testaufruf einmal wiederholt; Mutationen werden dadurch nicht erneut gesendet.
+
 ## Produktive Datenbank
 
 Migration erfolgreich angewendet; die neue Tabelle hat RLS. Profil- und Sichtbarkeitsfunktionen sind `SECURITY INVOKER`; nur die Serverrolle besitzt EXECUTE. Die vorhandenen fünf Badge-Definitionen bleiben lesbar. Es wurden keine produktiven Benutzer, Freundschaften oder Badges für Testzwecke angelegt.
