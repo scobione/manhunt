@@ -39,6 +39,7 @@ export const commandSchema=z.discriminatedUnion('type',[
  z.object({type:z.literal('chat'),channel:z.enum(['all','team']),text:z.string().trim().min(1).max(500).refine(v=>!/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(v))}).strict(),
  z.object({type:z.literal('mute'),playerId:userId,muted:z.boolean()}).strict(),
  z.object({type:z.literal('xp_collect'),pointId:z.string().uuid()}).strict(),
+ z.object({type:z.literal('xp_unreachable'),pointId:z.string().uuid()}).strict(),
  z.object({type:z.literal('xp_confirm'),pointId:z.string().uuid()}).strict(),
  z.object({type:z.literal('ready'),ready:z.boolean()}).strict(),z.object({type:z.literal('settings'),settings:settingsSchema}).strict(),
  z.object({type:z.literal('zone'),zone:zoneSchema}).strict(),z.object({type:z.literal('assign'),playerId:userId,role:z.enum(['hunter','hider','zombie','spectator']),team:z.enum(['A','B'])}).strict(),

@@ -1,4 +1,6 @@
 import type {Settings,Rules,Player,Zone} from './types.js';
+export const XP_UNREACHABLE_LIMIT=5;
+export const XP_REPLACEMENT_EXTRA_METERS=25;
 export const DEFAULT_XP={target:10,radiusMeters:30,minDistanceMeters:100,boundaryBufferMeters:20,exclusionBufferMeters:20,goal:'team' as const,timeout:'draw' as const};
 /** Explicit modules override legacy presets. Old checkpoints keep their exact rules. */
 export function rules(s:Settings):Rules{return s.rules??{zombie:['zombie','infection_rush'].includes(s.mode)||s.mode==='custom'&&s.winCondition==='infection',apocalypse:['apocalypse','custom'].includes(s.mode),xpHunt:false};}

@@ -1,3 +1,7 @@
+# Erweiterung 0.b1.111
+
+Automatisch aktive XP-Punkte, fünf persönliche Meldungen nicht erreichbarer Punkte pro Match und weiter entfernte Ersatzpunkte: [Releasebericht](RELEASE-0.b1.111.md), [Tests](TEST-REPORT-0.b1.111.md). Bestehende Vercel-Projekte und Supabase-Checkpoints bleiben erhalten; keine Migration oder neuen Geheimnisse. Der Backend-Deploy muss vor beziehungsweise zusammen mit dem neuen Frontend erfolgen. Für den tatsächlichen Live-Stand gelten die Vercel-Deploymentdaten und `/api/health` der Edge Function.
+
 # Erweiterung 0.b1.110
 
 Simulation, Feedback für alle Teilnehmer und Badge-Stufen I–X: [Releasebericht](RELEASE-0.b1.110.md), [ausgeführte Tests](TEST-REPORT-0.b1.110.md). Bestehende Domains: https://manhunt-pwa.vercel.app und https://manhunt-admin-scobione.vercel.app. Zwei additive Datenbankmigrationen, 45 RLS-geschützte Anwendungstabellen, Supabase-Edge-Revision 18 (ACTIVE, Health `0.b1.110`). Keine neuen Geheimnisse oder kostenpflichtigen Dienste.

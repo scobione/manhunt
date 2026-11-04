@@ -87,7 +87,7 @@ export class SimulationService{
       if(event.type==='revive')engine.command(lobby.id,target,{type:'infection_ack'});
       if(event.type==='heal')engine.command(lobby.id,lobby.hostId,{type:'heal',playerId:target});
       if(event.type==='disconnect'||event.type==='reconnect')engine.setConnected(target,event.type==='reconnect');
-      if(event.type==='xp_collect'){const xp=lobby.xpHunt?.point;if(!xp)throw new HttpError(400,'Kein gültiger XP-Punkt verfügbar.');move(target,{longitude:xp.longitude,latitude:xp.latitude,accuracy:3,timestamp:clock});engine.command(lobby.id,lobby.hostId,{type:'xp_confirm',pointId:xp.id});engine.command(lobby.id,target,{type:'xp_collect',pointId:xp.id});}
+      if(event.type==='xp_collect'){const xp=lobby.xpHunt?.point;if(!xp)throw new HttpError(400,'Kein gültiger XP-Punkt verfügbar.');move(target,{longitude:xp.longitude,latitude:xp.latitude,accuracy:3,timestamp:clock});engine.command(lobby.id,target,{type:'xp_collect',pointId:xp.id});}
       if(event.type==='feedback')offer(s,target);
       if(event.type==='badge')award(s,target,'captures',20);
      }

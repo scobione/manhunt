@@ -18,11 +18,11 @@ export interface GameEvent { id:string; type:string; at:number; actorId?:string;
 export interface CaptureRequest { id:string; hunterId:string; targetId:string; createdAt:number; }
 export interface MatchResult { winner:string; reason:string; endedAt:number; survivors:string[] }
 export interface Lobby { xpHunt?:XpHunt;  id:string; code:string; hostId:string; status:'waiting'|'preparing'|'active'|'paused'|'finished'|'closed'; players:Player[]; settings:Settings; zone:Zone|null; activeZone?:Feature<Polygon>; createdAt:number; startedAt?:number; endsAt?:number; pausedAt?:number; previousStatus?:'preparing'|'active'; pins:Pin[]; events:GameEvent[]; captures:CaptureRequest[]; result?:MatchResult; revision:number; }
-export interface LobbyView extends Omit<Lobby,'players'> { players:Omit<Player,'location'|'captureCode'>[]; self:Player & {captureQr?:{token:string;expiresAt:number}}; serverTime:number; visibleLocations?:Pin[]; chat?:ChatMessage[]; }
+export interface LobbyView extends Omit<Lobby,'players'> { players:Omit<Player,'location'|'captureCode'>[]; self:Player & {captureQr?:{token:string;expiresAt:number}}; serverTime:number; xpUnreachableUsed?:number; visibleLocations?:Pin[]; chat?:ChatMessage[]; }
 export type Command =
  | {type:'pause'} | {type:'resume'} | {type:'end'} | {type:'draw_teams'}
  | {type:'chat';channel:'all'|'team';text:string} | {type:'mute';playerId:string;muted:boolean}
- | {type:'xp_regenerate'} | {type:'xp_confirm';pointId:string} | {type:'xp_collect';pointId:string}
+ | {type:'xp_regenerate'} | {type:'xp_confirm';pointId:string} | {type:'xp_collect';pointId:string} | {type:'xp_unreachable';pointId:string}
  | {type:'location_check';location:LocationSample}
  | {type:'ready';ready:boolean} | {type:'settings';settings:Settings} | {type:'zone';zone:Zone}
  | {type:'assign';playerId:string;role:Role;team:'A'|'B'} | {type:'kick';playerId:string} | {type:'transfer';playerId:string}

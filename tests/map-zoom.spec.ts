@@ -11,7 +11,7 @@ async function event(api:APIRequestContext,token:string,event:string,data:unknow
 const command=(api:APIRequestContext,token:string,command:unknown)=>event(api,token,'lobby:command',{command});
 async function targetPosition(page:Page){
  let position:{x:number;y:number}|null=null;
- // A sync can replace a marker between frames; wait for its next visible frame.
+ // Wait for the map to project the target into its next visible frame.
  await expect.poll(async()=>{position=await page.locator('.mh-xp-pin').boundingBox();return position!==null;}).toBe(true);
  return position!;
 }
@@ -68,7 +68,17 @@ for(const mobile of [true,false])test(`MAP-ZOOM-${mobile?'MOBILE':'DESKTOP'}: fi
    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await aligned(page);await cdp.detach();
   }
   await page.setViewportSize({width:mobile?430:1024,height:900});await aligned(page);
-  await page.getByRole('button',{name:'Spielzone anzeigen',exact:true}).click();await aligned(page);
+  await test.step('Map controls remain clickable when a GPS pin overlaps them',async()=>{
+   await map.scrollIntoViewIfNeeded();
+   const fit=page.getByRole('button',{name:'Spielzone anzeigen',exact:true}),button=(await fit.boundingBox())!,pin=(await page.locator('.mh-pin-own').boundingBox())!,area=(await map.boundingBox())!;
+   const dx=button.x+button.width/2-(pin.x+pin.width/2),dy=button.y+button.height/2-(pin.y+pin.height/2),startX=area.x+area.width*.35,startY=area.y+area.height*.65;
+   await page.mouse.move(startX,startY);await page.mouse.down();await page.mouse.move(startX+dx,startY+dy,{steps:12});
+   // Holding the drag before release intentionally removes map inertia.
+   await page.waitForTimeout(200);await page.mouse.up();await aligned(page);
+   await expect.poll(()=>page.locator('.mh-pin-own').evaluate(el=>{const p=el.getBoundingClientRect(),b=document.querySelector('.mh-map-tools button')!.getBoundingClientRect();return Math.hypot(p.x+p.width/2-b.x-b.width/2,p.y+p.height/2-b.y-b.height/2);})).toBeLessThan(12);
+   await expect.poll(()=>fit.evaluate(el=>{const r=el.getBoundingClientRect();const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return hit===el||!!hit&&el.contains(hit);})).toBe(true);
+   await fit.click({timeout:5000});await aligned(page);
+  });
   await expect(page.locator('.mh-pin-own')).toBeInViewport();
   await page.screenshot({path:`test-results-edge/map-zoom-${mobile?'mobile':'desktop'}.png`,fullPage:true});
  }finally{await context.close();}

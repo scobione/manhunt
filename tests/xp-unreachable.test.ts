@@ -1,0 +1,35 @@
+// Isolated synthetic accounts, GPS and footway candidates. Never production data.
+import {beforeEach,expect,it} from 'vitest';
+import {circle,destination,distance} from '@turf/turf';
+import {GameEngine,GameError} from '../server/engine';
+import type {Command,Lobby} from '../shared/types';
+import {DEFAULT_XP} from '../shared/rules';
+import {safeXpPosition} from '../server/xp-paths';
+let engine:GameEngine,now:number,lobby:Lobby;
+const origin:[number,number]=[13.4,52.5];
+const candidate=(meters:number)=>{const [longitude,latitude]=destination(origin,meters,90,{units:'meters'}).geometry.coordinates;return{longitude,latitude,pathId:`test-${meters}`,label:'ISOLATED FOOTWAY'};};
+const profile=(id:string)=>({id,username:`Test_${id}`,avatar_url:null,friend_code:id.padEnd(12,'0'),show_online:false});
+const send=(id:string,c:Command)=>engine.command(lobby.id,id,c);
+// Send only the accepted GPS fields, never path metadata.
+function gps(id='hider',meters=0,accuracy=3){const {longitude,latitude}=candidate(meters);send(id,{type:'location',location:{longitude,latitude,accuracy,timestamp:now}});}
+function rejection(fn:()=>unknown,code:string){try{fn();throw Error('Expected rejection');}catch(e){expect(e).toBeInstanceOf(GameError);expect((e as GameError).code).toBe(code);}}
+beforeEach(()=>{
+ now=1800000000000;engine=new GameEngine({now:()=>now});lobby=engine.create(profile('host'),{rules:{zombie:true,apocalypse:false,xpHunt:true},randomRoles:false,preparationSeconds:0,headStartSeconds:0,captureMethod:'code',xp:{...DEFAULT_XP,target:20}});
+ for(const id of ['hider','other'])engine.join(lobby.code,profile(id));
+ send('host',{type:'zone',zone:{feature:circle(origin,1),excluded:[],confirmed:true,name:'ISOLATED XP REPORTS'}});send('host',{type:'assign',playerId:'host',role:'hunter',team:'A'});
+ for(const id of ['host','hider','other']){send(id,{type:'location_check',location:{longitude:origin[0],latitude:origin[1],accuracy:3,timestamp:now}});send(id,{type:'ready',ready:true});}
+ engine.prepareXp(lobby.id,[candidate(0)]);send('host',{type:'start'});
+});
+it('XP-AUTO-01: start and collection create immediately collectable points, without confirmation',()=>{expect(lobby.xpHunt!.point!.confirmed).toBe(true);expect(lobby.xpHunt!.message).toBeUndefined();engine.prepareXp(lobby.id,[candidate(150)]);gps();send('hider',{type:'xp_collect',pointId:lobby.xpHunt!.point!.id});expect(lobby.xpHunt!.collected).toBe(1);expect(lobby.xpHunt!.point).toMatchObject({...candidate(150),confirmed:true});expect(engine.view(lobby.id,'hider').xpUnreachableUsed).toBe(0);});
+it('XP-AUTO-02: upgrading an unconfirmed checkpoint preserves point, scores and match',()=>{const snapshot=engine.snapshot(),point=snapshot[0].xpHunt!.point!;point.confirmed=false;snapshot[0].xpHunt!.message='Legacy approval';engine.restore(snapshot);const v=engine.view(lobby.id,'hider');expect(v.xpHunt!.point).toMatchObject({id:point.id,confirmed:true});expect(v.xpHunt!.message).toBeUndefined();gps();send('hider',{type:'xp_collect',pointId:point.id});expect(engine.view(lobby.id,'hider').xpHunt!.collected).toBe(1);});
+it('XP-REPORT-01: five progressively farther replacements survive restore; sixth rejected; counts per user',()=>{
+ gps();for(let i=1;i<=5;i++){const previous=lobby.xpHunt!.point!;engine.prepareXp(lobby.id,[candidate(i*150)]);send('hider',{type:'xp_unreachable',pointId:previous.id});const next=lobby.xpHunt!.point!;expect(distance(origin,[next.longitude,next.latitude],{units:'meters'})).toBeGreaterThan(distance(origin,[previous.longitude,previous.latitude],{units:'meters'})+25);expect(safeXpPosition(next,lobby.zone!,lobby.activeZone!,lobby.settings,previous)).toBe(true);expect(engine.view(lobby.id,'hider').xpUnreachableUsed).toBe(i);engine.restore(engine.snapshot());lobby=engine.lobbies.get(lobby.id)!;}
+ rejection(()=>send('hider',{type:'xp_unreachable',pointId:lobby.xpHunt!.point!.id}),'XP_REPORT_LIMIT');expect(engine.view(lobby.id,'other').xpUnreachableUsed).toBe(0);expect(lobby.xpHunt!.collected).toBe(0);expect((engine.snapshot()[0] as any)._engine.stats.hider.points).toBe(0);
+});
+it('XP-REPORT-02: failed replacement preserves point and does not consume limit',()=>{gps();const before=engine.snapshot();engine.prepareXp(lobby.id,[candidate(5)]);rejection(()=>send('hider',{type:'xp_unreachable',pointId:lobby.xpHunt!.point!.id}),'XP_NO_REPLACEMENT');expect(lobby.xpHunt).toEqual(before[0].xpHunt);expect(lobby.revision).toBe(before[0].revision);expect(engine.view(lobby.id,'hider').xpUnreachableUsed).toBe(0);});
+it('XP-REPORT-03: stale and duplicate requests cannot replace twice',()=>{gps();engine.prepareXp(lobby.id,[candidate(150),candidate(400)]);const id=lobby.xpHunt!.point!.id;send('hider',{type:'xp_unreachable',pointId:id});rejection(()=>send('hider',{type:'xp_unreachable',pointId:id}),'STALE_POINT');expect(engine.view(lobby.id,'hider').xpUnreachableUsed).toBe(1);});
+it('XP-REPORT-04: missing, stale, imprecise and revoked GPS cannot choose replacement',()=>{engine.prepareXp(lobby.id,[candidate(150)]);const cmd:Command={type:'xp_unreachable',pointId:lobby.xpHunt!.point!.id};rejection(()=>send('hider',cmd),'GPS_REQUIRED');gps();now+=10001;rejection(()=>send('hider',cmd),'GPS_REQUIRED');rejection(()=>gps('hider',0,500),'GPS_UNCERTAIN');rejection(()=>send('hider',cmd),'GPS_REQUIRED');now++;gps();send('hider',{type:'stop_location'});rejection(()=>send('hider',cmd),'GPS_REQUIRED');expect(engine.view(lobby.id,'hider').xpUnreachableUsed).toBe(0);});
+it('XP-REPORT-05: hunters, infected and eliminated players cannot replace points',()=>{const cmd:Command={type:'xp_unreachable',pointId:lobby.xpHunt!.point!.id};rejection(()=>send('host',cmd),'INVALID_ROLE');const h=lobby.players.find(p=>p.id==='hider')!;send('host',{type:'capture',targetId:'hider',code:h.captureCode});rejection(()=>send('hider',cmd),'INVALID_ROLE');send('hider',{type:'infection_ack'});rejection(()=>send('hider',cmd),'INVALID_ROLE');const other=lobby.players.find(p=>p.id==='other')!;other.eliminated=true;rejection(()=>send('other',cmd),'INVALID_ROLE');});
+it('XP-REPORT-06: pause and finish reject reports, host cannot bypass cap with regeneration',()=>{gps();rejection(()=>send('host',{type:'xp_regenerate'}),'XP_POINT_ACTIVE');const cmd:Command={type:'xp_unreachable',pointId:lobby.xpHunt!.point!.id};send('host',{type:'pause'});rejection(()=>send('hider',cmd),'XP_DISABLED');send('host',{type:'resume'});send('host',{type:'end'});rejection(()=>send('hider',cmd),'MATCH_FINISHED');});
+it('XP-REPORT-07: no replacement may cross active exclusions or current apocalypse boundary',()=>{gps();const invalid=candidate(200);lobby.zone!.excluded=[circle([invalid.longitude,invalid.latitude],.1)];engine.prepareXp(lobby.id,[invalid,candidate(1200)]);rejection(()=>send('hider',{type:'xp_unreachable',pointId:lobby.xpHunt!.point!.id}),'XP_NO_REPLACEMENT');expect(engine.view(lobby.id,'hider').xpUnreachableUsed).toBe(0);});
+it('XP-REPORT-08: forged coordinates or counters in a request are rejected',()=>{rejection(()=>send('hider',{type:'xp_unreachable',pointId:lobby.xpHunt!.point!.id,xpUnreachableUsed:0,longitude:13.4} as any),'INVALID_INPUT');});

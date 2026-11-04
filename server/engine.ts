@@ -1,4 +1,4 @@
-import {rules,teamChannel,activeExclusions,DEFAULT_XP} from '../shared/rules.js';
+import {rules,teamChannel,activeExclusions,DEFAULT_XP,XP_UNREACHABLE_LIMIT,XP_REPLACEMENT_EXTRA_METERS} from '../shared/rules.js';
 import {safeXpPosition,type PathCandidate} from './xp-paths.js';
 import type {ChatMessage} from '../shared/types.js';
 import { createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
@@ -12,6 +12,7 @@ export class GameError extends Error {
   constructor(public code:string,message:string,public stateChanged=false,public lobbyId?:string){super(message);this.name='GameError';}
 }
 interface PlayerState {
+  xpUnreachableUsed?:number;
   captureSecret?:string;
   lobbyGps?:{checkedAt:number;timestamp:number;accuracy:number};
   outsideAccumulatedMs:number; insideFixes?:number; insideFirstAt?:number; lastOutsideAt?:number; outsideFixes:number; lastReliableOutside:boolean;
@@ -44,6 +45,8 @@ export class GameEngine {
       if((lobby.settings.disconnectBehavior as string)==='pause'){lobby.settings.disconnectBehavior='continue';lobby.revision++;}
       lobby._engine??={players:{},phase:0,lastTick:this.now(),leftIds:[]};
       lobby._engine.leftIds??=[];
+      // Existing matches retain their point/progress when the manual gate is removed.
+      if(lobby.xpHunt?.point&&!lobby.xpHunt.point.confirmed){lobby.xpHunt.point.confirmed=true;delete lobby.xpHunt.message;lobby.revision++;}
       for(const p of lobby.players){lobby._engine.players[p.id]??=metadata();if(lobby.status==='paused')this.freezeOutside(lobby,p,lobby.pausedAt??this.now());}
       // Upgrade an existing pause once, preserving remaining game deadlines.
       if(lobby.status==='paused'&&!lobby._engine.manualPause){this.resumeLegacy(lobby);lobby.revision++;}
@@ -129,7 +132,7 @@ export class GameEngine {
     return clone({id:l.id,code:l.code,hostId:l.hostId,status:l.status,
       players:l.players.map(p=>({id:p.id,username:p.username,avatar_url:p.avatar_url,badge:p.badge,ready:p.ready,locationReady:l.status==='waiting'&&this.lobbyGpsReady(l,p),role:p.role,muted:p.muted,infectionPending:p.infectionPending,team:p.team,connected:p.connected,eliminated:p.eliminated,infectedAt:p.infectedAt,lastSeen:p.lastSeen})),
       settings:l.settings,zone:l.zone,activeZone:l.activeZone,createdAt:l.createdAt,startedAt:l.startedAt,endsAt:l.endsAt,pausedAt:l.pausedAt,previousStatus:l.previousStatus,
-      xpHunt:l.xpHunt,chat:(l._engine.chat??[]).filter(m=>m.channel==='all'||m.channel===teamChannel(self,l.settings)),pins,visibleLocations,events:l.events,captures:l.captures.filter(c=>c.targetId===userId||c.hunterId===userId),result:l.result,revision:l.revision,
+      xpHunt:l.xpHunt,xpUnreachableUsed:l._engine.players[userId].xpUnreachableUsed??0,chat:(l._engine.chat??[]).filter(m=>m.channel==='all'||m.channel===teamChannel(self,l.settings)),pins,visibleLocations,events:l.events,captures:l.captures.filter(c=>c.targetId===userId||c.hunterId===userId),result:l.result,revision:l.revision,
       self:{...self,locationReady:l.status==='waiting'&&this.lobbyGpsReady(l,self),...(self.role==='hider'&&!self.eliminated&&l.settings.captureMethod==='qr'&&l._engine.players[self.id].captureSecret?{captureQr:{token:this.qrToken(l,self,Math.floor(now/30000)),expiresAt:(Math.floor(now/30000)+2)*30000}}:{})},serverTime:now});
   }
   command(id:string,userId:string,input:Command):Lobby{
@@ -149,8 +152,9 @@ export class GameEngine {
       case 'draw_teams':this.host(l,userId);this.waiting(l);this.drawTeams(l);l.settings.randomRoles=false;l.players.forEach(player=>player.ready=false);this.event(l,'teams_drawn','Teams wurden auf dem Server ausgelost.',userId);break;
       case 'chat':{if(!['waiting','preparing','active','paused'].includes(l.status))fail('CHAT_DISABLED','Der Chat ist geschlossen.');if(p.muted)fail('MUTED','Du bist in dieser Lobby stummgeschaltet.');const channel=command.channel==='all'?'all':teamChannel(p,l.settings);if(!channel||command.channel==='team'&&l.status==='waiting')fail('FORBIDDEN','Teamchat ist erst nach der endgültigen Rollenverteilung verfügbar.');l._engine.chatRate??={};const recent=(l._engine.chatRate[p.id]??[]).filter(t=>now-t<10000);if(recent.length>=5)fail('RATE_LIMIT','Bitte warte kurz vor der nächsten Nachricht.');l._engine.chatRate[p.id]=[...recent,now];l._engine.chat??=[];l._engine.chat.push({id:randomUUID(),actorId:p.id,username:p.username,avatar_url:p.avatar_url,text:command.text,channel,at:now});l._engine.chat=l._engine.chat.slice(-200);break;}
       case 'mute':this.host(l,userId);this.member(l,command.playerId).muted=command.muted;break;
-      case 'xp_regenerate':this.host(l,userId);if(l.status!=='active'||!rules(l.settings).xpHunt)fail('XP_DISABLED','XP-Jagd ist nicht aktiv.');this.nextXp(l);break;
+      case 'xp_regenerate':this.host(l,userId);if(l.status!=='active'||!rules(l.settings).xpHunt)fail('XP_DISABLED','XP-Jagd ist nicht aktiv.');if(l.xpHunt?.point&&safeXpPosition(l.xpHunt.point,l.zone!,l.activeZone!,l.settings))fail('XP_POINT_ACTIVE','Nutze für einen aktiven Punkt die begrenzte Meldung „Nicht erreichbar“.');this.nextXp(l);break;
       case 'xp_confirm':this.host(l,userId);if(l.status!=='active'||!l.xpHunt?.point||l.xpHunt.point.id!==command.pointId)fail('STALE_POINT','Dieser Punkt ist nicht mehr aktuell.');l.xpHunt.point.confirmed=true;l.xpHunt.message=undefined;this.event(l,'xp_point','Ein neuer XP-Punkt wurde freigegeben.',userId);break;
+      case 'xp_unreachable':this.unreachableXp(l,p,command.pointId);break;
       case 'xp_collect':this.collectXp(l,p,command.pointId);break;
       case 'location_check':{
         this.waiting(l);if(p.role==='spectator')fail('LOCATION_DISABLED','Zuschauer benötigen keine Standortfreigabe.');
@@ -183,18 +187,42 @@ export class GameEngine {
 
   /** Trusted transport calls this with OSM-derived data; no client command accepts candidates. */
   prepareXp(id:string,candidates:PathCandidate[]){this.get(id)._engine.xpCandidates=clone(candidates);}
+  private activateXp(l:EngineLobby,candidate:PathCandidate){
+    const xp=l.xpHunt!;
+    if(xp.point)l._engine.xpPrevious=xp.point;
+    xp.point={...candidate,id:randomUUID(),radiusMeters:({...DEFAULT_XP,...l.settings.xp}).radiusMeters,confirmed:true};
+    xp.generation++;delete xp.message;
+    this.event(l,'xp_point','Ein neuer XP-Punkt ist verfügbar.');
+  }
   private nextXp(l:EngineLobby){
-    l.xpHunt??={collected:0,byPlayer:{},generation:0};const previous=l.xpHunt.point??l._engine.xpPrevious;if(previous)l._engine.xpPrevious=previous;
+    l.xpHunt??={collected:0,byPlayer:{},generation:0};const previous=l.xpHunt.point??l._engine.xpPrevious;
     const available=(l._engine.xpCandidates??[]).filter(c=>safeXpPosition(c,l.zone!,l.activeZone!,l.settings,previous));
+    if(available.length){this.activateXp(l,available[randomInt(available.length)]);return;}
+    if(previous)l._engine.xpPrevious=previous;
     delete l.xpHunt.point;l.xpHunt.generation++;
-    if(!available.length){l.xpHunt.message='Kein sicherer, ausreichend entfernter Punkt auf verfügbaren Fußwegen gefunden. Der Host kann Wegdaten erneut prüfen; es wird kein ungeprüfter Ersatzpunkt erzeugt.';return;}
-    const candidate=available[randomInt(available.length)];l.xpHunt.point={...candidate,id:randomUUID(),radiusMeters:({...DEFAULT_XP,...l.settings.xp}).radiusMeters,confirmed:false};l.xpHunt.message='Host-Bestätigung erforderlich: Wegzugang, Umgebung und sichere Erreichbarkeit vor Ort prüfen.';
-    this.event(l,'xp_candidate','Ein XP-Punkt wartet auf die Sicherheitsbestätigung des Hosts.');
+    l.xpHunt.message='Kein sicherer, ausreichend entfernter Punkt auf verfügbaren Fußwegen gefunden. Der Host kann Wegdaten erneut laden; es wird kein ungeprüfter Ersatzpunkt erzeugt.';
+  }
+  private unreachableXp(l:EngineLobby,p:Player,id:string){
+    if(l.status!=='active'||!rules(l.settings).xpHunt)fail('XP_DISABLED','XP-Jagd ist nicht aktiv.');
+    if(p.role!=='hider'||p.eliminated||p.infectionPending||!p.connected)fail('INVALID_ROLE','Nur aktive Hider dürfen einen Punkt als nicht erreichbar melden.');
+    const target=l.xpHunt?.point;
+    if(!target||target.id!==id)fail('STALE_POINT','Dieser Punkt ist nicht mehr aktuell.');
+    const meta=l._engine.players[p.id],used=meta.xpUnreachableUsed??0,loc=p.location,now=this.now();
+    if(used>=XP_UNREACHABLE_LIMIT)fail('XP_REPORT_LIMIT','Du hast bereits fünf Punkte in diesem Match ersetzt.');
+    if(!loc||!p.locationSharing||meta.unreliableLocation||now-loc.timestamp>10000||now-(meta.lastLocationAt??0)>10000)fail('GPS_REQUIRED','Zum Ersetzen benötigst du einen aktuellen, genauen Standort.');
+    const metersFromPlayer=(c:PathCandidate)=>distance([loc.longitude,loc.latitude],[c.longitude,c.latitude],{units:'meters'});
+    const minimum=metersFromPlayer(target)+Math.max(XP_REPLACEMENT_EXTRA_METERS,2*loc.accuracy);
+    const available=(l._engine.xpCandidates??[]).filter(c=>safeXpPosition(c,l.zone!,l.activeZone!,l.settings,target)&&metersFromPlayer(c)>=minimum);
+    // No mutation on failure: a report is used only when a replacement exists.
+    if(!available.length)fail('XP_NO_REPLACEMENT','Kein weiter entfernter, geeigneter Fußweg-Punkt verfügbar. Der bisherige Punkt bleibt bestehen; deine Meldung wird nicht verbraucht.');
+    this.activateXp(l,available[randomInt(available.length)]);
+    meta.xpUnreachableUsed=used+1;
+    this.event(l,'xp_unreachable',`${p.username} hat einen nicht erreichbaren XP-Punkt ersetzt (${used+1}/${XP_UNREACHABLE_LIMIT}).`,p.id);
   }
   private collectXp(l:EngineLobby,p:Player,id:string){
     if(l.status!=='active'||!rules(l.settings).xpHunt)fail('XP_DISABLED','XP-Jagd ist nicht aktiv.');
     if(p.role!=='hider'||p.eliminated||!p.connected)fail('INVALID_ROLE','Nur aktive Hider dürfen Punkte sammeln.');
-    const target=l.xpHunt?.point;if(!target||target.id!==id||!target.confirmed)fail('STALE_POINT','Dieser Punkt ist nicht aktiv oder noch nicht bestätigt.');
+    const target=l.xpHunt?.point;if(!target||target.id!==id)fail('STALE_POINT','Dieser Punkt ist nicht mehr aktuell.');
     const loc=p.location,meta=l._engine.players[p.id],now=this.now();
     if(!loc||!p.locationSharing||meta.unreliableLocation||now-loc.timestamp>10000||now-(meta.lastLocationAt??0)>10000)fail('GPS_REQUIRED','Zum Sammeln benötigst du einen aktuellen, genauen Standort.');
     if(!safeXpPosition(target,l.zone!,l.activeZone!,l.settings))fail('UNSAFE_POINT','Dieser Punkt liegt nicht mehr im sicheren Spielgebiet.');
