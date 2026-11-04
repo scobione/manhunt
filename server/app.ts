@@ -56,7 +56,9 @@ export async function createBackend(options:BackendOptions={}){
   app.use(helmet({referrerPolicy:{policy:'no-referrer'}}));
   app.use(cors({origin:(origin,callback)=>callback(null,!origin||allowedOrigins.includes(origin)),credentials:false}));
   app.use(express.json({limit:'64kb'}));
-  app.use('/api',rateLimit({windowMs:60_000,limit:180,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Zu viele Anfragen. Bitte warte einen Moment.'},skip:req=>req.path==='/health'}));
+  // Shared Wi-Fi/mobile NAT must not pool successful requests from different players.
+  // Failed/unauthenticated traffic stays IP-limited; verified users have their own budget below.
+  app.use('/api',rateLimit({windowMs:60_000,limit:180,skipSuccessfulRequests:true,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Zu viele Anfragen. Bitte warte einen Moment.'},skip:req=>req.path==='/health'}));
   app.use('/api',(_req,res,next)=>{res.set('Cache-Control','no-store');next();});
   const httpServer=createServer(app);
   const io=new Server<never,never,never,UserSocketData>(httpServer,{cors:{origin:allowedOrigins,credentials:false},maxHttpBufferSize:64*1024,pingTimeout:20_000,pingInterval:25_000,connectionStateRecovery:undefined,allowRequest:(req,callback)=>callback(null,!req.headers.origin||allowedOrigins.includes(req.headers.origin))});
@@ -129,6 +131,7 @@ export async function createBackend(options:BackendOptions={}){
   }
   const requireReady=()=>{repo();if(!healthy)throw new HttpError(503,'Der Spielserver wartet auf eine sichere Datenbankverbindung.');};
   app.get('/api/health',(_req,res)=>res.status(repository&&!healthy?503:200).json({status:healthy?'ok':'configuration_required',configured:!!repository,version:RELEASE_VERSION}));
+  app.use(['/api/config','/api/account/username'],rateLimit({windowMs:60_000,limit:180,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Zu viele öffentliche Anfragen. Bitte warte einen Moment.'}}));
   app.get('/api/config',(_req,res)=>res.json({configured:!!repository&&healthy,authConfigured:!!supabase||testing,pushPublicKey:pushConfigured?process.env.VAPID_PUBLIC_KEY:undefined,accountControls:!!accounts}));
   app.get('/api/account/username',(req,res,next)=>{if(!accounts){next();return;}accounts.available(req.query.name).then(value=>res.json(value)).catch(next);});
   const auth:RequestHandler=async(req,res,next)=>{

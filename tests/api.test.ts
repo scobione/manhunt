@@ -61,6 +61,24 @@ describe('authenticated API and Socket.IO transport',()=>{
   await expect(connect(alice)).rejects.toThrow(/Zu viele/);
   const other=await connect(bob);expect(other.connected).toBe(true);
  });
+ it('HTTP-NAT-01: successful requests from a group share an IP without exhausting each other; per-account limits remain',async()=>{
+  const group=Array.from({length:30},(_,i)=>({id:randomUUID(),name:`HTTP_Group_${i}`}));
+  for(let round=0;round<7;round++)for(const person of group)await request(backend.app).get('/api/profile').set(auth(person)).expect(200);
+  await request(backend.app).get('/api/config').expect(200);
+  for(let i=0;i<120;i++)await request(backend.app).get('/api/profile').set(auth(alice)).expect(200);
+  await request(backend.app).get('/api/profile').set(auth(alice)).expect(429);
+  await request(backend.app).get('/api/profile').set(auth(bob)).expect(200);
+ });
+ it('HTTP-NAT-02: repeated invalid authentication remains limited by IP',async()=>{
+  for(let i=0;i<180;i++)await request(backend.app).get('/api/profile').expect(401);
+  await request(backend.app).get('/api/profile').expect(429);
+  await request(backend.app).get('/api/health').expect(200);
+ });
+ it('HTTP-NAT-03: public configuration has its own bounded IP budget',async()=>{
+  for(let i=0;i<180;i++)await request(backend.app).get('/api/config').expect(200);
+  await request(backend.app).get('/api/config').expect(429);
+  await request(backend.app).get('/api/profile').set(auth(bob)).expect(200);
+ });
  it('rejects missing or malformed credentials before returning a profile',async()=>{
   await request(backend.app).get('/api/profile').expect(401);
   await request(backend.app).get('/api/profile').set('Authorization','Bearer test:invalid:no').expect(401);

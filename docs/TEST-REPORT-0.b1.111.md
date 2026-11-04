@@ -4,8 +4,10 @@ Stand: 4. November 2026. Alle hier als bestanden verzeichneten Tests wurden loka
 
 ## Ausgeführt
 
-- 289 Unit-, Engine-, API-, Datenbank-, Feedback-, Badge- und Simulationstests: bestanden.
-- Vier gezielte Chromium-Browserfälle: bestanden. Zwei XP-Abläufe mit getrennten Hider-Sitzungen bei 320 und 1440 Pixeln sowie Kartenzoom auf Smartphone- und Desktopgröße.
+- 292 Unit-, Engine-, API-, Datenbank-, Feedback-, Badge- und Simulationstests: bestanden.
+- 33 Edge-Browserfälle bestanden, einschließlich zweier XP-Abläufe mit getrennten Hider-Sitzungen bei 320 und 1440 Pixeln sowie Kartenzoom auf Smartphone- und Desktopgröße.
+- 10 Admin-Browserfälle bestanden, einschließlich Simulation, Feedback, Badge-Anzeige und Passwort-Ersteinrichtung.
+- Die Änderung des gemeinsamen HTTP-Limits wurde zusätzlich mit allen 23 API-/Socket-Unitfällen nachgeprüft; deren drei neue Fälle sind in den 292 Unitfällen enthalten.
 - Produktionsbuilds für Spiel und Adminportal einschließlich TypeScript: bestanden.
 - Keine Datenbankmigration für diese Änderung erforderlich.
 
@@ -34,6 +36,16 @@ Voraussetzung für Engine-Fälle: isolierte Spielengine, drei Testspieler, XP-Ja
 | MAP-ZOOM-DESKTOP | Derselbe Kartenablauf mit Maus | Marker bleiben verankert und Kartenbutton bleibt klickbar | BESTANDEN |
 
 Die bisherigen XP-Akzeptanztests prüfen weiterhin Sammlung, Doppelsammlung, Radius/GPS, Zombie-Rechte, Siegbedingungen, Schrumpfzonen und fehlende Wegdaten. Die normale Host-Bestätigung ist dort nicht mehr Voraussetzung.
+
+## Korrektur aus dem ersten CI-Lauf
+
+Der erste GitHub-Lauf von 0.b1.111 scheiterte beim Aufbau des Wiederverbindungstests. Die gespeicherte Browser-Spur zeigte HTTP 429 bei `/api/config`; die Klickaktion wartete deshalb auf einer Anmeldeseite statt im Erstellen-Formular. Ursache war das von allen erfolgreichen HTTP-Anfragen gemeinsam verbrauchte IP-Kontingent im Node-/Socket.IO-Backend. Erfolgreiche Anfragen werden jetzt pro verifiziertem Konto begrenzt; Fehler und öffentliche Konfigurations-/Benutzernamenabfragen behalten getrennte IP-Limits. Die drei neuen Server-Negativ-/Lasttests prüfen 30 Konten im selben Netzwerk, das individuelle 120-Anfragen-Limit, 180 fehlerhafte Anmeldungen und 180 öffentliche Konfigurationsabfragen. Ein erneuter CI-Lauf ist erforderlich; der erste Fehlschlag wird nicht als bestanden gezählt.
+
+## Live-Prüfungen
+
+Spiel und Adminportal wurden über die echten Vercel-Adressen aufgerufen: vier öffentliche Spiel-Browserprüfungen bestanden; Admin-Login und installierbares Manifest bei 320 und 1440 Pixeln sichtbar, Simulationsframe ohne Freigabe gesperrt, keine Browserfehler. Backend Health meldet `0.b1.111`; Badges, Admin-Simulation und Feedback weisen unauthentifizierte Zugriffe mit 401 zurück. Persönliche Konten wurden dabei nicht verwendet.
+
+Ein zusätzlicher Nur-Lese-Abruf beim echten Overpass-Dienst war aus dieser Umgebung nicht möglich (HTTP 406, auch beim Status-Endpunkt). Dieser externe Integrationstest ist **BLOCKIERT**, nicht bestanden. Isolierte Wegdatenprüfungen sind davon getrennt. Das ist kein Nachweis darüber, ob der Dienst vom Supabase-Rechenzentrum aus erreichbar ist.
 
 ## Prüfgrenzen
 

@@ -12,6 +12,8 @@ Das Admin-Simulationsspiel verwendet dieselben Regeln und Komponenten. Feedback 
 
 Kartenkorrektur: GPS-Marker bleiben in der Kartenebene; Kartenbuttons können auch dann bedient werden, wenn ein Marker hinter ihnen liegt. Diese Korrektur behebt den im GitHub-CI-Lauf von 0.b1.110 gefundenen mobilen Klickfehler.
 
+Zusätzliche CI-Korrektur: Im optionalen Node-/Socket.IO-Backend teilen erfolgreiche Anfragen mehrerer Spieler im selben WLAN nicht mehr ein einziges kleines IP-Kontingent. Verifizierte Konten bleiben individuell begrenzt; fehlgeschlagene Anfragen und öffentliche Konfigurations-/Benutzernamenabfragen behalten getrennte IP-Limits. Dies behebt den im vollständigen CI-Lauf aufgezeichneten HTTP-429-Fehler beim erneuten Laden der Konfiguration. Das produktive Supabase-Backend verwendet bereits individuelle Quoten.
+
 ## Betrieb
 
 Bestehende Vercel-Projekte und Supabase Edge Function, keine neue Datenbankmigration und keine neuen Umgebungsvariablen. Private Zähler werden im bestehenden serverseitigen Match-Checkpoint gespeichert und nur dem jeweiligen Spieler ausgegeben. Keine neuen kostenpflichtigen Dienste. Der automatische GitHub-Deploy baut Spiel und eigenständiges Adminportal.
