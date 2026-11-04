@@ -16,7 +16,7 @@ import {HttpError,type Identity} from '../server/auth';
 if(process.env.NODE_ENV!=='test'||process.env.TEST_AUTH!=='true')throw Error('Isolated admin fixture requires explicit test opt-in.');
 const features=new TestFeatureStore(),simulations=new TestSimulationStore();
 const store=new TestAccountStore(),edge=new TestEdgeStore(),service=new AccountService(store,Date.now,new TestTrafficStore(edge.lobbies),new FeatureService(features),new SimulationService(simulations)),tokens=new Map<string,Identity>(),confirmed=new Set<string>(),otps=new Map<string,{code:string;expires:number;used:boolean}>();
-store.repo.checkpoints=edge.lobbies;
+store.repo.checkpoints=edge.lobbies;features.repository=store.repo;
 const commit=edge.commit.bind(edge);edge.commit=async(revision,lobbies)=>{const ok=await commit(revision,lobbies);if(ok)lobbies.forEach(l=>features.finish(l));return ok;};
 const admin={id:randomUUID(),username:'AdminFixture',email:'admin@isolated.invalid',expiresAt:Date.now()+3600000},player={id:randomUUID(),username:'PlayerFixture',email:'player@isolated.invalid',expiresAt:Date.now()+3600000};
 await store.seed(admin,admin.email,'Admin-Test-Password1',true);await store.seed(player,player.email,'Player-Test-Password1');confirmed.add(admin.id);confirmed.add(player.id);

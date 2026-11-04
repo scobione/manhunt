@@ -1,3 +1,7 @@
+# Erweiterung 0.B2
+
+Neue Spielerprofile und Badge-Sichtbarkeit: [Releasebericht](RELEASE-0.B2.md). Vor dem Backend-/Frontend-Update die additive Migration `profile_badge_visibility` anwenden. Sie erweitert dieselbe Supabase-Datenbank um eine RLS-geschützte Präferenztabelle und zwei servergebundene Profilfunktionen. Keine neuen Variablen oder Dienste. Die gespeicherten Benutzer und Erfolge bleiben erhalten. Die CLI-generierte lokale Migration ist im Repository enthalten; für dieses bestehende Projekt werden Migrationen über die verbundene Supabase-Integration angewendet.
+
 # Erweiterung 0.b1.111
 
 Automatisch aktive XP-Punkte, fünf persönliche Meldungen nicht erreichbarer Punkte pro Match und weiter entfernte Ersatzpunkte: [Releasebericht](RELEASE-0.b1.111.md), [Tests](TEST-REPORT-0.b1.111.md). Bestehende Vercel-Projekte und Supabase-Checkpoints bleiben erhalten; keine Migration oder neuen Geheimnisse. Der Backend-Deploy muss vor beziehungsweise zusammen mit dem neuen Frontend erfolgen. Für den tatsächlichen Live-Stand gelten die Vercel-Deploymentdaten und `/api/health` der Edge Function.

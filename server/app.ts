@@ -135,7 +135,7 @@ export async function createBackend(options:BackendOptions={}){
   app.get('/api/config',(_req,res)=>res.json({configured:!!repository&&healthy,authConfigured:!!supabase||testing,pushPublicKey:pushConfigured?process.env.VAPID_PUBLIC_KEY:undefined,accountControls:!!accounts}));
   app.get('/api/account/username',(req,res,next)=>{if(!accounts){next();return;}accounts.available(req.query.name).then(value=>res.json(value)).catch(next);});
   const auth:RequestHandler=async(req,res,next)=>{
-    try{requireReady();const identity=await authenticate(bearer(req),supabase);limiter.take(`api:${identity.id}`,120,60_000);res.locals.identity=identity;if(accounts&&(req.path==='/badges'||req.path.startsWith('/badges/')||req.path==='/feedback'||req.path.startsWith('/feedback/')||req.path==='/traffic'||req.path==='/account'||req.path.startsWith('/account/')||req.path.startsWith('/admin/'))){res.json(await accounts.handle(identity,bearer(req),req.path,req.method,req.body??{},new URL(req.originalUrl,'http://localhost').searchParams,req.get('x-manhunt-admin-session')??null));return;}await accounts?.requireGame(identity);res.locals.profile=await repo().getProfile(identity);next();}catch(error){next(error);}
+    try{requireReady();const identity=await authenticate(bearer(req),supabase);limiter.take(`api:${identity.id}`,120,60_000);res.locals.identity=identity;if(accounts&&(req.path==='/badges'||req.path.startsWith('/badges/')||req.path.startsWith('/players/')||req.path==='/feedback'||req.path.startsWith('/feedback/')||req.path==='/traffic'||req.path==='/account'||req.path.startsWith('/account/')||req.path.startsWith('/admin/'))){const value=await accounts.handle(identity,bearer(req),req.path,req.method,req.body??{},new URL(req.originalUrl,'http://localhost').searchParams,req.get('x-manhunt-admin-session')??null);if(req.method==='PATCH'&&['/badges/selected','/badges/visibility'].includes(req.path))await refreshProfile(await repo().getProfile(identity));res.json(value);return;}await accounts?.requireGame(identity);res.locals.profile=await repo().getProfile(identity);next();}catch(error){next(error);}
   };
   app.use('/api',auth);
   const identity=(res:express.Response)=>res.locals.identity as Identity;
@@ -144,7 +144,7 @@ export async function createBackend(options:BackendOptions={}){
     await serialize(async()=>{
       for(const socket of io.sockets.sockets.values())if(socket.data.identity.id===profile.id)socket.data.profile=profile;
       const lobby=engine.lobbyFor(profile.id);
-      if(lobby){await commit(()=>{const player=lobby.players.find(p=>p.id===profile.id)!;player.username=profile.username;player.avatar_url=profile.avatar_url;lobby.revision++;return{lobby,data:null};});}
+      if(lobby){await commit(()=>{const player=lobby.players.find(p=>p.id===profile.id)!;player.username=profile.username;player.avatar_url=profile.avatar_url;player.badge=profile.badge;lobby.revision++;return{lobby,data:null};});}
     });
     await notifySocial([profile.id,...(await repo().social(profile.id)).friends.map(f=>f.id)]);
   };

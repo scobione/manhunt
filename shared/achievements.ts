@@ -4,7 +4,7 @@ export interface BadgeDefinition {id:string;name:string;description:string;icon:
 export interface EquippedBadge {id:string;name:string;icon:BadgeDefinition['icon'];level:number;stageName:string;}
 export interface PlayerBadge extends BadgeDefinition {level:number;progress:number;unlockedAt:string|null;upgradedAt:string|null;}
 export interface BadgeNotice {id:string;badgeId:string;name:string;level:number;at:string;}
-export interface BadgeOverview {badges:PlayerBadge[];selected:EquippedBadge|null;notices:BadgeNotice[];registered:boolean;}
+export interface BadgeOverview {badges:PlayerBadge[];selected:EquippedBadge|null;notices:BadgeNotice[];registered:boolean;visibleBadgeIds?:string[];}
 export type AchievementCounters=Record<BadgeMetric,number>;
 export const emptyCounters=():AchievementCounters=>({feedback:0,captures:0,hiderWins:0,games:0,huntPoints:0});
 export const DEFAULT_BADGES:BadgeDefinition[]=[
@@ -17,7 +17,7 @@ export const DEFAULT_BADGES:BadgeDefinition[]=[
 export function badgeLevel(definition:BadgeDefinition,progress:number){return Math.min(10,definition.thresholds.filter(value=>progress>=value).length);}
 export function equippedBadge(badge:PlayerBadge):EquippedBadge|null{return badge.level>0?{id:badge.id,name:badge.name,icon:badge.icon,level:badge.level,stageName:badge.stageNames[badge.level-1]??badge.name}:null;}
 export function badgeLabel(badge:Pick<EquippedBadge,'name'|'id'|'level'>){return badge.id==='beta-tester'?badge.name:`${badge.name} ${ROMAN_LEVELS[badge.level-1]??''}`;}
-export function badgeProgress(badge:PlayerBadge){const next=badge.thresholds[badge.level];return next===undefined?'Maximale Stufe erreicht':`${badge.progress}/${next} ${badge.unit} bis ${badge.id==='beta-tester'?badge.name:`${badge.name} ${ROMAN_LEVELS[badge.level]}`}`;}
+export function badgeProgress(badge:Pick<PlayerBadge,'thresholds'|'level'|'progress'|'unit'|'id'|'name'>){const next=badge.thresholds[badge.level];return next===undefined?'Maximale Stufe erreicht':`${badge.progress}/${next} ${badge.unit} bis ${badge.id==='beta-tester'?badge.name:`${badge.name} ${ROMAN_LEVELS[badge.level]}`}`;}
 
 /** Used for isolated simulation state as well; never writes to live accounts. */
 export function advanceBadges(definitions:BadgeDefinition[],counters:AchievementCounters,previous:PlayerBadge[],now:number):PlayerBadge[]{

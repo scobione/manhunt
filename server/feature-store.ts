@@ -1,10 +1,14 @@
 import type {SupabaseClient} from '@supabase/supabase-js';
 import type {BadgeDefinition,BadgeOverview} from '../shared/achievements';
 import type {FeedbackOffer,FeedbackSettings,FeedbackAnswer} from '../shared/feedback';
+import type {FriendProfile} from '../shared/profiles';
+import {resolveProfileAvatar} from './repository';
 import {HttpError} from './auth';
 export interface FeedbackFilters {from:string;until:string;mode:string|null;rating:number|null;page:number;}
 export interface FeatureStore {
  badges(user:string):Promise<BadgeOverview>;
+ visibility(user:string,badge:string,visible:boolean):Promise<BadgeOverview>;
+ profile(viewer:string,target:string):Promise<FriendProfile>;
  equip(user:string,badge:string|null):Promise<BadgeOverview>;
  seen(user:string,ids:string[]):Promise<void>;
  offer(user:string,match:string):Promise<FeedbackOffer|null>;
@@ -19,6 +23,7 @@ export interface FeatureStore {
 }
 function checked(error:{code?:string;message?:string}|null){
  if(!error)return;
+ if(error.message?.includes('profile_not_found'))throw new HttpError(404,'Dieses Profil ist nicht verfügbar.');
  const messages:Record<string,string>={registered_required:'Ein registriertes Konto ist erforderlich.',badge_locked:'Dieses Badge ist noch gesperrt.',feedback_not_found:'Diese Feedback-Abfrage ist nicht verfügbar.',feedback_closed:'Diese Abfrage wurde bereits abgeschlossen.',settings_changed:'Die Einstellungen wurden inzwischen geändert. Bitte lade sie erneut.',invalid_badge_definition:'Die Badge-Definition ist ungültig.'};
  const found=Object.entries(messages).find(([key])=>error.message?.includes(key));
  if(found)throw new HttpError(409,found[1]);
@@ -30,6 +35,8 @@ export class SupabaseFeatureStore implements FeatureStore {
  constructor(private db:SupabaseClient){}
  private async rpc<T>(name:string,args:Record<string,unknown>):Promise<T>{const r=await this.db.rpc(name,args);checked(r.error);return r.data as T;}
  badges(user:string){return this.rpc<BadgeOverview>('read_player_badges',{p_user:user});}
+ visibility(user:string,badge:string,visible:boolean){return this.rpc<BadgeOverview>('set_badge_visibility',{p_user:user,p_badge:badge,p_visible:visible});}
+ async profile(viewer:string,target:string){const value=await this.rpc<FriendProfile>('read_friend_profile',{p_viewer:viewer,p_target:target});return resolveProfileAvatar(this.db,value);}
  equip(user:string,badge:string|null){return this.rpc<BadgeOverview>('choose_profile_badge',{p_user:user,p_badge:badge});}
  async seen(user:string,ids:string[]){if(!ids.length)return;const r=await this.db.from('badge_notices').update({seen_at:new Date().toISOString()}).eq('user_id',user).in('id',ids).is('seen_at',null);checked(r.error);}
  async offer(user:string,match:string){const r=await this.db.from('feedback_offers').select(offerColumns).eq('user_id',user).eq('match_id',match).maybeSingle();checked(r.error);return offerValue(r.data);}

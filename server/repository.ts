@@ -60,10 +60,8 @@ const noticeText:Record<string,[string,string]>={
   friend_accepted:['Freundschaft bestätigt','Ihr könnt euch jetzt in eine Lobby einladen.'],
   lobby_invite:['Lobby-Einladung','Ein Freund hat dich in eine private Lobby eingeladen.'],
 };
-export class SupabaseRepository implements Repository {
-  constructor(readonly db:SupabaseClient) {}
-  /** Private storage object locators are never returned to the client as public URLs. */
-  private async withAvatar(profile:Profile):Promise<Profile>{
+/** Reuse the same storage boundary for own and friend profile projections. */
+export async function resolveProfileAvatar<T extends {id:string;avatar_url:string|null}>(db:SupabaseClient,profile:T):Promise<T>{
     if(!profile.avatar_url)return profile;
     try{
       const url=new URL(profile.avatar_url), origin=process.env.SUPABASE_URL;
@@ -71,12 +69,15 @@ export class SupabaseRepository implements Repository {
       if(origin && url.origin===new URL(origin).origin && url.pathname.startsWith(prefix)){
         const path=decodeURIComponent(url.pathname.slice(prefix.length));
         if(!path.startsWith(profile.id+'/'))return {...profile,avatar_url:null};
-        const {data,error}=await this.db.storage.from('avatars').createSignedUrl(path,86400);
+        const {data,error}=await db.storage.from('avatars').createSignedUrl(path,86400);
         return {...profile,avatar_url:error?null:data.signedUrl};
       }
       return /^(lh[0-9]+\.)?googleusercontent\.com$/.test(url.hostname)&&url.protocol==='https:'?profile:{...profile,avatar_url:null};
     }catch{return {...profile,avatar_url:null};}
-  }
+}
+export class SupabaseRepository implements Repository {
+  constructor(readonly db:SupabaseClient) {}
+  private withAvatar(profile:Profile):Promise<Profile>{return resolveProfileAvatar(this.db,profile);}
   async setAvatar(id:string,path:string):Promise<Profile>{
     const file=path.slice(id.length+1);
     if(!path.startsWith(id+'/')||!file||file.includes('/')||!/^[-a-zA-Z0-9_.]+$/.test(file))throw new HttpError(400,'Ungültiger Profilbildpfad.');
@@ -90,7 +91,7 @@ export class SupabaseRepository implements Repository {
   }
   async getProfile(identity:Identity):Promise<Profile> {
     const {data,error}=await this.db.from('profiles').select(profileColumns).eq('id',identity.id).maybeSingle();check(error);
-    if(data){const badge=await this.db.from('badge_equipped').select('badge_id,player_badges(level,badge_definitions(definition))').eq('user_id',identity.id).maybeSingle();check(badge.error);const equipped=badge.data as any;const def=equipped?.player_badges?.badge_definitions?.definition;const selected=def?{id:def.id,name:def.name,icon:def.icon,level:equipped.player_badges.level,stageName:def.stageNames[equipped.player_badges.level-1]}:null;const progress=await this.db.from('account_progress').select('total_xp,games,wins,losses,draws,captures,survivals,hunt_points').eq('user_id',identity.id).maybeSingle();check(progress.error);return this.withAvatar({...data,badge:selected,...(progress.data?{progress:progress.data}:{})} as Profile);}
+    if(data){const badge=await this.db.from('badge_equipped').select('badge_id,player_badges(level,badge_definitions(definition))').eq('user_id',identity.id).maybeSingle();check(badge.error);const equipped=badge.data as any;const visibility=equipped?await this.db.from('badge_visibility').select('visible').eq('user_id',identity.id).eq('badge_id',equipped.badge_id).maybeSingle():{data:null,error:null};check(visibility.error);const def=equipped?.player_badges?.badge_definitions?.definition;const selected=def&&visibility.data?.visible!==false?{id:def.id,name:def.name,icon:def.icon,level:equipped.player_badges.level,stageName:def.stageNames[equipped.player_badges.level-1]}:null;const progress=await this.db.from('account_progress').select('total_xp,games,wins,losses,draws,captures,survivals,hunt_points').eq('user_id',identity.id).maybeSingle();check(progress.error);return this.withAvatar({...data,badge:selected,...(progress.data?{progress:progress.data}:{})} as Profile);}
     // Covers externally provisioned accounts as well as auth-trigger bootstrap.
     const base=(identity.username ?? 'spieler').normalize('NFKD').replace(/[^a-zA-Z0-9_]/g,'').slice(0,16) || 'spieler';
     const avatar = typeof identity.avatarUrl==='string' && /^https:\/\/[^/]*googleusercontent\.com\//.test(identity.avatarUrl) ? identity.avatarUrl : null;

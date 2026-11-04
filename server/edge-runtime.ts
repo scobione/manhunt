@@ -127,7 +127,11 @@ export function createEdgeHandler({repository:repo,store,verify,origins,push,pat
       if(!auth?.startsWith('Bearer '))throw new HttpError(401,'Bitte melde dich an.');
       const identity=await verify(auth.slice(7)),id=identity.id;
       await store.quota(id,'api',120);
-      if(accounts&&(path==='/badges'||path.startsWith('/badges/')||path==='/feedback'||path.startsWith('/feedback/')||path==='/traffic'||path==='/account'||path.startsWith('/account/')||path.startsWith('/admin/')))return respond(await accounts.handle(identity,auth.slice(7),path,method,['POST','PATCH','DELETE'].includes(method)?await jsonBody(request):{},new URL(request.url).searchParams,request.headers.get('x-manhunt-admin-session')));
+      if(accounts&&(path==='/badges'||path.startsWith('/badges/')||path.startsWith('/players/')||path==='/feedback'||path.startsWith('/feedback/')||path==='/traffic'||path==='/account'||path.startsWith('/account/')||path.startsWith('/admin/'))){
+        const value=await accounts.handle(identity,auth.slice(7),path,method,['POST','PATCH','DELETE'].includes(method)?await jsonBody(request):{},new URL(request.url).searchParams,request.headers.get('x-manhunt-admin-session'));
+        if(method==='PATCH'&&['/badges/selected','/badges/visibility'].includes(path)){await store.touch(id);await game(identity,await repo.getProfile(identity),'lobby:sync',{});}
+        return respond(value);
+      }
       await accounts?.requireGame(identity);
       const profile=await repo.getProfile(identity);
       await store.touch(id);

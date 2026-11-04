@@ -19,6 +19,13 @@ export class FeatureService {
  constructor(readonly store:FeatureStore){}
  async player(identity:Identity,path:string,method:string,body:unknown,query:URLSearchParams){
   if(path==='/badges'&&method==='GET')return this.store.badges(identity.id);
+  if(path==='/badges/visibility'&&method==='PATCH'){
+   if(identity.isGuest)throw new HttpError(403,'Dauerhafte Badges benötigen ein registriertes Konto.');
+   const {badgeId,visible}=z.object({badgeId:z.string().min(1).max(40),visible:z.boolean()}).strict().parse(body);
+   return this.store.visibility(identity.id,badgeId,visible);
+  }
+  const profile=path.match(/^\/players\/([^/]+)\/profile$/);
+  if(profile&&method==='GET')return this.store.profile(identity.id,id.parse(profile[1]));
   if(path==='/badges/selected'&&method==='PATCH'){
    if(identity.isGuest)throw new HttpError(403,'Dauerhafte Badges benötigen ein registriertes Konto.');
    const {badgeId}=z.object({badgeId:z.string().min(1).max(40).nullable()}).strict().parse(body);return this.store.equip(identity.id,badgeId);

@@ -21,6 +21,8 @@ async function userRole(id:string, sql:string, params:unknown[]=[]){
 }
 async function rpc(name:string,args:unknown[]){
  await db.exec('set role service_role');
+ // Model a real service-role request, rather than retaining a previous user's JWT claims.
+ await db.query("select set_config('request.jwt.claim.sub','',false),set_config('request.jwt.claims','{\"role\":\"service_role\"}',false)");
  try{return await db.query<{value:unknown}>(`select public.${name}(${args.map((_,i)=>'$'+(i+1)).join(',')}) as value`,args);}finally{await db.exec('reset role');}
 }
 async function friendCode(id:string){return (await db.query<{friend_code:string}>('select friend_code from profiles where id=$1',[id])).rows[0].friend_code;}
@@ -92,6 +94,32 @@ describe('feedback and achievement persistence (isolated PostgreSQL)',()=>{
   expect(((await rpc('read_player_badges',[a])).rows[0].value as any).selected.id).toBe('hunter');
   await db.query('update achievement_counters set captures=100000 where user_id=$1',[a]);await rpc('refresh_player_badges',[a]);
   expect(((await rpc('read_player_badges',[a])).rows[0].value as any).selected.level).toBe(10);
+ });
+ it('PROFILE-B2-SQL-01 only accepted friends receive visible unlocked badges, hiding preserves progress and clears selected badge',async()=>{
+  await finished(20);await expect(rpc('read_friend_profile',[b,a])).rejects.toThrow(/profile_not_found/);await befriend();
+  let friend=(await rpc('read_friend_profile',[b,a])).rows[0].value as any;
+  expect(friend.id).toBe(a);expect(friend.badges.find((v:any)=>v.id==='hunter').level).toBe(2);
+  expect(friend).not.toHaveProperty('friend_code');expect(friend).not.toHaveProperty('email');
+  expect(friend.badges[0]).not.toHaveProperty('thresholds');expect(friend.badges[0]).not.toHaveProperty('progress');
+  await rpc('choose_profile_badge',[a,'hunter']);const hidden=(await rpc('set_badge_visibility',[a,'hunter',false])).rows[0].value as any;
+  expect(hidden.visibleBadgeIds).not.toContain('hunter');expect(hidden.selected).toBeNull();expect(hidden.badges.find((v:any)=>v.id==='hunter').level).toBe(2);
+  friend=(await rpc('read_friend_profile',[b,a])).rows[0].value as any;expect(friend.badges.some((v:any)=>v.id==='hunter')).toBe(false);
+  expect((await userRole(b,'select * from public.badge_visibility')).rows).toHaveLength(0);
+  await expect(userRole(a,"update public.badge_visibility set visible=true")).rejects.toThrow();
+  await expect(userRole(b,`select public.read_friend_profile('${b}','${a}')`)).rejects.toThrow();
+  await expect(userRole(a,`select public.set_badge_visibility('${a}','hunter',true)`)).rejects.toThrow();
+  await rpc('set_badge_visibility',[a,'hunter',true]);expect(((await rpc('read_friend_profile',[b,a])).rows[0].value as any).badges.find((v:any)=>v.id==='hunter').level).toBe(2);
+ });
+ it('PROFILE-B2-SQL-02 block in either direction, removed friendship and disabled target revoke profile reads',async()=>{
+  await finished();await befriend();await rpc('read_friend_profile',[b,a]);
+  for(const [user,target] of [[a,b],[b,a]]){await db.query('insert into public.blocked_users(user_id,blocked_id) values($1,$2)',[user,target]);await expect(rpc('read_friend_profile',[b,a])).rejects.toThrow(/profile_not_found/);await db.query('delete from public.blocked_users');}
+  await db.query('insert into public.account_controls(user_id,disabled) values($1,true) on conflict(user_id) do update set disabled=true',[a]);await expect(rpc('read_friend_profile',[b,a])).rejects.toThrow(/profile_not_found/);await db.query('update public.account_controls set disabled=false where user_id=$1',[a]);
+  await db.query('delete from public.friendships');await expect(rpc('read_friend_profile',[b,a])).rejects.toThrow(/profile_not_found/);
+ });
+ it('PROFILE-B2-SQL-03 locked or guest badges cannot be made visible and selection re-enables an earned badge',async()=>{
+  await expect(rpc('set_badge_visibility',[a,'hunter',true])).rejects.toThrow(/badge_locked/);await finished();await rpc('set_badge_visibility',[a,'hunter',false]);
+  const selected=(await rpc('choose_profile_badge',[a,'hunter'])).rows[0].value as any;expect(selected.visibleBadgeIds).toContain('hunter');expect(selected.selected.id).toBe('hunter');
+  await db.query('update auth.users set is_anonymous=true where id=$1',[a]);await expect(rpc('set_badge_visibility',[a,'hunter',true])).rejects.toThrow(/registered_required/);
  });
  it('FEED-SKIP-01 individual omissions including all omitted questions still earn Beta-Tester; whole-form skip does not',async()=>{
   const l=await finished(0,20);const offers=(await db.query<{id:string;user_id:string}>('select id,user_id from feedback_offers where match_id=$1',[l.id])).rows;
@@ -264,7 +292,7 @@ describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
  });
  it('executes the full unchanged migration and enables RLS on every application table',async()=>{
   const tables=await db.query<{tablename:string;rowsecurity:boolean}>("select tablename,rowsecurity from pg_tables where schemaname='public'");
-  expect(tables.rows.length).toBe(45);
+  expect(tables.rows.length).toBe(46);
   expect(tables.rows.every(t=>t.rowsecurity)).toBe(true);
   expect((await db.query('select * from profiles')).rows).toHaveLength(3);
   expect(await friendCode(a)).toMatch(/^[A-Z0-9]{12}$/);

@@ -79,7 +79,7 @@ export class AccountService {
  }
  async handle(identity:Identity,token:string,path:string,method:string,body:unknown,query:URLSearchParams,ticket:string|null):Promise<unknown>{
   if(path==='/account'&&method==='GET')return this.state(identity);
-  if(path==='/badges'||path.startsWith('/badges/')||path==='/feedback'||path.startsWith('/feedback/')){
+  if(path==='/badges'||path.startsWith('/badges/')||path.startsWith('/players/')||path==='/feedback'||path.startsWith('/feedback/')){
    await this.requireGame(identity);if(!this.features)throw new HttpError(503,'Feedback und Badges sind noch nicht eingerichtet.');
    await this.store.quota(identity.id,'features',90);return this.features.player(identity,path,method,body,query);
   }

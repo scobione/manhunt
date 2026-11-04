@@ -3,13 +3,19 @@ import {randomUUID} from 'node:crypto';
 import type {FeatureStore,FeedbackFilters} from '../server/feature-store';
 import {DEFAULT_BADGES,advanceBadges,emptyCounters,equippedBadge,type BadgeDefinition,type BadgeOverview,type AchievementCounters} from '../shared/achievements';
 import {DEFAULT_QUESTIONS,questionsFor,type FeedbackOffer,type FeedbackSettings,type FeedbackAnswer} from '../shared/feedback';
+import type {FriendProfile} from '../shared/profiles';
+import type {MemoryRepository} from '../server/repository';
 import type {Lobby} from '../shared/types';
 import {HttpError} from '../server/auth';
 export class TestFeatureStore implements FeatureStore{
+ repository?:MemoryRepository;
+ hidden=new Map<string,Set<string>>();
  defs=structuredClone(DEFAULT_BADGES);config:FeedbackSettings={version:'1',questions:structuredClone(DEFAULT_QUESTIONS)};values=new Map<string,BadgeOverview>();counters=new Map<string,AchievementCounters>();offers=new Map<string,FeedbackOffer&{user:string}>();answers=new Map<string,Record<string,FeedbackAnswer>>();guests=new Set<string>();
  finish(l:Lobby){if(l.status!=='finished'||l.result?.winner==='aborted')return;for(const p of l.players)if(p.role!=='spectator'&&![...this.offers.values()].some(o=>o.user===p.id&&o.matchId===l.id)){const o={id:randomUUID(),user:p.id,matchId:l.id,version:this.config.version,questions:questionsFor(l.settings,this.config.questions),modes:[l.settings.mode],status:'offered' as const,offeredAt:new Date().toISOString()};this.offers.set(o.id,o);}}
- async badges(user:string){return structuredClone(this.values.get(user)??{registered:!this.guests.has(user),badges:advanceBadges(this.defs,emptyCounters(),[],Date.now()),selected:null,notices:[]});}
- async equip(user:string,id:string|null){const v=await this.badges(user),b=v.badges.find(b=>b.id===id&&b.level>0);if(id&&!b)throw new HttpError(409,'Badge gesperrt.');v.selected=b?equippedBadge(b):null;this.values.set(user,v);return v;}
+ async badges(user:string){const v=structuredClone(this.values.get(user)??{registered:!this.guests.has(user),badges:advanceBadges(this.defs,emptyCounters(),[],Date.now()),selected:null,notices:[]});v.visibleBadgeIds=v.badges.filter(b=>b.level>0&&!this.hidden.get(user)?.has(b.id)).map(b=>b.id);if(v.selected&&!v.visibleBadgeIds.includes(v.selected.id))v.selected=null;return v;}
+ async visibility(user:string,id:string,visible:boolean){const v=await this.badges(user);if(this.guests.has(user)||!v.badges.some(b=>b.id===id&&b.level>0))throw new HttpError(409,'Badge gesperrt.');const hidden=this.hidden.get(user)??new Set<string>();if(visible)hidden.delete(id);else hidden.add(id);this.hidden.set(user,hidden);if(!visible&&v.selected?.id===id)v.selected=null;this.values.set(user,v);if(this.repository?.profiles.get(user))this.repository.profiles.get(user)!.badge=v.selected;return this.badges(user);}
+ async profile(viewer:string,target:string):Promise<FriendProfile>{const repo=this.repository,profile=repo?.profiles.get(target);if(!repo||!profile||await repo.hasBlock(viewer,target)||viewer!==target&&!repo.friendships.has([viewer,target].sort().join(':')))throw new HttpError(404,'Dieses Profil ist nicht verfügbar.');const data=await this.badges(target);return{id:profile.id,username:profile.username,avatar_url:profile.avatar_url,created_at:profile.created_at,progress:profile.progress??null,badges:data.badges.filter(b=>b.level>0&&data.visibleBadgeIds?.includes(b.id)).map(b=>({...equippedBadge(b)!,description:b.description,unlockedAt:b.unlockedAt!,upgradedAt:b.upgradedAt??undefined}))};}
+ async equip(user:string,id:string|null){const v=await this.badges(user),b=v.badges.find(b=>b.id===id&&b.level>0);if(id&&!b)throw new HttpError(409,'Badge gesperrt.');v.selected=b?equippedBadge(b):null;if(id)this.hidden.get(user)?.delete(id);this.values.set(user,v);if(this.repository?.profiles.get(user))this.repository.profiles.get(user)!.badge=v.selected;return this.badges(user);}
  async seen(user:string,ids:string[]){const v=await this.badges(user);v.notices=v.notices.filter(n=>!ids.includes(n.id));this.values.set(user,v);}
  async offer(user:string,match:string){return structuredClone([...this.offers.values()].find(o=>o.user===user&&o.matchId===match)??null);}
  async offerById(user:string,id:string){const o=this.offers.get(id);return o?.user===user?structuredClone(o):null;}

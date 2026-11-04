@@ -2,7 +2,7 @@
 
 **Deine Stadt. Dein Spielfeld.** Ein quelloffenes GPS-Verfolgungsspiel für private Gruppen — React, TypeScript, Socket.IO, Supabase und MapLibre. MIT-lizenziert.
 
-> **Stand 0.b1.111:** Die PWA ist auf Vercel veröffentlicht. Die Spiellogik läuft weiterhin in Supabase Edge Functions mit atomaren PostgreSQL-Checkpoints und authentifizierter Synchronisierung etwa alle zwei Sekunden. Accounts und Daten bleiben im bestehenden Supabase-Projekt. Google ist abgeschaltet; E-Mail und Gastzugang bleiben erhalten. Den nachgewiesenen Veröffentlichungsstand dokumentiert [DEPLOYMENT.md](docs/DEPLOYMENT.md).
+> **Stand 0.B2:** Die PWA ist auf Vercel veröffentlicht. Die Spiellogik läuft weiterhin in Supabase Edge Functions mit atomaren PostgreSQL-Checkpoints und authentifizierter Synchronisierung etwa alle zwei Sekunden. Accounts und Daten bleiben im bestehenden Supabase-Projekt. Google ist abgeschaltet; E-Mail und Gastzugang bleiben erhalten. Den nachgewiesenen Veröffentlichungsstand dokumentiert [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 **Vercel-Adresse:** [MANHUNT](https://manhunt-pwa.vercel.app). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Die bisherige Sites-Adresse leitet nach zehn Sekunden zur getesteten Vercel-Seite weiter.
 
@@ -123,3 +123,5 @@ Große Swipe-Griffe für Zonenrückkehr und Zombie-Wiederbelebung: [Release 0.b1
 Vollbild-Countdown vor der Rollenanzeige: [Release 0.b1.108](docs/RELEASE-0.b1.108.md).
 
 Admin-Simulation, Feedback nach jedem Spiel und dauerhafte Badges: [Release 0.b1.110](docs/RELEASE-0.b1.110.md), [Fragen als Textdatei](docs/MANHUNT-Feedback-Fragen.txt).
+
+Neue Profile, farbige Badge-Icons und dauerhafte Sichtbarkeitsschalter: [Release 0.B2](docs/RELEASE-0.B2.md), [Testbericht](docs/TEST-REPORT-0.B2.md).
