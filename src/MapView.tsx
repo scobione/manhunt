@@ -205,6 +205,9 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
       marker.setLngLat([group.longitude,group.latitude]);
       let popup=clusterPopups.current.get(key);
       if(!popup){popup=document.createElement('div');popup.className='mh-map-popup mh-cluster-popup';popup.append(document.createElement('strong'),document.createElement('ul'),document.createElement('button'));const zoom=popup.querySelector('button')!;zoom.type='button';zoom.className='mh-cluster-zoom';zoom.textContent='Gruppe auf der Karte vergrößern';clusterPopups.current.set(key,popup);}
+      // At any marker position at least half of the map is available above or
+      // below it. Keep the controls inside that space; only the player list scrolls.
+      popup.style.setProperty('--cluster-popup-height',`${Math.max(112,Math.floor(map.getContainer().clientHeight/2)-90)}px`);
       popup.querySelector('strong')!.textContent=`${players} ${players===1?'Spieler':'Spieler'} · ${group.pins.length} Pins`;
       const rows=group.pins.map(pin=>{const row=document.createElement('li'),name=document.createElement('span'),detail=document.createElement('small');const observedAt=pin.observedAt??pin.createdAt,stale=!!pin.stale||now-observedAt>15000;name.textContent=`${pin.username} · ${pin.role==='hunter'?'Hunter':pin.role==='zombie'?'Zombie':'Hider'}`;detail.textContent=`${new Date(observedAt).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit',second:'2-digit'})} · ± ${Math.round(pin.accuracy)} m${stale?' · letzter bekannter Standort':''}`;row.append(name,detail);return row;});
       popup.querySelector('ul')!.replaceChildren(...rows);

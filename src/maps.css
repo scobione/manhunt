@@ -94,3 +94,6 @@
 .mh-pin-label{max-width:148px;overflow:hidden;text-overflow:ellipsis}.maplibregl-popup-close-button{min-width:36px;min-height:36px}.mh-map-tools button{min-width:40px;min-height:40px}
 @media(max-width:420px){.mh-pin-label{max-width:108px}.mh-cluster-popup{min-width:190px}}
 .mh-cluster-offset:after{content:'';position:absolute;width:2px;height:14px;top:100%;left:calc(50% - 1px);background:var(--cluster-color);pointer-events:none}.mh-cluster-offset{z-index:2}
+.mh-cluster-popup{display:flex;flex-direction:column;max-height:var(--cluster-popup-height,180px)}
+.mh-cluster-popup>strong,.mh-cluster-popup>.mh-cluster-zoom{flex-shrink:0}
+.mh-cluster-popup ul{flex:1 1 auto;min-height:0;overscroll-behavior:contain}

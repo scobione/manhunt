@@ -21,12 +21,12 @@ Der vollständige Vitest-Lauf hat **344 Tests in 26 Dateien bestanden**. Das umf
 
 ## Browser-Endstand
 
-**93 unterschiedliche Browserfälle bestanden; zusammen mit Vitest 437 Prüfungen.** Die Tabelle zählt jeden Fall einmal. Fehlgeschlagene Erstläufe wurden untersucht, korrigiert und die betroffenen Fälle erneut ausgeführt.
+**95 unterschiedliche Browserfälle bestanden; zusammen mit Vitest 439 Prüfungen.** Die Tabelle zählt jeden Fall einmal. Fehlgeschlagene Erstläufe wurden untersucht, korrigiert und die betroffenen Fälle erneut ausgeführt.
 
 | Suite | Bestandene Fälle | Nachweis |
 | --- | ---: | --- |
 | Socket.IO-Multiplayer | 9 | Voller Lauf 8/9, anschließend Apokalypse-Fall nach eindeutiger Auswahl des Warnungsbuttons und ausreichendem Gesamtbudget erfolgreich wiederholt. Alle fachlichen GPS-Fristen blieben unverändert. |
-| Edge-Multiplayer | 35 | Alle unterschiedlichen Fälle über drei Läufe bestanden: kombinierte Modi, private Teamstandorte, Kartencluster, Zoom-Verankerung, große Schrift, Presetübernahme, GPS-Sperren und beide Swipes. |
+| Edge-Multiplayer | 37 | Alle unterschiedlichen Fälle über mehrere Läufe bestanden: kombinierte Modi, private Teamstandorte, Kartencluster, Zoom-Verankerung, große Schrift, Presetübernahme, GPS-Sperren und beide Swipes. Die Gruppenanzeige wurde zusätzlich bei 320, 390 und 1440 px geprüft. |
 | Admin/Profile/0.B2.1 | 20 | Ein vollständiger gemeinsamer Lauf 20/20, einschließlich realer Browser-Bildverarbeitung und Uploads an den ausdrücklich isolierten Storage-Testserver. |
 | Produktionsbundle/Auth | 25 | Vollständiger Lauf 25/25 ohne eingebauten Test-Login. Provider- und Mailboxsimulationen werden nur in lokalen Auth-Tests verwendet. |
 | Alte Weiterleitungsseite | 4 | Vollständiger Lauf 4/4 bei 390, 412 und 1280 px; kontrollierte Uhr prüft zehn Sekunden, Fortschritt und sichere Einladungsweitergabe. |
@@ -53,10 +53,15 @@ Der vollständige Vitest-Lauf hat **344 Tests in 26 Dateien bestanden**. Das umf
 - Wiederverwendete Regeln verloren einzelne Sonderwerte oder die Kombination mit Custom.
 - Die mobile Navigation war durch sechs Hauptziele zu dicht; die zusätzlichen Seiten bleiben im scrollbar erreichbaren Menü und in den Einstellungen.
 - Der Löschdialog der Bibliothek konnte den Fokus beim Abbrechen verlieren.
+- Die Pin-Gruppenanzeige konnte auf schmalen Karten über den Rand hinausragen und den Zoom-Button verdecken. Ihre Höhe richtet sich jetzt nach der Kartenfläche; die Spielerliste scrollt innerhalb der Anzeige. Die Regression prüft die tatsächlichen Grenzen und einen normalen Klick bei 320, 390 und 1440 px.
 
 Weitere Erstfehler lagen in alten Testannahmen: einzelne Pins können jetzt gruppiert sein; End bestätigt den Tastatur-Swipe bereits; statische GPS-Testpositionen benötigen fortlaufende frische Messzeiten. Die Tests wurden entsprechend präzisiert. Serverseitige GPS-Genauigkeit, Frische und Rückkehrbedingungen wurden nicht gelockert.
 
 Beide Vercel-Projekte bleiben Git-verknüpft. Der [GitHub-CI-Verlauf](https://github.com/scobione/manhunt/actions?query=branch%3Amain) führt dieselben Suiten für jeden Push erneut aus. Das Ergebnis eines Builds wird nicht als bestandener Browserfall gezählt.
+
+Der erste veröffentlichte CI-Lauf bestand alle 344 Unit-/SQL-Tests sowie 9 Socket-Fälle und 34 von damals 35 Edge-Fällen. Der Fehler in der Gruppenanzeige wurde anhand des Browserprotokolls reproduziert und behoben; der oben genannte Endstand enthält die erfolgreich wiederholten Fälle. Der erste Live-Smoke startete vor Abschluss des Vercel-Builds und sah noch `0.B2`; er wird nach der Bereitstellung erneut ausgeführt. Ein früher fehlgeschlagener Lauf wird dadurch nicht als bestanden umgedeutet.
+
+Sechs zusätzliche Browserprüfungen auf den tatsächlichen Produktionsdomains bestanden: Versionsübersicht `0.B2.1`, Admin-Login-Sperre mit PWA-Manifest und Icons sowie die Sperre der direkt geöffneten Simulationsansicht, jeweils bei 320 und 1440 px. Sie erstellten keine produktiven Testkonten.
 
 ## Produktive Datenbank und Backend
 
