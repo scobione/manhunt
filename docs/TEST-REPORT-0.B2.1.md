@@ -63,6 +63,8 @@ Der erste veröffentlichte CI-Lauf bestand alle 344 Unit-/SQL-Tests sowie 9 Sock
 
 Sechs zusätzliche Browserprüfungen auf den tatsächlichen Produktionsdomains bestanden: Versionsübersicht `0.B2.1`, Admin-Login-Sperre mit PWA-Manifest und Icons sowie die Sperre der direkt geöffneten Simulationsansicht, jeweils bei 320 und 1440 px. Sie erstellten keine produktiven Testkonten.
 
+Der nächste CI-Lauf bestätigte alle 37 Edge- und 9 Socket-Fälle. Ein älterer Passwortreset-Test navigierte unmittelbar nach dem Login-Klick weiter und brach dabei gelegentlich die noch laufende Anmeldung ab. Der Testhelfer wartet jetzt auf das Ersetzen des Anmeldeformulars durch die authentifizierte Ansicht; eine ausdrücklich lokale Verzögerung der Login-Antwort sichert diesen Ablauf ab. Die produktive Anmeldung wurde dabei nicht verändert. Der erneut ausgeführte Live-Smoke bestand alle vier öffentlichen Browserfälle; zusätzlich wurde auf beiden Produktionsdomains die tatsächlich ausgelieferte CSS-Korrektur der Gruppenanzeige geprüft.
+
 ## Produktive Datenbank und Backend
 
 Alle drei Migrationen wurden erfolgreich auf das vorhandene Supabase-Projekt angewendet. Anschließend geprüft: **50 öffentliche Anwendungstabellen, alle mit RLS**; beide neuen Bild-Buckets sind privat und auf 2 MB begrenzt. Die Mutationsfunktionen für Banner, Badge-Reihenfolge, gespeicherte Zonen und Fehlerberichte erlauben keinen direkten EXECUTE durch normale authentifizierte Clients.

@@ -3,7 +3,15 @@ import {circle} from '@turf/turf';
 import {test,expect,type Page} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
 const GAME='http://127.0.0.1:5176',API='http://127.0.0.1:3003';
-async function login(page:Page,email:string,password:string,admin=true){await page.goto(admin?'/':GAME+'/login');await page.getByLabel('E-Mail-Adresse',{exact:true}).fill(email);await page.getByLabel('Passwort',{exact:true}).fill(password);await page.getByRole('button',{name:admin?'Als Administrator anmelden':'Mit E-Mail anmelden',exact:true}).click();}
+async function login(page:Page,email:string,password:string,admin=true){
+ await page.goto(admin?'/':GAME+'/login');
+ const emailInput=page.getByLabel('E-Mail-Adresse',{exact:true});
+ await emailInput.fill(email);await page.getByLabel('Passwort',{exact:true}).fill(password);
+ await page.getByRole('button',{name:admin?'Als Administrator anmelden':'Mit E-Mail anmelden',exact:true}).click();
+ // A click only submits the request. Do not hard-navigate away until the SDK
+ // has saved the session and the app has replaced its unauthenticated form.
+ await expect(emailInput).toHaveCount(0);
+}
 test('ADMIN-01 ADMIN-02 ADMIN-03 ADMIN-16: separate mobile portal denies player access and supplies its own PWA',async({page})=>{
  await page.setViewportSize({width:390,height:844});await login(page,'player@isolated.invalid','Player-Test-Password1');await expect(page.getByRole('heading',{name:'Kein Adminzugang.'})).toBeVisible();await expect(page.getByRole('heading',{name:'Deine Spieler.'})).toHaveCount(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  const manifest=await (await page.request.get('/manifest.webmanifest')).json();expect(manifest.name).toBe('Manhunt Admin');expect(manifest.display).toBe('standalone');for(const icon of manifest.icons)expect((await page.request.get(icon.src)).ok()).toBe(true);
@@ -46,6 +54,8 @@ test('AUTH-CODE-12 AUTH-CODE-13: signup reserves a name, rejects incorrect, expi
 test('MRESET-E2E: prescribed password ends old sessions and requires exactly one password change while preserving the profile',async({browser,request})=>{
  const admin=await browser.newContext(),player=await browser.newContext({viewport:{width:390,height:844}});const a=await admin.newPage(),p=await player.newPage();
  try{
+  // Explicitly isolated network latency: navigation must not abort the login.
+  await p.route(API+'/auth/v1/token?grant_type=password',async route=>{await new Promise(resolve=>setTimeout(resolve,150));await route.continue();},{times:1});
   const email='player@isolated.invalid';await login(p,email,'Player-Test-Password1',false);await p.goto(GAME+'/profile');await expect(p.getByRole('heading',{name:'PlayerFixture',exact:true})).toBeVisible();
   const oldSession=await(await request.post(API+'/auth/v1/token?grant_type=password',{data:{email,password:'Player-Test-Password1'}})).json();
   await login(a,'admin@isolated.invalid','Admin-Test-Password1');await expect(a.getByRole('heading',{name:'Alles bereit für die nächste Runde.'})).toBeVisible();await a.goto('/#users');await a.getByRole('textbox',{name:'Benutzer suchen'}).fill(email);const userRow=a.locator('.user-row').filter({has:a.getByText(email,{exact:true})});await expect(userRow).toHaveCount(1);await userRow.click();
