@@ -81,9 +81,22 @@ export class GameEngine {
     const lobby:EngineLobby={id:randomUUID(),code,hostId:profile.id,status:'waiting',players:[],settings:normalized,zone:null,createdAt:this.now(),pins:[],events:[],captures:[],revision:1,_engine:{players:{},phase:0,lastTick:this.now(),leftIds:[]}};
     lobby.players.push(this.player(profile,lobby));this.event(lobby,'lobby_created','Lobby erstellt.',profile.id);this.lobbies.set(lobby.id,lobby);return lobby;
   }
+  /** Invitations always resolve to the active round before archived results. */
+  lobbyByCode(code:string):Lobby|undefined{return [...this.lobbies.values()].filter(l=>l.code===code.trim().toUpperCase()&&l.status!=='closed').sort((a,b)=>Number(a.status==='finished')-Number(b.status==='finished')||b.createdAt-a.createdAt)[0];}
+  /** Selecting a previous match only identifies the command target. command()
+   * still verifies membership, departure status and host permissions. */
+  lobbyForCommand(userId:string,command:Command):Lobby|undefined{
+    const active=this.lobbyFor(userId);
+    if(command.type==='rematch'){
+      if(command.matchId)return this.lobbies.get(command.matchId);
+      if(active?.status==='waiting'&&active.previousMatchId)return this.lobbies.get(active.previousMatchId);
+    }
+    if(active)return active;
+    return [...this.lobbies.values()].filter(l=>l.status==='finished'&&l.players.some(p=>p.id===userId)).sort((a,b)=>(b.result?.endedAt??b.createdAt)-(a.result?.endedAt??a.createdAt))[0];
+  }
   join(code:string,profile:Profile):Lobby{
     if(typeof code!=='string'||!/^[A-Z2-9]{6}$/.test(code.trim().toUpperCase()))fail('INVALID_CODE','Gib einen sechsstelligen Lobbycode ein.');
-    const lobby=[...this.lobbies.values()].find(l=>l.code===code.trim().toUpperCase()&&l.status!=='closed') as EngineLobby|undefined;
+    const lobby=this.lobbyByCode(code) as EngineLobby|undefined;
     if(!lobby)fail('LOBBY_NOT_FOUND','Lobby nicht gefunden.');
     if(lobby._engine.leftIds.includes(profile.id))fail('MATCH_LEFT','Du hast dieses Match verlassen. Starte ein neues Match.');
     const existing=lobby.players.find(p=>p.id===profile.id);
@@ -129,7 +142,7 @@ export class GameEngine {
       if(now-observedAt>l.settings.fallbackPinMaxAgeSeconds*1000)continue;
       visibleLocations.push({id:`live:${player.id}`,playerId:player.id,username:player.username,role:player.role,avatar_url:player.avatar_url,...sample,observedAt,createdAt:observedAt,expiresAt:observedAt+l.settings.fallbackPinMaxAgeSeconds*1000,stale:now-observedAt>15_000||!!l._engine.players[player.id].unreliableLocation,kind:'live'});
     }
-    return clone({id:l.id,code:l.code,hostId:l.hostId,status:l.status,
+    return clone({id:l.id,code:l.code,round:l.round??1,previousMatchId:l.previousMatchId,hostId:l.hostId,status:l.status,
       players:l.players.map(p=>({id:p.id,username:p.username,avatar_url:p.avatar_url,badge:p.badge,ready:p.ready,locationReady:l.status==='waiting'&&this.lobbyGpsReady(l,p),role:p.role,muted:p.muted,infectionPending:p.infectionPending,team:p.team,connected:p.connected,eliminated:p.eliminated,infectedAt:p.infectedAt,lastSeen:p.lastSeen})),
       settings:l.settings,zone:l.zone,activeZone:l.activeZone,createdAt:l.createdAt,startedAt:l.startedAt,endsAt:l.endsAt,pausedAt:l.pausedAt,previousStatus:l.previousStatus,
       xpHunt:l.xpHunt,xpUnreachableUsed:l._engine.players[userId].xpUnreachableUsed??0,chat:(l._engine.chat??[]).filter(m=>m.channel==='all'||m.channel===teamChannel(self,l.settings)),pins,visibleLocations,events:l.events,captures:l.captures.filter(c=>c.targetId===userId||c.hunterId===userId),result:l.result,revision:l.revision,
@@ -144,8 +157,9 @@ export class GameEngine {
     if(l.status==='active'&&now>=(l.endsAt??Infinity)){
       this.evaluate(l);this.reject(l,'MATCH_FINISHED','Das Zeitlimit ist erreicht. Das Ergebnis wurde gespeichert.');
     }
-    if(l.status==='finished'&&!['leave','close'].includes(command.type))fail('MATCH_FINISHED','Dieses Match ist beendet.');
+    if(l.status==='finished'&&!['leave','close','rematch'].includes(command.type))fail('MATCH_FINISHED','Dieses Match ist beendet.');
     switch(command.type){
+      case 'rematch':if(command.matchId&&command.matchId!==l.id)fail('MATCH_CHANGED','Die ausgewählte Runde stimmt nicht mit dieser Lobby überein.');return this.rematch(l,userId);
       case 'pause':this.host(l,userId);if(!['active','preparing'].includes(l.status))fail('NOT_ACTIVE','Dieses Match kann gerade nicht pausiert werden.');l.previousStatus=l.status as 'active'|'preparing';l.pausedAt=now;l.status='paused';l._engine.manualPause=true;l.players.forEach(player=>this.freezeOutside(l,player));this.event(l,'match_paused','Der Host hat das Match pausiert.',userId);break;
       case 'resume':this.host(l,userId);if(l.status!=='paused')fail('NOT_PAUSED','Dieses Match ist nicht pausiert.');this.resumeLegacy(l);delete l._engine.manualPause;break;
       case 'end':this.host(l,userId);if(!['active','preparing','paused'].includes(l.status))fail('NOT_ACTIVE','Kein aktives Match.');this.finish(l,'aborted','Der Host hat das Match ohne Wertung beendet.');break;
@@ -183,6 +197,25 @@ export class GameEngine {
     }
     if(l.status==='active')this.evaluate(l);
     return this.changed(l);
+  }
+
+  /** A new round has its own immutable result identity, while the invitation code
+   * and the group carry over. The old finished checkpoint is never rewritten. */
+  private rematch(previous:EngineLobby,userId:string):EngineLobby{
+    this.host(previous,userId);
+    if(previous.status!=='finished')fail('MATCH_NOT_FINISHED','Eine Revanche ist erst nach dem Spielende möglich.');
+    const existing=[...this.lobbies.values()].find(l=>l.previousMatchId===previous.id) as EngineLobby|undefined;
+    if(existing)return existing;
+    if(this.lobbyFor(userId))fail('ALREADY_IN_LOBBY','Verlasse zuerst deine andere Lobby.');
+    const now=this.now(),players=previous.players.filter(p=>!previous._engine.leftIds.includes(p.id)&&!this.lobbyFor(p.id));
+    if(!players.some(p=>p.id===userId))fail('FORBIDDEN','Du gehörst nicht mehr zu dieser Spielgruppe.');
+    const next:EngineLobby={id:randomUUID(),code:previous.code,hostId:userId,status:'waiting',round:(previous.round??1)+1,previousMatchId:previous.id,
+      players:players.map(p=>({id:p.id,username:p.username,avatar_url:p.avatar_url,badge:clone(p.badge),ready:false,
+        role:p.role==='zombie'?'hider':p.role,team:p.team,connected:p.connected,eliminated:false,lastSeen:p.connected?now:p.lastSeen,muted:p.muted,locationSharing:false})),
+      settings:clone(previous.settings),zone:clone(previous.zone),createdAt:now,pins:[],events:[],captures:[],revision:1,
+      _engine:{players:Object.fromEntries(players.map(p=>[p.id,metadata()])),phase:0,lastTick:now,leftIds:[]}};
+    this.event(next,'rematch_created','Die Revanche ist bereit. Standort und Bereitschaft bitte erneut bestätigen.',userId);
+    this.lobbies.set(next.id,next);return next;
   }
 
   /** Trusted transport calls this with OSM-derived data; no client command accepts candidates. */

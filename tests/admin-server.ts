@@ -1,3 +1,6 @@
+import {ProfileCustomizationService} from '../server/profile-customization';
+import {CommunityService} from '../server/community';
+import {TestCustomizationStore,TestCommunityStore,testImages} from './next-fixtures';
 import {FeatureService} from '../server/features';
 import {SimulationService} from '../server/simulations';
 import {TestFeatureStore} from './feature-fixtures';
@@ -15,13 +18,13 @@ import {TestAccountStore} from './account-fixtures';
 import {HttpError,type Identity} from '../server/auth';
 if(process.env.NODE_ENV!=='test'||process.env.TEST_AUTH!=='true')throw Error('Isolated admin fixture requires explicit test opt-in.');
 const features=new TestFeatureStore(),simulations=new TestSimulationStore();
-const store=new TestAccountStore(),edge=new TestEdgeStore(),service=new AccountService(store,Date.now,new TestTrafficStore(edge.lobbies),new FeatureService(features),new SimulationService(simulations)),tokens=new Map<string,Identity>(),confirmed=new Set<string>(),otps=new Map<string,{code:string;expires:number;used:boolean}>();
+const store=new TestAccountStore(),edge=new TestEdgeStore(),customization=new ProfileCustomizationService(new TestCustomizationStore(features)),community=new CommunityService(new TestCommunityStore(store.repo)),service=new AccountService(store,Date.now,new TestTrafficStore(edge.lobbies),new FeatureService(features,customization),new SimulationService(simulations),customization,community),tokens=new Map<string,Identity>(),confirmed=new Set<string>(),otps=new Map<string,{code:string;expires:number;used:boolean}>();
 store.repo.checkpoints=edge.lobbies;features.repository=store.repo;
 const commit=edge.commit.bind(edge);edge.commit=async(revision,lobbies)=>{const ok=await commit(revision,lobbies);if(ok)lobbies.forEach(l=>features.finish(l));return ok;};
 const admin={id:randomUUID(),username:'AdminFixture',email:'admin@isolated.invalid',expiresAt:Date.now()+3600000},player={id:randomUUID(),username:'PlayerFixture',email:'player@isolated.invalid',expiresAt:Date.now()+3600000};
 await store.seed(admin,admin.email,'Admin-Test-Password1',true);await store.seed(player,player.email,'Player-Test-Password1');confirmed.add(admin.id);confirmed.add(player.id);
 const codeAdmin={id:randomUUID(),username:'CodeAdminFixture',email:'code-admin@isolated.invalid',expiresAt:Date.now()+3600000};await store.seed(codeAdmin,codeAdmin.email,'Admin-Test-Password1',true);confirmed.add(codeAdmin.id);
-for(const name of ['simulation-admin','feedback-admin']){const fixture={id:randomUUID(),username:name.replace('-','_'),email:name+'@isolated.invalid',expiresAt:Date.now()+3600000};await store.seed(fixture,fixture.email,'Admin-Test-Password1',true);confirmed.add(fixture.id);}
+for(const name of ['simulation-admin','feedback-admin','reports-admin']){const fixture={id:randomUUID(),username:name.replace('-','_'),email:name+'@isolated.invalid',expiresAt:Date.now()+3600000};await store.seed(fixture,fixture.email,'Admin-Test-Password1',true);confirmed.add(fixture.id);}
 const feedbackPlayer={id:randomUUID(),username:'Feedback_Player',email:'feedback-player@isolated.invalid',expiresAt:Date.now()+3600000};await store.seed(feedbackPlayer,feedbackPlayer.email,'Player-Test-Password1');confirmed.add(feedbackPlayer.id);
 function user(id:string){const c=store.controls.get(id)!;return{id,email:store.emails.get(id),aud:'authenticated',role:'authenticated',app_metadata:{provider:'email',providers:['email']},user_metadata:{},email_confirmed_at:confirmed.has(id)||c.source==='admin'?'2026-01-01T00:00:00Z':null,created_at:'2026-01-01T00:00:00Z',is_anonymous:false};}
 function session(id:string){const u=user(id),identity={id,email:u.email,username:store.repo.profiles.get(id)!.username,emailVerified:!!u.email_confirmed_at,sessionId:randomUUID(),expiresAt:Date.now()+3600000},encode=(v:unknown)=>Buffer.from(JSON.stringify(v)).toString('base64url');const token=`${encode({alg:'HS256',typ:'JWT'})}.${encode({sub:id,session_id:identity.sessionId,exp:Math.floor(identity.expiresAt/1000),role:'authenticated'})}.isolated-admin-fixture`;tokens.set(token,identity);store.live.add(identity.sessionId);store.sessionOwners.set(identity.sessionId,id);return{access_token:token,refresh_token:'isolated-refresh-'+identity.sessionId,token_type:'bearer',expires_in:3600,expires_at:Math.floor(identity.expiresAt/1000),user:u};}
@@ -32,11 +35,24 @@ let clockOffset=0;
 const server=createServer(async(req,res)=>{
  // Browser GPS and server freshness checks use the same progressing test clock.
  edge.clock=Date.now()+clockOffset;
- const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(Buffer.from(chunk));const bodyText=Buffer.concat(chunks).toString(),body=bodyText?JSON.parse(bodyText):{},url=new URL(req.url!,'http://127.0.0.1:3003');
- const headers={'Content-Type':'application/json','Cache-Control':'no-store','Access-Control-Allow-Origin':req.headers.origin??'*','Access-Control-Allow-Headers':'authorization,apikey,content-type,x-client-info,x-supabase-api-version,x-manhunt-admin-session','Access-Control-Allow-Methods':'GET,POST,PATCH,DELETE,OPTIONS'};
+ const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(Buffer.from(chunk));const bodyBytes=Buffer.concat(chunks),bodyText=bodyBytes.toString(),body=bodyText&&String(req.headers['content-type']).includes('json')?JSON.parse(bodyText):{},url=new URL(req.url!,'http://127.0.0.1:3003');
+ const headers={'Content-Type':'application/json','Cache-Control':'no-store','Access-Control-Allow-Origin':req.headers.origin??'*','Access-Control-Allow-Headers':'authorization,apikey,content-type,x-client-info,x-supabase-api-version,x-manhunt-admin-session,cache-control,x-upsert','Access-Control-Allow-Methods':'GET,POST,PUT,PATCH,DELETE,OPTIONS'};
  const respond=(value:unknown,status=200)=>{res.writeHead(status,headers);res.end(JSON.stringify(value));};
  if(req.method==='OPTIONS'){respond({},204);return;}
  try{
+
+  if(url.pathname.startsWith('/storage/v1/object/')){
+   const parts=url.pathname.slice('/storage/v1/object/'.length).split('/'),signed=parts[0]==='sign';if(signed)parts.shift();const bucket=parts.shift()!,path=decodeURIComponent(parts.join('/')),key=bucket+'/'+path;
+   if(req.method==='GET'&&signed&&url.searchParams.get('token')==='isolated-test-image'){const image=testImages.get(key);if(!image){respond({error:'Missing image'},404);return;}res.writeHead(200,{'Content-Type':image.mime});res.end(image.bytes);return;}
+   const who=verify(String(req.headers.authorization??'').replace(/^Bearer /,''));
+   if(!['profile-banners','bug-report-images'].includes(bucket)||!path.startsWith(who.id+'/')||bodyBytes.length>2097152)throw new HttpError(403,'Invalid storage object');
+   if(req.method==='POST'||req.method==='PUT'){
+    let bytes=bodyBytes,mime=String(req.headers['content-type']).split(';')[0];
+    if(mime==='multipart/form-data'){const form=await new Request('http://isolated.invalid/upload',{method:'POST',headers:{'Content-Type':String(req.headers['content-type'])},body:bodyBytes}).formData(),file=[...form.values()].find(v=>typeof v!=='string');if(!file)throw new HttpError(400,'Missing upload');bytes=Buffer.from(await file.arrayBuffer());mime=file.type;}
+    testImages.set(key,{bytes,mime});respond({Key:key,Id:randomUUID()});return;
+   }
+   throw new HttpError(405,'Storage method not allowed');
+  }
   if(url.pathname==='/__test/advance'){clockOffset+=Number(body.seconds??0)*1000;respond({ok:true});return;}
   if(url.pathname==='/__test/mailbox'){const email=url.searchParams.get('email')!;respond(otps.get(email)??{},200);return;}
   if(url.pathname==='/__test/expire-otp'){const otp=otps.get(body.email);if(otp)otp.expires=0;respond({ok:true});return;}

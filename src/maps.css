@@ -87,3 +87,10 @@
 /* GPS pins stay inside the map stacking context; controls remain clickable. */
 .mh-map-canvas .maplibregl-ctrl-top-left,.mh-map-canvas .maplibregl-ctrl-top-right,.mh-map-canvas .maplibregl-ctrl-bottom-left,.mh-map-canvas .maplibregl-ctrl-bottom-right{z-index:5}
 .mh-map-canvas .maplibregl-popup{z-index:4}
+/* Crowded games use a geographic group marker; own GPS and XP stay separate. */
+.mh-cluster{--cluster-color:#7ec8ff;display:grid;place-items:center;position:absolute;top:0;left:0;min-width:44px;height:44px;padding:0 10px;background:#152536;border:2px solid var(--cluster-color);border-radius:16px;color:#fff;font:750 15px ui-monospace,monospace;box-shadow:0 5px 17px #0008,0 0 0 5px #0b1423bb;cursor:pointer}
+.mh-cluster-hunter{--cluster-color:#ff7687;background:#351d28}.mh-cluster-hider{--cluster-color:#4fe6b4;background:#12342c}.mh-cluster-zombie{--cluster-color:#c8f36a;background:#28341d}.mh-cluster-mixed{background:linear-gradient(135deg,#17483d,#263d5a 60%,#4d2942)}
+.mh-cluster:focus-visible{outline:3px solid #fff;outline-offset:5px}.mh-cluster-popup{min-width:210px;max-width:min(300px,70vw)}.mh-cluster-popup ul{list-style:none;margin:12px 0;padding:0;max-height:220px;overflow:auto}.mh-cluster-popup li{display:grid;gap:4px;padding:10px 0;border-top:1px solid #ffffff13;overflow-wrap:anywhere}.mh-cluster-popup li span{font-weight:600}.mh-cluster-popup small{font-size:11px;line-height:1.5}.mh-cluster-zoom{min-height:44px;width:100%;padding:10px;border:1px solid #44667c;border-radius:8px;color:#cfedff;background:#203447;font-size:12px;white-space:normal}
+.mh-pin-label{max-width:148px;overflow:hidden;text-overflow:ellipsis}.maplibregl-popup-close-button{min-width:36px;min-height:36px}.mh-map-tools button{min-width:40px;min-height:40px}
+@media(max-width:420px){.mh-pin-label{max-width:108px}.mh-cluster-popup{min-width:190px}}
+.mh-cluster-offset:after{content:'';position:absolute;width:2px;height:14px;top:100%;left:calc(50% - 1px);background:var(--cluster-color);pointer-events:none}.mh-cluster-offset{z-index:2}

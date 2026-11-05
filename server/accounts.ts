@@ -5,6 +5,8 @@ import {HttpError,type Identity} from './auth';
 import type {AccountState,SetupStage} from '../shared/accounts';
 import {USERNAME_PATTERN,PASSWORD_MIN_LENGTH} from '../shared/accounts';
 import type {FeatureService} from './features';
+import type {ProfileCustomizationService} from './profile-customization';
+import type {CommunityService} from './community';
 
 export interface SimulationHandler {handle(identity:Identity,path:string,method:string,body:unknown,query:URLSearchParams):Promise<unknown>;}
 
@@ -50,7 +52,7 @@ function sameHash(a:string,b:string){const x=Buffer.from(a,'hex'),y=Buffer.from(
 function temporaryHash(password:string){const salt=randomBytes(24).toString('hex');return `pbkdf2$${salt}$${codeHash(password,salt)}`;}
 function isTemporaryPassword(password:string,hash:string){const [algorithm,salt,digest]=hash.split('$');return algorithm==='pbkdf2'&&salt&&digest?sameHash(codeHash(password,salt),digest):sameHash(sha(password),hash);}
 export class AccountService {
- constructor(readonly store:AccountStore,private now=Date.now,private traffic?:TrafficStore,private features?:FeatureService,private simulations?:SimulationHandler){}
+ constructor(readonly store:AccountStore,private now=Date.now,private traffic?:TrafficStore,private features?:FeatureService,private simulations?:SimulationHandler,private customization?:ProfileCustomizationService,private community?:CommunityService){}
  async state(identity:Identity):Promise<AccountState>{
   const c=await this.store.control(identity.id);
   const p=await this.store.profile(identity.id);
@@ -79,6 +81,14 @@ export class AccountService {
  }
  async handle(identity:Identity,token:string,path:string,method:string,body:unknown,query:URLSearchParams,ticket:string|null):Promise<unknown>{
   if(path==='/account'&&method==='GET')return this.state(identity);
+  if(path==='/profile/customization'||path==='/badges/order'){
+   await this.requireGame(identity);if(!this.customization)throw new HttpError(503,'Profilgestaltung ist gerade nicht verfügbar.');
+   await this.store.quota(identity.id,'profile-customization',method==='GET'?90:30);return this.customization.handle(identity,path,method,body);
+  }
+  if(path.startsWith('/library/')||path==='/reports'){
+   await this.requireGame(identity);if(!this.community)throw new HttpError(503,'Bibliothek und Fehlerberichte sind gerade nicht verfügbar.');
+   return this.community.player(identity,path,method,body);
+  }
   if(path==='/badges'||path.startsWith('/badges/')||path.startsWith('/players/')||path==='/feedback'||path.startsWith('/feedback/')){
    await this.requireGame(identity);if(!this.features)throw new HttpError(503,'Feedback und Badges sind noch nicht eingerichtet.');
    await this.store.quota(identity.id,'features',90);return this.features.player(identity,path,method,body,query);
@@ -104,6 +114,10 @@ export class AccountService {
   }
   if(path==='/admin/session'&&method==='DELETE'){empty.parse(body);if(ticket)await this.store.revokeSession(sha(ticket),identity.id);return{ok:true};}
   await this.ticket(identity,ticket);
+  if(path==='/admin/reports'){
+   if(!this.community)throw new HttpError(503,'Fehlerberichte sind gerade nicht verfügbar.');
+   await this.store.quota(identity.id,'admin-reports',60);return this.community.admin(path,method,query);
+  }
   if(path==='/admin/simulations'||path.startsWith('/admin/simulations/')){
    if(!this.simulations)throw new HttpError(503,'Die Spielsimulation ist noch nicht eingerichtet.');
    await this.store.quota(identity.id,'admin-simulation',90);return this.simulations.handle(identity,path,method,body,query);

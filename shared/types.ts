@@ -17,10 +17,10 @@ export interface Pin { id:string; playerId:string; username:string; role:Role; l
 export interface GameEvent { id:string; type:string; at:number; actorId?:string; targetId?:string; message:string }
 export interface CaptureRequest { id:string; hunterId:string; targetId:string; createdAt:number; }
 export interface MatchResult { winner:string; reason:string; endedAt:number; survivors:string[] }
-export interface Lobby { xpHunt?:XpHunt;  id:string; code:string; hostId:string; status:'waiting'|'preparing'|'active'|'paused'|'finished'|'closed'; players:Player[]; settings:Settings; zone:Zone|null; activeZone?:Feature<Polygon>; createdAt:number; startedAt?:number; endsAt?:number; pausedAt?:number; previousStatus?:'preparing'|'active'; pins:Pin[]; events:GameEvent[]; captures:CaptureRequest[]; result?:MatchResult; revision:number; }
+export interface Lobby { round?:number; previousMatchId?:string; xpHunt?:XpHunt;  id:string; code:string; hostId:string; status:'waiting'|'preparing'|'active'|'paused'|'finished'|'closed'; players:Player[]; settings:Settings; zone:Zone|null; activeZone?:Feature<Polygon>; createdAt:number; startedAt?:number; endsAt?:number; pausedAt?:number; previousStatus?:'preparing'|'active'; pins:Pin[]; events:GameEvent[]; captures:CaptureRequest[]; result?:MatchResult; revision:number; }
 export interface LobbyView extends Omit<Lobby,'players'> { players:Omit<Player,'location'|'captureCode'>[]; self:Player & {captureQr?:{token:string;expiresAt:number}}; serverTime:number; xpUnreachableUsed?:number; visibleLocations?:Pin[]; chat?:ChatMessage[]; }
 export type Command =
- | {type:'pause'} | {type:'resume'} | {type:'end'} | {type:'draw_teams'}
+ | {type:'rematch';matchId?:string} | {type:'pause'} | {type:'resume'} | {type:'end'} | {type:'draw_teams'}
  | {type:'chat';channel:'all'|'team';text:string} | {type:'mute';playerId:string;muted:boolean}
  | {type:'xp_regenerate'} | {type:'xp_confirm';pointId:string} | {type:'xp_collect';pointId:string} | {type:'xp_unreachable';pointId:string}
  | {type:'location_check';location:LocationSample}

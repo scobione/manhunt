@@ -136,11 +136,13 @@ export class SupabaseRepository implements Repository {
   async load(){const{data,error}=await this.db.from('game_checkpoints').select('state').order('updated_at',{ascending:false}).limit(1000);check(error);return(data??[]).map(row=>row.state as Lobby);}
   async deleteAccount(id:string){
     // Storage API removes bytes as well as metadata. Repeat bounded batches until empty.
+    for(const bucket of ['avatars','profile-banners','bug-report-images']){
     for(let page=0;page<100;page++){
-      const {data,error}=await this.db.storage.from('avatars').list(id,{limit:100});check(error);
+      const {data,error}=await this.db.storage.from(bucket).list(id,{limit:100});check(error);
       if(!data?.length)break;
-      const removed=await this.db.storage.from('avatars').remove(data.map(file=>`${id}/${file.name}`));check(removed.error);
+      const removed=await this.db.storage.from(bucket).remove(data.map(file=>`${id}/${file.name}`));check(removed.error);
       if(page===99)throw new HttpError(503,'Profilbilder konnten noch nicht vollständig gelöscht werden. Bitte erneut versuchen.');
+    }
     }
     const rpc=await this.db.rpc('delete_account',{p_actor:id});check(rpc.error);const{error}=await this.db.auth.admin.deleteUser(id);check(error);}
   async audit(actorId:string|null,action:string,metadata:Record<string,unknown>={}){const{error}=await this.db.from('audit_logs').insert({actor_id:actorId,action,metadata});check(error);}

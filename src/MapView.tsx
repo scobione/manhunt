@@ -1,3 +1,4 @@
+import {groupMapPins} from './map-clusters';
 import {activeExclusions} from '../shared/rules';
 import type {XpPoint} from '../shared/types';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -53,6 +54,8 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
   const hostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef(new Map<string,maplibregl.Marker>());
+  const clusterPopups=useRef(new Map<string,HTMLDivElement>());
+  const [viewportRevision,setViewportRevision]=useState(0);
   const initiallyFitted = useRef(false);
   const latest = useRef({ zone, activeZone, location });
   latest.current = { zone, activeZone, location };
@@ -92,6 +95,8 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
       map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
       map.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 100 }), 'bottom-left');
       map.on('dragstart', () => setFollowing(false));
+      const regroup=()=>setViewportRevision(value=>value+1);
+      map.on('moveend',regroup);map.on('resize',regroup);
       map.on('error', (event) => {
         if (event.error?.message && !event.error.message.includes('abort')) {
           setMapError('Kartenkacheln konnten nicht vollständig geladen werden. Prüfe deine Verbindung.');
@@ -130,7 +135,7 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
     return () => {
       resize?.disconnect();
       markersRef.current.forEach(marker => marker.remove());
-      markersRef.current.clear();
+      markersRef.current.clear();clusterPopups.current.clear();
       mapRef.current?.remove();
       mapRef.current = null;
       initiallyFitted.current = false;
@@ -185,7 +190,28 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
     } else {
       (map.getSource('accuracy') as GeoJSONSource)?.setData(featureCollection([]));
     }
-    for (const pin of pins.filter(pin => pin.expiresAt > now)) {
+    const grouping=groupMapPins(pins.filter(pin=>pin.expiresAt>now),pin=>map.project([pin.longitude,pin.latitude]));
+    for(const group of grouping.groups){
+      const key=`cluster:${group.id}`,marker=markerFor(key,'button'),element=marker.getElement();
+      const players=new Set(group.pins.map(pin=>pin.playerId)).size;
+      const roles=[...new Set(group.pins.map(pin=>pin.role))];
+      const centre=map.project([group.longitude,group.latitude]),own=location?map.project([location.longitude,location.latitude]):null,nearOwn=!!own&&Math.hypot(centre.x-own.x,centre.y-own.y)<44;
+      classes(element,`mh-cluster ${roles.length===1?`mh-cluster-${roles[0]}`:'mh-cluster-mixed'}${nearOwn?' mh-cluster-offset':''}`);
+      // Offset only the summary bubble when it would cover the own GPS dot.
+      // Individual geographic markers and their MapLibre transforms stay exact.
+      marker.setOffset(nearOwn?[0,-36]:[0,0]);
+      element.textContent=String(group.pins.length);element.dataset.testid='map-pin-cluster';
+      element.setAttribute('aria-label',`${group.pins.length} Standort-Pins von ${players} Spielern – Details öffnen`);
+      marker.setLngLat([group.longitude,group.latitude]);
+      let popup=clusterPopups.current.get(key);
+      if(!popup){popup=document.createElement('div');popup.className='mh-map-popup mh-cluster-popup';popup.append(document.createElement('strong'),document.createElement('ul'),document.createElement('button'));const zoom=popup.querySelector('button')!;zoom.type='button';zoom.className='mh-cluster-zoom';zoom.textContent='Gruppe auf der Karte vergrößern';clusterPopups.current.set(key,popup);}
+      popup.querySelector('strong')!.textContent=`${players} ${players===1?'Spieler':'Spieler'} · ${group.pins.length} Pins`;
+      const rows=group.pins.map(pin=>{const row=document.createElement('li'),name=document.createElement('span'),detail=document.createElement('small');const observedAt=pin.observedAt??pin.createdAt,stale=!!pin.stale||now-observedAt>15000;name.textContent=`${pin.username} · ${pin.role==='hunter'?'Hunter':pin.role==='zombie'?'Zombie':'Hider'}`;detail.textContent=`${new Date(observedAt).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit',second:'2-digit'})} · ± ${Math.round(pin.accuracy)} m${stale?' · letzter bekannter Standort':''}`;row.append(name,detail);return row;});
+      popup.querySelector('ul')!.replaceChildren(...rows);
+      popup.querySelector('button')!.onclick=()=>{const bounds=new maplibregl.LngLatBounds();group.pins.forEach(pin=>bounds.extend([pin.longitude,pin.latitude]));map.fitBounds(bounds,{padding:80,maxZoom:19,duration:matchMedia('(prefers-reduced-motion: reduce)').matches?0:300});};
+      if(!marker.getPopup())marker.setPopup(new maplibregl.Popup({offset:24,closeButton:true}).setDOMContent(popup));
+    }
+    for (const pin of grouping.singles) {
       const marker=markerFor(`pin:${pin.id}`,'button'),element=marker.getElement();
       element.replaceChildren();
       const observedAt=pin.observedAt??pin.createdAt;const stale=!!pin.stale||now-observedAt>15000;
@@ -213,9 +239,9 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
       if(marker.getPopup())marker.getPopup().setDOMContent(popup);
       else marker.setPopup(new maplibregl.Popup({offset:16,closeButton:true}).setDOMContent(popup));
     }
-    for(const [key,marker] of markersRef.current)if(!retained.has(key)){marker.remove();markersRef.current.delete(key);}
+    for(const [key,marker] of markersRef.current)if(!retained.has(key)){marker.remove();markersRef.current.delete(key);clusterPopups.current.delete(key);}
   // Update data in place; remove pins immediately when permission or membership changes.
-  }, [loaded, pins, xpPoint, location, role, Math.floor(now / 30_000)]);
+  }, [loaded, pins, xpPoint, location, role, viewportRevision, Math.floor(now / 30_000)]);
 
   useEffect(() => {
     if (following && location && mapRef.current) {
@@ -239,7 +265,7 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
       <button type="button" title="Spielzone anzeigen" aria-label="Spielzone anzeigen" disabled={!zone && !activeZone} onClick={fitZone}><Expand size={18} /></button>
       <button type="button" title={following ? 'Automatische Zentrierung beenden' : 'Eigenen Standort zentrieren'} aria-label={following ? 'Automatische Zentrierung beenden' : 'Eigenen Standort zentrieren'} aria-pressed={following} onClick={() => location ? setFollowing(value => !value) : onLocationRequest?.()} disabled={!location && !onLocationRequest}>{following ? <LocateFixed size={18} /> : <Crosshair size={18} />}</button>
     </div>
-    <div className="mh-map-legend"><span><i className="mh-legend-dot own" />DU</span><span><i className="mh-legend-dot hider" />HIDER</span><span><i className="mh-legend-dot hunter" />HUNTER</span><span><i className="mh-legend-dot zombie" />ZOMBIE</span>{finalZone&&<span><i className="mh-legend-dot end"/>ENDZONE</span>}</div>
+    <div className="mh-map-legend" title="Nahe beieinanderliegende Pins werden gebündelt. Tippe die Zahl für Details an."><span><i className="mh-legend-dot own" />DU</span><span><i className="mh-legend-dot hider" />HIDER</span><span><i className="mh-legend-dot hunter" />HUNTER</span><span><i className="mh-legend-dot zombie" />ZOMBIE</span>{finalZone&&<span><i className="mh-legend-dot end"/>ENDZONE</span>}</div>
     {(!online || mapError) && <div className="mh-map-error" role="status"><WifiOff size={16} />{!online ? 'Offline. Karten, Standortmeldungen und Spielstand werden erst nach Wiederverbindung aktualisiert.' : mapError}</div>}
   </section>;
 }

@@ -5,13 +5,22 @@ import {DEFAULT_BADGES,advanceBadges,emptyCounters,equippedBadge,type BadgeDefin
 import {DEFAULT_QUESTIONS,questionsFor,type FeedbackOffer,type FeedbackSettings,type FeedbackAnswer} from '../shared/feedback';
 import type {FriendProfile} from '../shared/profiles';
 import type {MemoryRepository} from '../server/repository';
-import type {Lobby} from '../shared/types';
+import type {Lobby,LobbyView} from '../shared/types';
+import {personalResult} from '../shared/results';
 import {HttpError} from '../server/auth';
 export class TestFeatureStore implements FeatureStore{
  repository?:MemoryRepository;
+ awarded=new Set<string>();
  hidden=new Map<string,Set<string>>();
  defs=structuredClone(DEFAULT_BADGES);config:FeedbackSettings={version:'1',questions:structuredClone(DEFAULT_QUESTIONS)};values=new Map<string,BadgeOverview>();counters=new Map<string,AchievementCounters>();offers=new Map<string,FeedbackOffer&{user:string}>();answers=new Map<string,Record<string,FeedbackAnswer>>();guests=new Set<string>();
- finish(l:Lobby){if(l.status!=='finished'||l.result?.winner==='aborted')return;for(const p of l.players)if(p.role!=='spectator'&&![...this.offers.values()].some(o=>o.user===p.id&&o.matchId===l.id)){const o={id:randomUUID(),user:p.id,matchId:l.id,version:this.config.version,questions:questionsFor(l.settings,this.config.questions),modes:[l.settings.mode],status:'offered' as const,offeredAt:new Date().toISOString()};this.offers.set(o.id,o);}}
+ finish(l:Lobby){this.awards(l);if(l.status!=='finished'||l.result?.winner==='aborted')return;for(const p of l.players)if(p.role!=='spectator'&&![...this.offers.values()].some(o=>o.user===p.id&&o.matchId===l.id)){const o={id:randomUUID(),user:p.id,matchId:l.id,version:this.config.version,questions:questionsFor(l.settings,this.config.questions),modes:[l.settings.mode],status:'offered' as const,offeredAt:new Date().toISOString()};this.offers.set(o.id,o);}}
+ private awards(l:Lobby){
+  if(this.awarded.has(l.id)||l.status!=='finished'||!l.result||l.result.winner==='aborted')return;
+  this.awarded.add(l.id);const state=l as Lobby&{_engine?:{leftIds?:string[];stats?:Record<string,{captures:number;points:number}>}};
+  if(!Number.isFinite(l.startedAt)||!Number.isFinite(l.result.endedAt)||l.result.endedAt-l.startedAt!<300000||!Array.isArray(l.result.survivors)||l.players.filter(p=>p.role!=='spectator'&&!this.guests.has(p.id)).length<2)return;
+  for(const p of l.players){if(this.guests.has(p.id)||p.role==='spectator'||state._engine?.leftIds?.includes(p.id))continue;const counters=this.counters.get(p.id)??emptyCounters(),previous=this.values.get(p.id)?.badges??[],stats=state._engine?.stats?.[p.id];counters.games++;counters.captures+=Math.min(40,stats?.captures??0);counters.huntPoints+=Math.min(100,stats?.points??0);const won=personalResult({...l,self:p} as LobbyView)==='won';if(won)counters.wins++;if(p.role==='hider'&&l.result.survivors.includes(p.id)){counters.survivals++;if(won)counters.hiderWins++;}this.counters.set(p.id,counters);const v=this.values.get(p.id)??{registered:true,badges:[],selected:null,notices:[]};v.badges=advanceBadges(this.defs,counters,previous,Date.now());this.values.set(p.id,v);}
+ }
+
  async badges(user:string){const v=structuredClone(this.values.get(user)??{registered:!this.guests.has(user),badges:advanceBadges(this.defs,emptyCounters(),[],Date.now()),selected:null,notices:[]});v.visibleBadgeIds=v.badges.filter(b=>b.level>0&&!this.hidden.get(user)?.has(b.id)).map(b=>b.id);if(v.selected&&!v.visibleBadgeIds.includes(v.selected.id))v.selected=null;return v;}
  async visibility(user:string,id:string,visible:boolean){const v=await this.badges(user);if(this.guests.has(user)||!v.badges.some(b=>b.id===id&&b.level>0))throw new HttpError(409,'Badge gesperrt.');const hidden=this.hidden.get(user)??new Set<string>();if(visible)hidden.delete(id);else hidden.add(id);this.hidden.set(user,hidden);if(!visible&&v.selected?.id===id)v.selected=null;this.values.set(user,v);if(this.repository?.profiles.get(user))this.repository.profiles.get(user)!.badge=v.selected;return this.badges(user);}
  async profile(viewer:string,target:string):Promise<FriendProfile>{const repo=this.repository,profile=repo?.profiles.get(target);if(!repo||!profile||await repo.hasBlock(viewer,target)||viewer!==target&&!repo.friendships.has([viewer,target].sort().join(':')))throw new HttpError(404,'Dieses Profil ist nicht verfügbar.');const data=await this.badges(target);return{id:profile.id,username:profile.username,avatar_url:profile.avatar_url,created_at:profile.created_at,progress:profile.progress??null,badges:data.badges.filter(b=>b.level>0&&data.visibleBadgeIds?.includes(b.id)).map(b=>({...equippedBadge(b)!,description:b.description,unlockedAt:b.unlockedAt!,upgradedAt:b.upgradedAt??undefined}))};}

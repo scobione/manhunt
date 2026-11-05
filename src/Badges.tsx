@@ -1,7 +1,9 @@
 import {useEffect,useId,useRef,useState,type CSSProperties} from 'react';
-import {Check,Eye,EyeOff,Lock,Trophy,X} from 'lucide-react';
+import {ArrowUp,ArrowDown,Check,Eye,EyeOff,Lock,Trophy,X} from 'lucide-react';
 import {useApp} from './game-context';
 import {badgeLabel,badgeProgress,ROMAN_LEVELS,type BadgeOverview,type EquippedBadge,type PlayerBadge} from '../shared/achievements';
+import {orderedBadges,type ProfileCustomization} from '../shared/profiles';
+import {customizationChanged,useProfileCustomization} from './profile-customization-client';
 import './features.css';
 import './profile-badges.css';
 
@@ -12,8 +14,8 @@ function displayBadge(b:PlayerBadge):BadgeDisplay{return{...b,stageName:b.stageN
 function visibleIds(data:BadgeOverview){return (data as BadgeOverview&{visibleBadgeIds?:string[]}).visibleBadgeIds??data.badges.filter(b=>b.level>0).map(b=>b.id);}
 
 /** Original vector emblems: gradients live inside SVG, never in a remote image. */
-export function BadgeArt({badge,locked=false}:{badge:Pick<EquippedBadge,'icon'|'level'>;locked?:boolean}){
- const uid=useId().replace(/:/g,''),[light,dark,accent]=palettes[badge.icon]??palettes.shield;
+export function BadgeArt({badge,locked=false}:{badge:Pick<EquippedBadge,'icon'|'level'>&{id?:string};locked?:boolean}){
+ const uid=useId().replace(/:/g,''),[light,dark,accent]=badge.id==='winner'?['#d4b4ff','#6a39b6','#f9d878']:badge.id==='survivor'?['#ffcf8c','#a96337','#a2f3ca']:palettes[badge.icon]??palettes.shield;
  return <svg className={`badge-art${locked?' badge-art-locked':''}`} viewBox="0 0 72 80" fill="none" aria-hidden="true" focusable="false">
   <defs><linearGradient id={`${uid}-body`} x1="13" y1="6" x2="60" y2="76" gradientUnits="userSpaceOnUse"><stop stopColor={light}/><stop offset=".53" stopColor={dark}/><stop offset="1" stopColor={accent}/></linearGradient><linearGradient id={`${uid}-face`} x1="20" y1="12" x2="54" y2="68" gradientUnits="userSpaceOnUse"><stop stopColor="#26313e"/><stop offset="1" stopColor="#090d19"/></linearGradient><linearGradient id={`${uid}-shine`} x1="24" y1="20" x2="49" y2="55"><stop stopColor="#fff"/><stop offset="1" stopColor={accent}/></linearGradient></defs>
   <path d="M36 2 63 14 68 43 57 63 36 78 15 63 4 43 9 14Z" fill={`url(#${uid}-body)`}/>
@@ -70,10 +72,10 @@ function useBadgeOverview(){
  return{data,setData,error,setError,retry:()=>setRevision(v=>v+1)};
 }
 export function OwnProfileBadges(){
- const {data,error,retry}=useBadgeOverview();
+ const {data,error,retry}=useBadgeOverview(),{value:customization}=useProfileCustomization();
  if(error)return <div className="badge-strip-error" role="status">Badges konnten nicht geladen werden. <button onClick={retry}>Erneut laden</button></div>;
  if(!data)return <span className="badge-strip-loading" role="status">Badges werden geladen…</span>;
- const shown=data.badges.filter(b=>b.level>0&&visibleIds(data).includes(b.id)).map(displayBadge);
+ const shown=orderedBadges(data.badges.filter(b=>b.level>0&&visibleIds(data).includes(b.id)),customization.badgeOrder).map(displayBadge);
  return shown.length?<BadgeStrip badges={shown}/>:<p className="badge-strip-empty">Noch keine sichtbaren Badges</p>;
 }
 
@@ -92,17 +94,26 @@ export function BadgeBoard(){
 }
 
 export function BadgeVisibilitySettings(){
- const {api,refreshProfile}=useApp();const {data,setData,error,setError,retry}=useBadgeOverview();const [saving,setSaving]=useState<string|null>(null),[status,setStatus]=useState('');
+ const {api,refreshProfile,profile}=useApp();const {data,setData,error,setError,retry}=useBadgeOverview(),{value:customization}=useProfileCustomization();const [saving,setSaving]=useState<string|null>(null),[status,setStatus]=useState(''),[ordering,setOrdering]=useState(false);
  async function toggle(id:string,visible:boolean){if(saving)return;setSaving(id);setStatus('');try{const updated=await api<BadgeOverview>('/badges/visibility',{method:'PATCH',body:JSON.stringify({badgeId:id,visible})});setData(updated);setError('');await refreshProfile();window.dispatchEvent(new Event(appearanceEvent));setStatus('Badge-Sichtbarkeit gespeichert.');}catch(e){setError((e as Error).message);}finally{setSaving(null);}}
- const unlocked=data?.badges.filter(b=>b.level>0)??[];
- return <section className="panel badge-visibility-panel"><div className="panel-heading"><div><h2>Badges im Profil</h2><p>Wähle aus, welche Badges deine Freunde sehen.</p></div><Eye size={21}/></div>
+ const unlocked=orderedBadges(data?.badges.filter(b=>b.level>0)??[],customization.badgeOrder);
+ async function move(id:string,direction:number){if(ordering||saving||!profile)return;const ids=unlocked.map(b=>b.id),from=ids.indexOf(id),to=from+direction;if(from<0||to<0||to>=ids.length)return;[ids[from],ids[to]]=[ids[to],ids[from]];setOrdering(true);setStatus('');try{const updated=await api<ProfileCustomization>('/badges/order',{method:'PUT',body:JSON.stringify({badgeIds:ids})});customizationChanged(profile.id,updated);setError('');setStatus('Badge-Reihenfolge gespeichert.');}catch(error){setError((error as Error).message);}finally{setOrdering(false);}}
+ return <section className="panel badge-visibility-panel"><div className="panel-heading"><div><h2>Badges im Profil</h2><p>Wähle sichtbare Badges und ihre Reihenfolge.</p></div><Eye size={21}/></div>
   {error&&<p role="alert" className="form-error">{error} <button className="text-link" onClick={retry}>Erneut laden</button></p>}
   {!data&&!error&&<p role="status">Badges werden geladen…</p>}
   {data&&!data.registered&&<p className="fineprint">Dauerhafte Badges benötigen ein registriertes Konto.</p>}
   {data&&data.registered&&!unlocked.length&&<p className="badge-visibility-empty"><Trophy size={18}/> Sobald du ein Badge freischaltest, kannst du es hier ein- und ausblenden.</p>}
-  <div className="badge-visibility-list">{unlocked.map(b=>{const visible=visibleIds(data!).includes(b.id);return <div className={`badge-visibility-row badge-theme-${b.icon}`} key={b.id}><BadgeArt badge={b}/><div><strong>{badgeLabel(b)}</strong><span>{visible?<><Eye size={12}/> Sichtbar</>:<><EyeOff size={12}/> Ausgeblendet</>}</span></div><button type="button" role="switch" className="badge-visibility-switch" aria-label={`${badgeLabel(b)} im Profil anzeigen`} aria-checked={visible} disabled={saving!==null} onClick={()=>void toggle(b.id,!visible)}><span className="badge-switch-knob">{visible&&<Check size={12}/>}</span></button></div>;})}</div>
+  <div className="badge-visibility-list">{unlocked.map((b,index)=>{const visible=visibleIds(data!).includes(b.id);return <div className={`badge-visibility-row badge-theme-${b.icon}`} key={b.id}><BadgeArt badge={b}/><div><strong>{badgeLabel(b)}</strong><span>{visible?<><Eye size={12}/> Sichtbar</>:<><EyeOff size={12}/> Ausgeblendet</>}</span></div><button type="button" role="switch" className="badge-visibility-switch" aria-label={`${badgeLabel(b)} im Profil anzeigen`} aria-checked={visible} disabled={saving!==null||ordering} onClick={()=>void toggle(b.id,!visible)}><span className="badge-switch-knob">{visible&&<Check size={12}/>}</span></button><div className="badge-order-controls"><span>Position {index+1}</span><button type="button" aria-label={`${badgeLabel(b)} nach oben`} disabled={index===0||ordering||saving!==null} onClick={()=>void move(b.id,-1)}><ArrowUp size={16}/></button><button type="button" aria-label={`${badgeLabel(b)} nach unten`} disabled={index===unlocked.length-1||ordering||saving!==null} onClick={()=>void move(b.id,1)}><ArrowDown size={16}/></button></div></div>;})}</div>
   <p className="badge-settings-status" role="status" aria-live="polite">{status}</p>
  </section>;
 }
 
-export function BadgeNotifications(){const {api,profile,lobby,notify}=useApp();const [revision,setRevision]=useState(0);useEffect(()=>{const refresh=()=>setRevision(v=>v+1);window.addEventListener('manhunt:badges-changed',refresh);return()=>window.removeEventListener('manhunt:badges-changed',refresh);},[]);useEffect(()=>{if(!profile)return;let active=true;void api<BadgeOverview>('/badges').then(async v=>{if(!active||!v.notices.length)return;notify(v.notices.map(n=>badgeLabel({id:n.badgeId,name:n.name,level:n.level})+' freigeschaltet').join(' · '));await api('/badges/seen',{method:'POST',body:JSON.stringify({ids:v.notices.map(n=>n.id).slice(0,100)})});}).catch(()=>{});return()=>{active=false;};},[api,profile?.id,lobby?.status,revision,notify]);return null;}
+export function BadgeNotifications(){
+ const {api,profile,lobby,notify}=useApp();const [revision,setRevision]=useState(0),[awards,setAwards]=useState<{user:string;notice:string;badge:BadgeDisplay}[]>([]),seen=useRef(new Set<string>());
+ useEffect(()=>{const refresh=()=>setRevision(v=>v+1);window.addEventListener('manhunt:badges-changed',refresh);return()=>window.removeEventListener('manhunt:badges-changed',refresh);},[]);
+ useEffect(()=>{if(!profile)return;let active=true;void api<BadgeOverview>('/badges').then(async value=>{if(!active||!value.notices.length)return;const fresh=value.notices.filter(n=>!seen.current.has(n.id));fresh.forEach(n=>seen.current.add(n.id));const additions=fresh.flatMap(n=>{const badge=value.badges.find(b=>b.id===n.badgeId);return badge?[{user:profile.id,notice:n.id,badge:displayBadge({...badge,level:n.level})}]:[];});if(additions.length){setAwards(existing=>[...existing.filter(item=>item.user===profile.id),...additions]);notify(fresh.map(n=>badgeLabel({id:n.badgeId,name:n.name,level:n.level})+' freigeschaltet').join(' · '));}await api('/badges/seen',{method:'POST',body:JSON.stringify({ids:value.notices.map(n=>n.id).slice(0,100)})});}).catch(()=>{});return()=>{active=false;};},[api,profile?.id,lobby?.status,revision,notify]);
+ const award=awards.find(item=>item.user===profile?.id);
+ useEffect(()=>{if(!award)return;const timer=setTimeout(()=>setAwards(items=>items.filter(item=>item.notice!==award.notice)),4800);return()=>clearTimeout(timer);},[award?.notice]);
+ if(!award)return null;
+ return <aside key={award.notice} className={`badge-award-toast badge-theme-${award.badge.icon}`} role="status" aria-live="polite"><span className="badge-award-sparks" aria-hidden="true"/><BadgeArt badge={award.badge}/><div><span>Auszeichnung freigeschaltet</span><strong>{badgeLabel(award.badge)}</strong><small>{award.badge.stageName}</small></div><button aria-label="Auszeichnung schließen" onClick={()=>setAwards(items=>items.filter(item=>item.notice!==award.notice))}><X size={18}/></button></aside>;
+}

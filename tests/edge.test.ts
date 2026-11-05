@@ -87,3 +87,23 @@ it('LOBBY-GPS-EDGE: rejected accuracy check persists revocation without persisti
  expect((await request(host,'/sync')).body.lobby.self).toMatchObject({ready:false,locationReady:false});
  expect(JSON.stringify([...store.lobbies.values()])).not.toContain('13.401234');expect(JSON.stringify(repo.audits)).not.toContain('location_check');
 });
+
+
+describe('REMATCH Edge transport (isolated)',()=>{
+ it('REMATCH-EDGE-01: simultaneous retries preserve the old checkpoint and return one new round',async()=>{
+  await match();await command(host,{type:'end'});const old=(await request(host,'/sync')).body.lobby;const archived=structuredClone(store.lobbies.get(old.id));
+  store.conflicts=2;const replies=await Promise.all([command(host,{type:'rematch',matchId:old.id}),command(host,{type:'rematch',matchId:old.id})]);
+  expect(replies.map(r=>r.status)).toEqual([200,200]);const next=replies[0].body.lobby;expect(next.id).not.toBe(old.id);expect(replies[1].body.lobby.id).toBe(next.id);expect(next.previousMatchId).toBe(old.id);expect(next.code).toBe(old.code);expect(next.status).toBe('waiting');expect(next.players.every((p:any)=>!p.ready&&!p.locationReady)).toBe(true);expect(store.lobbies.get(old.id)).toEqual(archived);expect(store.lobbies.size).toBe(2);
+  expect((await request(guest,'/sync')).body.lobby.id).toBe(next.id);expect((await command(host,{type:'rematch'})).body.lobby.id).toBe(next.id);
+ });
+ it('REMATCH-EDGE-02: explicit targets retain host/membership validation and joins check the active round blocks',async()=>{
+  await match();await command(host,{type:'end'});const old=(await request(host,'/sync')).body.lobby;
+  expect((await command(guest,{type:'rematch',matchId:old.id})).status).toBe(400);expect((await command(stranger,{type:'rematch',matchId:old.id})).status).toBe(400);
+  const next=(await command(host,{type:'rematch',matchId:old.id})).body.lobby;
+  expect((await event(guest,'lobby:join',{code:old.code})).body.lobby.id).toBe(next.id);
+  await command(guest,{type:'leave'});await request(stranger,'/profile');expect((await request(guest,`/blocks/${stranger}`,'POST',{})).status).toBe(200);
+  // The completed match still includes the guest. Blocking a departed player
+  // must not prevent a fresh, unrelated player from joining the active round.
+  const joined=await event(stranger,'lobby:join',{code:old.code});expect(joined.status).toBe(200);expect(joined.body.lobby.id).toBe(next.id);
+ });
+});

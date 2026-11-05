@@ -1,3 +1,7 @@
+import MatchResults from './MatchResults';
+import {Modal} from './Dialogs';
+import {BugReportForm} from './CommunityPages';
+import {useConfirmation} from './Dialogs';
 import {ProfileBadge} from './Badges';
 import FeedbackPanel from './FeedbackPanel';
 import {distance} from '@turf/turf';
@@ -31,8 +35,10 @@ export default function GamePage() {
 }
 
 function GameView() {
+  const {confirm,confirmation}=useConfirmation();
+  const [reportOpen,setReportOpen]=useState(false);
   const [scanningCapture,setScanningCapture]=useState(false);
-  const { lobby, profile, connected, command, notify, gps } = useApp();
+  const { lobby, profile, connected, command, notify, gps, config } = useApp();
   const navigate = useNavigate();
   const clock = useNow();
   const [busy, setBusy] = useState(false);
@@ -53,6 +59,7 @@ function GameView() {
     try { await action(); } catch (error) { notify(error instanceof Error ? error.message : 'Aktion konnte nicht ausgeführt werden.'); }
     finally { if (alive.current) setBusy(false); }
   }
+  useEffect(()=>{if(lobby?.status==='waiting')navigate('/lobby');},[lobby?.status,navigate]);
   if (!lobby) return <EmptyState icon={Radio} title="Aktuell läuft kein Match." action={<Link className="button primary" to="/create">Lobby erstellen <ArrowRight size={16}/></Link>}>Verbinde dich mit deiner Crew, um die Jagd zu starten.</EmptyState>;
   if (lobby.status === 'waiting') return <EmptyState icon={Users} title="Das Spiel hat noch nicht begonnen." action={<Link className="button primary" to="/lobby">Zum Warteraum</Link>}>Der Host startet, sobald alle bereit sind und die Spielzone bestätigt ist.</EmptyState>;
 
@@ -80,12 +87,7 @@ function GameView() {
   const modeName = modeLabel(lobby.settings);const xpConfig={...DEFAULT_XP,...lobby.settings.xp};const xp=lobby.xpHunt;const progress=xpConfig.goal==='team'?xp?.collected??0:xp?.byPlayer[self.id]??0;
   const leave = () => run(async () => { stopWatch(); await command({ type: 'leave' }); navigate('/'); });
 
-  if (lobby.status === 'finished' && lobby.result) return <>
-    <PageHeader title="Die Jagd ist vorbei." description="Kehrt auf einem sicheren Weg zum vereinbarten Treffpunkt zurück."/>
-    <section className="panel result-panel"><Trophy size={56} className="accent"/><span className="eyebrow">{modeName} / ERGEBNIS</span><h2>{({ hunters: 'DIE HUNTER GEWINNEN', hiders: 'DIE HIDER GEWINNEN', infected: 'DIE INFEKTION GEWINNT', zombies: 'DIE INFEKTION GEWINNT', draw: 'UNENTSCHIEDEN', aborted: 'MATCH OHNE WERTUNG BEENDET', deleted_player: 'DER SIEGER HAT SEIN KONTO GELÖSCHT', A: 'TEAM A GEWINNT', B: 'TEAM B GEWINNT', team_A: 'TEAM A GEWINNT', team_B: 'TEAM B GEWINNT' } as Record<string, string>)[lobby.result.winner] || `${(lobby.players.find(p=>p.id===lobby.result!.winner)?.username??lobby.result.winner).toUpperCase()} GEWINNT`}</h2><p>{lobby.result.reason}</p><div className="result-stats"><div><strong>{lobby.players.length}</strong><span>SPIELER</span></div><div><strong>{lobby.result.survivors.length}</strong><span>ÜBERLEBENDE</span></div><div><strong>{formatTime((lobby.result.endedAt - (lobby.startedAt ?? lobby.createdAt)) / 1000)}</strong><span>GESPIELT</span></div></div><p className="fineprint">Die Standortfreigabe ist beendet. GPS-Pins und Fangcodes werden aus dem Matchzustand entfernt.</p><div className="button-row"><button className="button primary" disabled={busy} onClick={leave}>Zur Übersicht <ArrowRight size={16}/></button><Link className="button" to="/history">Matchhistorie</Link></div></section>
-    {lobby.result.winner!=='aborted'&&<FeedbackPanel key={lobby.id} matchId={lobby.id}/>}
-    <div className="panel"><h3>Deine Crew</h3>{lobby.players.map(player => <div className="player-row" key={player.id}><Avatar name={player.username} url={player.avatar_url}/><div className="player-info"><strong>{player.username}</strong><ProfileBadge badge={player.badge}/><span>{ROLE_LABELS[player.role]}</span></div><span className={lobby.result!.survivors.includes(player.id) ? 'ready-badge' : 'waiting-badge'}>{lobby.result!.survivors.includes(player.id) ? 'ÜBERLEBT' : player.eliminated ? 'AUSGESCHIEDEN' : 'MATCH BEENDET'}</span></div>)}</div>
-  </>;
+  if (lobby.status === 'finished' && lobby.result) return <MatchResults/>;
 
   return <>
     <PageHeader eyebrow={`${modeName} / LOBBY ${lobby.code}`} title={self.eliminated ? 'Für dich ist die Jagd vorbei.' : role === 'spectator' ? 'Zuschaueransicht' : 'Die Jagd läuft.'} description={self.eliminated ? 'Du bist ausgeschieden. Deine Standortfreigabe ist beendet; du kannst die Ereignisse weiterverfolgen.' : 'Achte auf deine Umgebung. Sicherheit geht vor Geschwindigkeit.'} action={<span className={`tag role-${role}`} data-testid="role-label">{self.eliminated ? 'ELIMINIERT' : ROLE_LABELS[role]}</span>}/>
@@ -131,7 +133,7 @@ function GameView() {
       {pendingCaptures.map(capture => <section className="panel capture-request" key={capture.id} role="alert"><Crosshair size={26}/><h3>Wurdest du gefangen?</h3><p>{lobby.players.find(player => player.id === capture.hunterId)?.username} hat einen Fang angefragt. Bestätige nur einen tatsächlichen Fang.</p><p>{formatTime((capture.createdAt + 30000 - now) / 1000)} verbleibend</p><div className="button-row"><button className="button primary" disabled={busy || !connected} onClick={() => run(() => command({ type: 'confirm_capture', captureId: capture.id, accept: true }))}><Check size={16}/> Fang bestätigen</button><button className="button" disabled={busy || !connected} onClick={() => run(() => command({ type: 'confirm_capture', captureId: capture.id, accept: false }))}><X size={16}/> Ablehnen</button></div></section>)}
       {host && lobby.settings.allowHealing && lobby.players.some(player => player.role === 'zombie' && !player.eliminated) && <section className="panel"><h3>Heilung</h3>{lobby.players.filter(player => player.role === 'zombie' && !player.eliminated).map(player => <button key={player.id} className="button full" disabled={busy || lobby.status !== 'active'} onClick={() => run(() => command({ type: 'heal', playerId: player.id }))}>{player.username} heilen</button>)}</section>}
     </aside></div>
-    <div className="game-actions">{host&&<><button className="button" disabled={busy} onClick={()=>run(()=>command({type:lobby.status==='paused'?'resume':'pause'}))}>{lobby.status==='paused'?'Fortsetzen':'Spiel pausieren'}</button><button className="button danger-text" disabled={busy} onClick={()=>{if(window.confirm('Match ohne Wertung beenden?'))void run(()=>command({type:'end'}));}}>Spiel beenden</button></>}<button className="button subtle" disabled={busy} onClick={leave}><DoorOpen size={17}/> Match verlassen</button><Link className="text-link" to="/safety"><Shield size={15}/> Outdoor-Kodex</Link></div>
+    {confirmation}{reportOpen&&!config?.simulation&&<Modal title="Fehler melden" onClose={()=>setReportOpen(false)}><BugReportForm matchId={lobby.id} onSent={()=>setReportOpen(false)}/></Modal>}<div className="game-actions">{host&&<><button className="button" disabled={busy} onClick={()=>run(()=>command({type:lobby.status==='paused'?'resume':'pause'}))}>{lobby.status==='paused'?'Fortsetzen':'Spiel pausieren'}</button><button className="button danger-text" disabled={busy} onClick={()=>{void confirm({title:'Spiel beenden?',message:'Das Match wird ohne Wertung beendet. Bereits freigegebene Standortdaten werden aus dem laufenden Spiel entfernt.',confirmLabel:'Ohne Wertung beenden',danger:true}).then(accepted=>{if(accepted)void run(()=>command({type:'end'}));});}}>Spiel beenden</button></>}<button className="button subtle" disabled={busy} onClick={leave}><DoorOpen size={17}/> Match verlassen</button>{!config?.simulation&&<button className="button subtle" onClick={()=>setReportOpen(true)}><Flag size={16}/> Fehler melden</button>}<Link className="text-link" to="/safety"><Shield size={15}/> Outdoor-Kodex</Link></div>
     <section className="panel game-events"><div className="panel-heading"><h3>Live-Protokoll</h3><Radio size={18}/></div>{lobby.events.length ? [...lobby.events].reverse().slice(0, 15).map(event => <div className="game-event" key={event.id}><time dateTime={new Date(event.at).toISOString()}>{new Date(event.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</time><span>{event.message}</span></div>) : <p>Noch keine Match-Ereignisse.</p>}</section>
   </>;
 }

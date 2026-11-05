@@ -2,11 +2,15 @@
 
 **Deine Stadt. Dein Spielfeld.** Ein quelloffenes GPS-Verfolgungsspiel für private Gruppen — React, TypeScript, Socket.IO, Supabase und MapLibre. MIT-lizenziert.
 
-> **Stand 0.B2:** Die PWA ist auf Vercel veröffentlicht. Die Spiellogik läuft weiterhin in Supabase Edge Functions mit atomaren PostgreSQL-Checkpoints und authentifizierter Synchronisierung etwa alle zwei Sekunden. Accounts und Daten bleiben im bestehenden Supabase-Projekt. Google ist abgeschaltet; E-Mail und Gastzugang bleiben erhalten. Den nachgewiesenen Veröffentlichungsstand dokumentiert [DEPLOYMENT.md](docs/DEPLOYMENT.md).
+> **Stand 0.B2.1:** Die PWA ist auf Vercel veröffentlicht. Die Spiellogik läuft weiterhin in Supabase Edge Functions mit atomaren PostgreSQL-Checkpoints und authentifizierter Synchronisierung etwa alle zwei Sekunden. Accounts und Daten bleiben im bestehenden Supabase-Projekt. Google ist abgeschaltet; E-Mail und Gastzugang bleiben erhalten. Den nachgewiesenen Veröffentlichungsstand dokumentiert [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 **Vercel-Adresse:** [MANHUNT](https://manhunt-pwa.vercel.app). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Die bisherige Sites-Adresse leitet nach zehn Sekunden zur getesteten Vercel-Seite weiter.
 
 **Eigenständiges Admin-Portal:** [Manhunt Admin](https://manhunt-admin-scobione.vercel.app). Kontoerstellung und manueller Passwort-Reset ohne Mailversand, verpflichtender Passwortwechsel, Statusverwaltung und optionaler zusätzlicher Zugangscode. [Betrieb und Sicherheitsmodell](docs/ADMIN-PORTAL.md).
+
+## Erweiterungen 0.B2.1
+
+Profilbanner und sechs Profilfarben, sortierbare Badges, zwei weitere Erfolgsreihen, Revanche mit erhaltenem Lobbycode, persönliche Zonenbibliothek und Lieblingsregeln, Fehlerberichte mit optionalem Bild, Versionsübersicht und eine kurze Spieleinführung. Lobby, Freunde und Ergebnisse erhalten eine gemeinsame Gestaltung; Karten fassen dichte Gruppen erlaubter Marker zusammen. [Release](docs/RELEASE-0.B2.1.md) · [Badge-Stufen](docs/MANHUNT-Badges-und-Stufen.txt).
 
 ## Funktionen
 

@@ -28,6 +28,8 @@ async function mouseDrag(page:Page,slider:Locator,fraction:number,release=true){
 async function enableGps(page:Page){await page.getByRole('checkbox',{name:/Ich erlaube die Standortverarbeitung für dieses Match:/}).check();await page.getByRole('button',{name:'GPS aktivieren',exact:true}).click();}
 async function fix(page:Page,longitude:number){const result=page.waitForResponse(r=>r.url().endsWith('/api/events')&&r.request().postDataJSON()?.data?.command?.type==='location');await page.evaluate(longitude=>(window as any).__swipeGPS({coords:{longitude,latitude:52.52,accuracy:5},timestamp:Date.now()}),longitude);expect((await result).status()).toBe(200);}
 for(const width of [320,1440])test(`SWIPE-${width}: GPS lock, track taps, aborted drag, pointer capture, one confirmation and zombie access`,async({browser,request})=>{
+ // Two full overlays, screenshots, pointer capture and keyboard/touch paths.
+ test.setTimeout(90000);
  const a=await match(browser,request,width),{page,commands}=a;const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  try{
   await page.route('**/api/events',async route=>{if(['zone_return_ack','infection_ack'].includes(route.request().postDataJSON()?.data?.command?.type))await new Promise(resolve=>setTimeout(resolve,650));await route.continue();});
@@ -38,6 +40,10 @@ for(const width of [320,1440])test(`SWIPE-${width}: GPS lock, track taps, aborte
   await page.screenshot({path:`test-results-edge/swipe-${width}-locked.png`,animations:'disabled'});
   await page.waitForTimeout(3300);await fix(page,13.405);await expect(slider).toBeDisabled();
   await page.waitForTimeout(3300);await fix(page,13.405);await expect(slider).toBeEnabled();
+  // Model watchPosition continuing to deliver fixes during screenshots and
+  // gestures. A real server correctly rejects an acknowledgement after the
+  // last manually emitted synthetic fix becomes older than fifteen seconds.
+  await page.evaluate(()=>{setInterval(()=>(window as any).__swipeGPS({coords:{longitude:13.405,latitude:52.52,accuracy:5},timestamp:Date.now()}),3500);});
   await page.screenshot({path:`test-results-edge/swipe-${width}-return-ready.png`,animations:'disabled'});
   const track=slider.locator('..');const size=(await track.boundingBox())!;
   await track.click({position:{x:size.width-8,y:size.height/2}});await slider.click();expect(commands.filter(v=>v==='zone_return_ack')).toHaveLength(0);

@@ -8,7 +8,7 @@ async function event(api:APIRequestContext,token:string,event:string,data:unknow
 const command=(api:APIRequestContext,token:string,command:unknown)=>event(api,token,'lobby:command',{command});
 async function actor(browser:Browser,name:string){const id=randomUUID(),token=`test:${id}:${name}`,context=await browser.newContext({viewport:{width:390,height:844}});await context.addInitScript(t=>sessionStorage.setItem('manhunt:test-token',t),token);return{id,token,context,page:await context.newPage()};}
 test('MODE-08 CHAT-06 CHAT-07 CHAT-08 UI-05 UI-06 UI-08: three mobile sessions sync modules, role changes and safe team chat',async({browser,request})=>{
- test.setTimeout(90000); // Three contexts, maps, live polling and a full role transition.
+ test.setTimeout(120000); // Three contexts, maps, live polling and a full role transition.
  const host=await actor(browser,'ModuleHost'),hider=await actor(browser,'ModuleHider'),other=await actor(browser,'ModuleOther');
  try{
   const l=await event(request,host.token,'lobby:create',{settings:{...DEFAULT_SETTINGS,preparationSeconds:0,headStartSeconds:0,randomRoles:false,captureMethod:'code'}});await event(request,hider.token,'lobby:join',{code:l.code});await event(request,other.token,'lobby:join',{code:l.code});

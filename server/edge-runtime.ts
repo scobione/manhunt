@@ -72,11 +72,11 @@ export function createEdgeHandler({repository:repo,store,verify,origins,push,pat
           if([...engine.lobbies.values()].filter(l=>!['finished','closed'].includes(l.status)).length>=100)throw new HttpError(503,'Alle Spielplätze sind gerade belegt. Bitte später erneut versuchen.');
           lobby=engine.create(profile,settings as Partial<Settings>);
         }else if(event==='lobby:join'){
-          const target=[...engine.lobbies.values()].find(l=>l.code===code);
+          const target=engine.lobbyByCode(code!);
           if(target)for(const player of target.players)if(await repo.hasBlock(id,player.id))throw new HttpError(403,'Der Beitritt zu dieser Lobby ist nicht möglich.');
           lobby=engine.join(code!,profile);
         }else if(command){
-          lobby??=[...engine.lobbies.values()].find(l=>l.status==='finished'&&l.players.some(p=>p.id===id));
+          lobby=engine.lobbyForCommand(id,command);
           if(!lobby)throw new HttpError(404,'Du bist in keiner Lobby.');
           if(pathData){if(JSON.stringify(lobby.zone)!==pathData.zone)throw new HttpError(409,'Die Zone wurde während der Wegprüfung verändert. Bitte erneut starten.');engine.prepareXp(lobby.id,pathData.candidates);}
           lobby=engine.command(lobby.id,id,command);
@@ -110,7 +110,7 @@ export function createEdgeHandler({repository:repo,store,verify,origins,push,pat
     const headers:Record<string,string>={'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Vary':'Origin'};
     if(origin&&origins.includes(origin)){headers['Access-Control-Allow-Origin']=origin;headers['Timing-Allow-Origin']=origin;}
     headers['Access-Control-Allow-Headers']='authorization, apikey, content-type, x-client-info, x-manhunt-admin-session';
-    headers['Access-Control-Allow-Methods']='GET, POST, PATCH, DELETE, OPTIONS';
+    headers['Access-Control-Allow-Methods']='GET, POST, PUT, PATCH, DELETE, OPTIONS';
     const respond=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers});
     try{
       if(origin&&!origins.includes(origin))throw new HttpError(403,'Diese Website darf nicht auf den Spielserver zugreifen.');
@@ -127,15 +127,15 @@ export function createEdgeHandler({repository:repo,store,verify,origins,push,pat
       if(!auth?.startsWith('Bearer '))throw new HttpError(401,'Bitte melde dich an.');
       const identity=await verify(auth.slice(7)),id=identity.id;
       await store.quota(id,'api',120);
-      if(accounts&&(path==='/badges'||path.startsWith('/badges/')||path.startsWith('/players/')||path==='/feedback'||path.startsWith('/feedback/')||path==='/traffic'||path==='/account'||path.startsWith('/account/')||path.startsWith('/admin/'))){
-        const value=await accounts.handle(identity,auth.slice(7),path,method,['POST','PATCH','DELETE'].includes(method)?await jsonBody(request):{},new URL(request.url).searchParams,request.headers.get('x-manhunt-admin-session'));
+      if(accounts&&(path==='/badges'||path.startsWith('/badges/')||path.startsWith('/players/')||path==='/profile/customization'||path.startsWith('/library/')||path==='/reports'||path==='/feedback'||path.startsWith('/feedback/')||path==='/traffic'||path==='/account'||path.startsWith('/account/')||path.startsWith('/admin/'))){
+        const value=await accounts.handle(identity,auth.slice(7),path,method,['POST','PUT','PATCH','DELETE'].includes(method)?await jsonBody(request):{},new URL(request.url).searchParams,request.headers.get('x-manhunt-admin-session'));
         if(method==='PATCH'&&['/badges/selected','/badges/visibility'].includes(path)){await store.touch(id);await game(identity,await repo.getProfile(identity),'lobby:sync',{});}
         return respond(value);
       }
       await accounts?.requireGame(identity);
       const profile=await repo.getProfile(identity);
       await store.touch(id);
-      const body=['POST','PATCH','DELETE'].includes(method)?await jsonBody(request):{};
+      const body=['POST','PUT','PATCH','DELETE'].includes(method)?await jsonBody(request):{};
       let result:unknown={ok:true};
       if(path==='/events'&&method==='POST'){
         const {event,data}=eventSchema.parse(body);result=await game(identity,profile,event,data);

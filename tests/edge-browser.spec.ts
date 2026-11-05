@@ -31,6 +31,10 @@ test('mobile planned zone continues into a real lobby and both browsers start a 
   const code=await host.page.getByTestId('lobby-code').innerText();
   await guest.page.goto(`/join?code=${code}`);await guest.page.getByRole('button',{name:'Lobby beitreten',exact:true}).click();
   await expect(host.page.locator('.player-row')).toHaveCount(2);
+  await host.page.setViewportSize({width:320,height:900});
+  await host.page.evaluate(()=>document.documentElement.style.fontSize='200%');
+  expect(await host.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await host.page.screenshot({path:'test-results-edge/b21-crew-320-large-font.png',fullPage:true});
   await command(host.page,host.token,{type:'settings',settings:{...DEFAULT_SETTINGS,captureMethod:'confirmation',preparationSeconds:0,headStartSeconds:0}});
   for(const actor of [host,guest]){await actor.context.grantPermissions(['geolocation']);await actor.context.setGeolocation({latitude:52.52,longitude:13.405,accuracy:5});await actor.page.getByRole('checkbox',{name:/Ich aktiviere meinen Standort für diese Lobby/}).check();await actor.page.getByRole('button',{name:'Standort freigeben',exact:true}).click();await actor.page.getByRole('button',{name:'Bereit',exact:true}).click();}
   await expect(host.page.getByRole('button',{name:'Match starten',exact:true})).toBeEnabled();
@@ -50,6 +54,8 @@ test('mobile planned zone continues into a real lobby and both browsers start a 
   await hider.page.getByRole('button',{name:'Fang bestätigen',exact:true}).click();
   await expect(host.page.getByRole('heading',{name:'DIE HUNTER GEWINNEN'})).toBeVisible();
   await expect(guest.page.getByRole('heading',{name:'DIE HUNTER GEWINNEN'})).toBeVisible();
+  expect(await host.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await host.page.screenshot({path:'test-results-edge/b21-results-320-large-font.png',fullPage:true});
  }finally{await host.context.close();await guest.context.close();}
 });
 test('friend requests and invitations appear through edge synchronization',async({browser})=>{
@@ -61,6 +67,13 @@ test('friend requests and invitations appear through edge synchronization',async
   await expect(bob.page.getByRole('button',{name:'Annehmen',exact:true})).toBeVisible();
   await bob.page.getByRole('button',{name:'Annehmen',exact:true}).click();
   await expect(alice.page.locator('.friend-row').first()).toBeVisible();
+  await alice.page.setViewportSize({width:320,height:900});
+  await alice.page.evaluate(()=>document.documentElement.style.fontSize='200%');
+  await expect(alice.page.locator('.mh-friend-card')).toHaveCount(1);
+  expect(await alice.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  const profileLink=alice.page.locator('.mh-friend-card .friend-profile-link');
+  expect((await profileLink.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await alice.page.screenshot({path:'test-results-edge/b21-friends-320-large-font.png',fullPage:true});
  }finally{await alice.context.close();await bob.context.close();}
 });
 
@@ -78,7 +91,7 @@ test('deleting a Last Survivor winner anonymizes the result for the remaining br
   await winner.page.goto('/settings');await winner.page.getByText('Konto dauerhaft löschen',{exact:true}).click();
   await winner.page.getByLabel('Zur Bestätigung LÖSCHEN eingeben').fill('LÖSCHEN');
   await winner.page.getByRole('button',{name:'Konto endgültig löschen',exact:true}).click();await expect(winner.page).toHaveURL(/\/$/);
-  await expect(host.page.getByRole('heading',{name:'DER SIEGER HAT SEIN KONTO GELÖSCHT',exact:true})).toBeVisible();
+  await expect(host.page.getByRole('heading',{name:'Der Sieger hat sein Konto gelöscht',exact:true})).toBeVisible();
   expect(await winner.page.evaluate(()=>sessionStorage.getItem('manhunt:test-token'))).toBeNull();
   await host.page.goto('/history');await host.page.getByRole('button',{name:/LAST SURVIVOR/}).click();
   await expect(host.page.locator('.history-detail')).toContainText('Der Sieger hat sein Konto gelöscht.');
@@ -126,4 +139,30 @@ test('QR-REGRESSION: a responsive screenshot with rounded module pixels reaches 
   await guest.page.getByLabel('QR-Bild auswählen').setInputFiles('tests/fixtures/lobby-qr-pixel-rounding.png');
   expect((await sent).postDataJSON().data.code).toBe('PPHBR7');
  }finally{await guest.context.close();}
+});
+
+// Reusing rules must retain custom values rather than silently restore the
+// convenience defaults used when choosing a legacy mode from scratch.
+test('B21-PRESET-REUSE: creating a lobby preserves all saved custom rules',async({browser})=>{
+ const host=await actor(browser,'PresetReuse');
+ try{
+  const settings={...DEFAULT_SETTINGS,mode:'custom' as const,rules:{zombie:true,apocalypse:true,xpHunt:false},winCondition:'infection' as const,hunterCount:3,infectionDelaySeconds:17,durationSeconds:2520,pinIntervalSeconds:420,maxPlayers:16,captureMethod:'code' as const,outsideGraceSeconds:95};
+  await host.page.evaluate(settings=>sessionStorage.setItem('manhunt:planned-settings',JSON.stringify(settings)),settings);
+  await host.page.goto('/create');
+  await expect(host.page.getByLabel('Matchdauer in Minuten',{exact:true})).toHaveValue('42');
+  await expect(host.page.getByLabel('Spielerlimit',{exact:true})).toHaveValue('16');
+  await host.page.getByRole('button',{name:'Lobby erstellen',exact:true}).click();
+  await expect(host.page).toHaveURL(/\/lobby$/);
+  const response=await host.page.request.post('http://127.0.0.1:3002/api/events',{headers:{Authorization:`Bearer ${host.token}`},data:{event:'lobby:sync',data:{}}});
+  expect(response.ok(),await response.text()).toBe(true);
+  expect((await response.json()).lobby.settings).toEqual(settings);
+  await host.page.setViewportSize({width:320,height:900});
+  await host.page.evaluate(()=>document.documentElement.style.fontSize='200%');
+  expect(await host.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await host.page.screenshot({path:'test-results-edge/b21-lobby-320-large-font.png',fullPage:true});
+  await host.page.setViewportSize({width:320,height:568});
+  await host.page.getByRole('button',{name:'Menü öffnen',exact:true}).click();
+  await host.page.locator('.sidebar').getByRole('link',{name:'Einstellungen',exact:true}).click();
+  await expect(host.page).toHaveURL(/\/settings$/);
+ }finally{await host.context.close();}
 });

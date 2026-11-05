@@ -72,17 +72,17 @@ for(const width of [320,1440])test(`PROFILE-B2-${width}: colorful earned icons, 
  }finally{await ownerContext.close();await friendContext.close();}
 });
 
-test('PROFILE-B2-ART: five original emblems, Roman tiers, own details and reduced motion on a narrow phone',async({browser,request})=>{
+test('PROFILE-B2-ART: all seven emblems, Roman tiers, own details and reduced motion on a narrow phone',async({browser,request})=>{
  // Deliberate UI fixture, never a production award: visual coverage of every emblem and maximum tier.
  const {DEFAULT_BADGES}=await import('../shared/achievements');
  const actor=await register(request,'Art'),context=await browser.newContext({viewport:{width:320,height:900},reducedMotion:'reduce'});
  try{
   const page=await context.newPage();await login(page,actor);
-  const levels=[1,2,3,10,10],badges=DEFAULT_BADGES.map((b,i)=>({...b,level:levels[i],progress:b.thresholds[levels[i]-1],unlockedAt:'2026-11-04T12:00:00Z',upgradedAt:null}));
+  const levels:Record<string,number>={'beta-tester':1,hunter:2,hider:3,veteran:10,winner:10,survivor:10,'xp-scout':10},badges=DEFAULT_BADGES.map(b=>({...b,level:levels[b.id],progress:b.thresholds[levels[b.id]-1],unlockedAt:'2026-11-04T12:00:00Z',upgradedAt:null}));
   await page.route('**/api/badges',route=>route.fulfill({json:{registered:true,badges,selected:null,notices:[],visibleBadgeIds:badges.map(b=>b.id)}}));
-  await page.goto(GAME+'/profile');const strip=page.locator('.profile-badge-strip');await expect(strip.getByRole('button')).toHaveCount(5);
+  await page.goto(GAME+'/profile');const strip=page.locator('.profile-badge-strip');await expect(strip.getByRole('button')).toHaveCount(DEFAULT_BADGES.length);
   await strip.getByRole('button',{name:'Hunter II',exact:true}).click();const detail=page.getByRole('dialog',{name:'Hunter II',exact:true});await expect(detail).toContainText('Spurenleser');await expect(detail).toContainText('20/50 Fänge bis Hunter III');await page.keyboard.press('Escape');
   await strip.getByRole('button',{name:'Veteran X',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('Maximale Stufe erreicht');expect(await page.getByRole('dialog').evaluate(el=>getComputedStyle(el).animationName)).toBe('none');await page.keyboard.press('Escape');
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'test-results-admin/profile-five-badges-320.png',fullPage:true});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'test-results-admin/profile-seven-badges-320.png',fullPage:true});
  }finally{await context.close();}
 });

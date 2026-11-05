@@ -2,7 +2,7 @@ import {createContext,useContext,useEffect,useState} from 'react';
 import type {useMatchLocation} from './useMatchLocation';
 import type {AccountState} from '../shared/accounts';
 import type {Command,LobbyView,Profile} from '../shared/types';
-interface Config { configured:boolean; authConfigured:boolean; pushPublicKey?:string; transport?:'http'|'socket';accountControls?:boolean }
+interface Config { simulation?:boolean; configured:boolean; authConfigured:boolean; pushPublicKey?:string; transport?:'http'|'socket';accountControls?:boolean }
 export interface AppContextValue {
   gps:ReturnType<typeof useMatchLocation>;
   account:AccountState|null;accountChecking:boolean;refreshAccount:()=>Promise<void>;profile:Profile|null; token:string|null; lobby:LobbyView|null; connected:boolean; loading:boolean; config:Config|null;

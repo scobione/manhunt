@@ -14,4 +14,21 @@ export interface FriendProfile {
  created_at?:string;
  progress:AccountProgress|null;
  badges:PublicProfileBadge[];
+ customization?:ProfileCustomization;
+}
+
+export const PROFILE_COLORS=[
+ {id:'violet',name:'Violett',color:'#9c87ff'},
+ {id:'mint',name:'Mint',color:'#51dfb3'},
+ {id:'ocean',name:'Ozean',color:'#53c6f5'},
+ {id:'amber',name:'Gold',color:'#f4bf69'},
+ {id:'rose',name:'Rosé',color:'#ef8eb7'},
+ {id:'slate',name:'Graphit',color:'#a3b4c8'},
+] as const;
+export type ProfileColor=typeof PROFILE_COLORS[number]['id'];
+export interface ProfileCustomization {color:ProfileColor;banner_url:string|null;badgeOrder:string[];}
+export const DEFAULT_PROFILE_CUSTOMIZATION:ProfileCustomization={color:'violet',banner_url:null,badgeOrder:[]};
+export function orderedBadges<T extends {id:string}>(badges:readonly T[],order:readonly string[]=[]):T[]{
+ const ranks=new Map(order.map((id,index)=>[id,index]));
+ return badges.map((badge,index)=>({badge,index})).sort((a,b)=>(ranks.get(a.badge.id)??order.length+a.index)-(ranks.get(b.badge.id)??order.length+b.index)).map(value=>value.badge);
 }

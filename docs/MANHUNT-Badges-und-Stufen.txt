@@ -1,5 +1,5 @@
 MANHUNT – BADGES UND HERAUSFORDERUNGEN
-Stand: 3. November 2026 · Version 0.b1.110
+Stand: 5. November 2026 · Version 0.B2.1
 
 Alle Schwellen sind Gesamtwerte seit Einführung des Systems. Es werden keine historischen Erfolge erfunden. Vor der ersten erfüllten Voraussetzung bleibt das Badge gesperrt. Registrierte Konten speichern den Fortschritt dauerhaft. Gäste erhalten keine dauerhaften Badges.
 
@@ -46,6 +46,35 @@ VIII – Feldprofi: 100 Matches
 IX – Legende: 150 Matches
 X – Manhunt X: 250 Matches
 
+SIEGER (NEU AB 0.B2.1)
+Gewinne gültig abgeschlossene Matches als Hunter, Hider oder im Team.
+I – Erster Sieg: 1 Sieg
+II – Auf Erfolgskurs: 5 Siege
+III – Siegesserie: 10 Siege
+IV – Durchstarter: 20 Siege
+V – Champion: 35 Siege
+VI – Titelträger: 55 Siege
+VII – Spitzenklasse: 80 Siege
+VIII – Elite Champion: 120 Siege
+IX – Triumphator: 175 Siege
+X – Ultimate Champion: 250 Siege
+
+ÜBERLEBENSKÜNSTLER (NEU AB 0.B2.1)
+Beende gültige Matches als überlebender Hider, auch ohne Teamsieg.
+I – Durchgehalten: 1 überlebte Runde
+II – Standhaft: 5 überlebte Runden
+III – Zäh: 10 überlebte Runden
+IV – Unbeugsam: 20 überlebte Runden
+V – Survival Pro: 35 überlebte Runden
+VI – Überlebensprofi: 55 überlebte Runden
+VII – Unerschütterlich: 80 überlebte Runden
+VIII – Elite Survivor: 120 überlebte Runden
+IX – Unsterbliche Legende: 175 überlebte Runden
+X – Ultimate Survivor: 250 überlebte Runden
+
+Für beide neuen Badges beginnt die Erfassung mit Einführung von 0.B2.1.
+Alte Spielergebnisse werden nicht rückwirkend angerechnet.
+
 XP-SCOUT
 Sammle XP-Jagd-Punkte in gültig abgeschlossenen Matches. Account-XP zählen hierfür nicht.
 I – Erster Punkt: 1 XP-Jagd-Punkt
@@ -66,9 +95,11 @@ Beta-Tester: „Feedback absenden“ nach einem regulär abgeschlossenen Spiel. 
 Hunter: Serverseitig bestätigte Fänge in gewerteten Matches.
 Hider: Gewertetes Match als überlebender Hider gewinnen; bloßes Mitspielen reicht nicht.
 Veteran: Gewertete Matches bis zum Ende mitspielen.
+Sieger: Den serverseitig ermittelten Sieg als berechtigter Teilnehmer erreichen.
+Überlebenskünstler: Als aktiver Hider in der offiziellen Überlebendenliste stehen.
 XP-Scout: Tatsächlich eingesammelte XP-Jagd-Punkte. Account-XP zählen hierfür nicht.
 
-Für diese vier Spiel-Badges: Match mindestens fünf Minuten, mindestens zwei registrierte Teilnehmer, höchstens fünf gewertete Matches pro Tag und Konto. Abgebrochene Matches, Zuschauer und vorzeitig ausgetretene Spieler zählen nicht. Pro Match werden höchstens 40 Fänge und 100 XP-Jagd-Punkte angerechnet. Simulationen zählen niemals für echte Konten. Diese Grenzen gelten nicht für das Feedback-Angebot oder Beta-Tester.
+Für diese sechs Spiel-Badges: Match mindestens fünf Minuten, mindestens zwei registrierte Teilnehmer, höchstens fünf gewertete Matches pro Tag und Konto. Abgebrochene Matches, Zuschauer und vorzeitig ausgetretene Spieler zählen nicht. Pro Match werden höchstens 40 Fänge und 100 XP-Jagd-Punkte angerechnet. Simulationen zählen niemals für echte Konten. Diese Grenzen gelten nicht für das Feedback-Angebot oder Beta-Tester.
 
 Im Profil werden Symbol, Name, höchste Stufe, Voraussetzungen, Freischaltdatum und Fortschritt zur nächsten Stufe angezeigt. Ein freigeschaltetes Badge kann für Lobby und Spiel als Profil-Badge ausgewählt werden. Stufe X ist das Maximum. Namen und Schwellen lassen sich zentral im Adminportal anpassen; diese Datei beschreibt die ausgelieferten Standardwerte.
 

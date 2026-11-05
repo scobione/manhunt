@@ -1,4 +1,5 @@
 import {Slider} from './GameControls';
+import {SavedZonePicker} from './SavedZonePicker';
 import {activeExclusions} from '../shared/rules';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
@@ -371,6 +372,7 @@ export default function ZoneEditor({ value = null, onChange, onSave, readOnly = 
       </fieldset>
       {error && <div className="mh-zone-feedback error" role="alert"><ShieldAlert size={17} />{error}<button type="button" aria-label="Meldung schließen" onClick={() => setError('')}><X size={14} /></button></div>}
       {message && <div className="mh-zone-feedback success" role="status"><Check size={17} />{message}</div>}
+      {!readOnly && <SavedZonePicker value={draft} onSelect={zone=>{openZone(zone);setSelectedPreset('');}}/>}
       {!readOnly && <div className="mh-zone-presets">
         <div className="mh-zone-subheading"><span>AUF DIESEM GERÄT</span></div>
         <label className="mh-map-field">Gespeicherte Zone<select value={selectedPreset} onChange={event => {

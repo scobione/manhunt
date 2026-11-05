@@ -292,7 +292,7 @@ describe('actual PostgreSQL migration and RLS (isolated WASM database)',()=>{
  });
  it('executes the full unchanged migration and enables RLS on every application table',async()=>{
   const tables=await db.query<{tablename:string;rowsecurity:boolean}>("select tablename,rowsecurity from pg_tables where schemaname='public'");
-  expect(tables.rows.length).toBe(46);
+  expect(tables.rows.length).toBe(50);
   expect(tables.rows.every(t=>t.rowsecurity)).toBe(true);
   expect((await db.query('select * from profiles')).rows).toHaveLength(3);
   expect(await friendCode(a)).toMatch(/^[A-Z0-9]{12}$/);

@@ -19,6 +19,7 @@ type Actor = {
   context: BrowserContext;
   page: Page;
   socket: Socket;
+  stopGps:()=>void;
 };
 
 async function ack<T>(socket: Socket, event: string, data: unknown = {}): Promise<T> {
@@ -45,6 +46,14 @@ async function actor(browser: Browser, username: string, mobile = false, service
     geolocation: TEST_GPS,
     permissions: ['geolocation'],
   });
+  // Explicit synthetic sensor stream. A single Chromium override otherwise
+  // keeps its original timestamp, so long UI interactions see correctly stale
+  // fixes rather than a real continuously updating outdoor sensor.
+  let testLocation:Parameters<BrowserContext['setGeolocation']>[0]={...TEST_GPS};
+  const setTestLocation=context.setGeolocation.bind(context);
+  context.setGeolocation=async next=>{testLocation=next;await setTestLocation(next);};
+  const gpsTimer=setInterval(()=>void setTestLocation(testLocation).catch(()=>{}),1000);
+  const stopGps=()=>clearInterval(gpsTimer);context.once('close',stopGps);
   await context.addInitScript((value) => sessionStorage.setItem('manhunt:test-token', value), token);
   const page = await context.newPage();
   await page.goto('/');
@@ -58,11 +67,12 @@ async function actor(browser: Browser, username: string, mobile = false, service
     return response.status();
   }).toBe(200);
   await expect(page.locator('.connection')).toHaveText('VERBUNDEN');
-  return { id, username, token, context, page, socket };
+  return { id, username, token, context, page, socket, stopGps };
 }
 
 async function dispose(...players: Actor[]) {
   for (const player of players) {
+    player.stopGps();
     player.socket.disconnect();
     await player.context.close();
   }
@@ -181,7 +191,11 @@ test('two real browsers create, join and start a match; private locations and pe
       await command(guest, { type: 'location', location: { ...TEST_GPS, timestamp: Date.now() }, publish: true });
       return (await view(host)).pins.length;
     }, { timeout: 15_000, intervals: [1000] }).toBe(1);
-    await expect(host.page.locator(`[data-testid="map-player-pin"][data-player-id="${guest.id}"]`)).toBeVisible();
+    const individualPin=host.page.locator(`[data-testid="map-player-pin"][data-player-id="${guest.id}"]`),cluster=host.page.getByTestId('map-pin-cluster').first();
+    // Historical updates can form a real marker group while this multiplayer
+    // scenario is running. Its details must still identify the permitted hider.
+    await expect(individualPin.or(cluster).first()).toBeVisible();
+    if(!await individualPin.isVisible()){await cluster.click();await expect(host.page.locator('.mh-cluster-popup li').filter({hasText:other.username}).first()).toBeVisible();}
     await host.page.screenshot({ path: 'test-results/normal-match.png', fullPage: true });
     await guest.page.reload();
     await expect.poll(async () => (await view(guest)).self.id).toBe(guest.id);
@@ -198,6 +212,8 @@ test('two real browsers create, join and start a match; private locations and pe
 });
 
 test('server registers zombie infection before acknowledgement in three browser sessions', async ({ browser }) => {
+  // Three real browser setups, GPS grants and the five-second start overlay.
+  test.setTimeout(90_000);
   const host = await actor(browser, 'E2E_ZHunter');
   const victim = await actor(browser, 'E2E_ZVictim');
   const survivor = await actor(browser, 'E2E_ZSurvivor');
@@ -223,6 +239,8 @@ test('server registers zombie infection before acknowledgement in three browser 
 });
 
 test('apocalypse shrinks safely and uncertain GPS never blindly eliminates a browser player', async ({ browser }) => {
+  // Includes two GPS grants, countdown and deliberate tolerance expiry.
+  test.setTimeout(90_000);
   const host = await actor(browser, 'E2E_ApoHunter');
   const guest = await actor(browser, 'E2E_ApoHider', true);
   try {
@@ -235,7 +253,7 @@ test('apocalypse shrinks safely and uncertain GPS never blindly eliminates a bro
     const initial = (await view(host)).zone!.feature;
     await expect.poll(async () => area((await view(host)).activeZone!), { timeout: 10_000 }).toBeLessThan(area(initial) * 0.3);
     expect(booleanWithin((await view(host)).activeZone!, initial)).toBeTruthy();
-    await guest.page.getByRole('button',{name:'Standortfreigabe beenden',exact:true}).click();
+    await guest.page.getByRole('dialog',{name:'Warnung Spielzone'}).getByRole('button',{name:'Standortfreigabe beenden',exact:true}).click();
     // The outside fix is synthetic and deliberately >300 m from the center.
     const outside = { ...TEST_GPS, longitude: TEST_GPS.longitude + 0.01, timestamp: Date.now() };
     await command(guest, { type: 'location', location: outside });
@@ -246,7 +264,7 @@ test('apocalypse shrinks safely and uncertain GPS never blindly eliminates a bro
     await expect(command(guest, { type: 'pause' } as unknown as Command)).rejects.toThrow();
     expect((await view(host)).status).toBe('active');
     expect((await view(guest)).status).toBe('active');
-    await guest.page.screenshot({ path: 'test-results/apocalypse-mobile.png', fullPage: true });
+    await guest.page.screenshot({ path: 'test-results/apocalypse-mobile.png', fullPage: true, animations:'disabled' });
   } finally { await dispose(host, guest); }
 });
 

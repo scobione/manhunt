@@ -36,6 +36,7 @@ export const locationSchema=z.object({latitude:z.number().finite().min(-85).max(
 export const zoneSchema=z.object({feature:polygonSchema,excluded:z.array(polygonSchema).max(30),disabledExcluded:z.array(boundedInt(0,29)).max(30).optional(),confirmed:z.boolean(),name:z.string().trim().min(1).max(60),shrinkTarget:coordinate.optional(),randomCorners:z.boolean().optional()}).strict();
 const userId=z.string().min(1).max(80);
 export const commandSchema=z.discriminatedUnion('type',[
+ z.object({type:z.literal('rematch'),matchId:z.string().uuid().optional()}).strict(),
  z.object({type:z.literal('chat'),channel:z.enum(['all','team']),text:z.string().trim().min(1).max(500).refine(v=>!/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(v))}).strict(),
  z.object({type:z.literal('mute'),playerId:userId,muted:z.boolean()}).strict(),
  z.object({type:z.literal('xp_collect'),pointId:z.string().uuid()}).strict(),

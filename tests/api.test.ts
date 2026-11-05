@@ -193,3 +193,15 @@ describe('production authentication guards',()=>{
   try{expect((await request(unconfigured.app).get('/api/config')).body.configured).toBe(false);await request(unconfigured.app).get('/api/profile').set(auth()).expect(503);}finally{await unconfigured.close();}
  });
 });
+
+
+describe('REMATCH Socket transport (isolated)',()=>{
+ it('REMATCH-SOCKET-01: host starts one new round, retries are idempotent and participants receive its state',async()=>{
+  const {a,b,lobby}=await match();await send(a,{type:'end'});const archived=structuredClone(repository.checkpoints.get(lobby.id));
+  await expect(send(b,{type:'rematch',matchId:lobby.id})).rejects.toThrow(/Host/);
+  const pushed:LobbyView[]=[];b.on('lobby:state',state=>pushed.push(state));
+  const next=await send(a,{type:'rematch',matchId:lobby.id});expect(next.id).not.toBe(lobby.id);expect(next.code).toBe(lobby.code);expect(next.previousMatchId).toBe(lobby.id);expect(next.status).toBe('waiting');
+  await vi.waitFor(()=>expect(pushed.some(state=>state.id===next.id)).toBe(true));
+  expect((await send(a,{type:'rematch',matchId:lobby.id})).id).toBe(next.id);expect((await send(a,{type:'rematch'})).id).toBe(next.id);expect((await ack(b,'lobby:join',{code:lobby.code})).id).toBe(next.id);expect(repository.checkpoints.get(lobby.id)).toEqual(archived);expect(repository.checkpoints.size).toBe(2);
+ });
+});

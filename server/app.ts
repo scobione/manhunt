@@ -1,3 +1,6 @@
+import {ProfileCustomizationService} from './profile-customization';
+import {CommunityService} from './community';
+import {SupabaseCommunityStore} from './community-store';
 import {FeatureService} from './features';
 import {SupabaseFeatureStore} from './feature-store';
 import {SimulationService,SupabaseSimulationStore} from './simulations';
@@ -46,7 +49,7 @@ export async function createBackend(options:BackendOptions={}){
   if(options.repository instanceof MemoryRepository&&!testing)throw new Error('MemoryRepository is allowed only in isolated automated tests.');
   const supabase=options.supabase!==undefined?options.supabase:process.env.SUPABASE_URL&&process.env.SUPABASE_SERVICE_ROLE_KEY?createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{autoRefreshToken:false,persistSession:false}}):null;
   const repository=options.repository??(testing?new MemoryRepository():supabase?new SupabaseRepository(supabase):null);
-  const accounts=supabase?new AccountService(new SupabaseAccountStore(supabase),Date.now,new SupabaseTrafficStore(supabase),new FeatureService(new SupabaseFeatureStore(supabase)),new SimulationService(new SupabaseSimulationStore(supabase),Date.now,new SupabaseFeatureStore(supabase))):undefined;
+  const accounts=supabase?new AccountService(new SupabaseAccountStore(supabase),Date.now,new SupabaseTrafficStore(supabase),new FeatureService(new SupabaseFeatureStore(supabase),new ProfileCustomizationService(supabase)),new SimulationService(new SupabaseSimulationStore(supabase),Date.now,new SupabaseFeatureStore(supabase)),new ProfileCustomizationService(supabase),new CommunityService(new SupabaseCommunityStore(supabase))):undefined;
   const engine=options.engine??new GameEngine();
   const app=express();
   app.disable('x-powered-by');
@@ -135,7 +138,7 @@ export async function createBackend(options:BackendOptions={}){
   app.get('/api/config',(_req,res)=>res.json({configured:!!repository&&healthy,authConfigured:!!supabase||testing,pushPublicKey:pushConfigured?process.env.VAPID_PUBLIC_KEY:undefined,accountControls:!!accounts}));
   app.get('/api/account/username',(req,res,next)=>{if(!accounts){next();return;}accounts.available(req.query.name).then(value=>res.json(value)).catch(next);});
   const auth:RequestHandler=async(req,res,next)=>{
-    try{requireReady();const identity=await authenticate(bearer(req),supabase);limiter.take(`api:${identity.id}`,120,60_000);res.locals.identity=identity;if(accounts&&(req.path==='/badges'||req.path.startsWith('/badges/')||req.path.startsWith('/players/')||req.path==='/feedback'||req.path.startsWith('/feedback/')||req.path==='/traffic'||req.path==='/account'||req.path.startsWith('/account/')||req.path.startsWith('/admin/'))){const value=await accounts.handle(identity,bearer(req),req.path,req.method,req.body??{},new URL(req.originalUrl,'http://localhost').searchParams,req.get('x-manhunt-admin-session')??null);if(req.method==='PATCH'&&['/badges/selected','/badges/visibility'].includes(req.path))await refreshProfile(await repo().getProfile(identity));res.json(value);return;}await accounts?.requireGame(identity);res.locals.profile=await repo().getProfile(identity);next();}catch(error){next(error);}
+    try{requireReady();const identity=await authenticate(bearer(req),supabase);limiter.take(`api:${identity.id}`,120,60_000);res.locals.identity=identity;if(accounts&&(req.path==='/badges'||req.path.startsWith('/badges/')||req.path.startsWith('/players/')||req.path==='/profile/customization'||req.path.startsWith('/library/')||req.path==='/reports'||req.path==='/feedback'||req.path.startsWith('/feedback/')||req.path==='/traffic'||req.path==='/account'||req.path.startsWith('/account/')||req.path.startsWith('/admin/'))){const value=await accounts.handle(identity,bearer(req),req.path,req.method,req.body??{},new URL(req.originalUrl,'http://localhost').searchParams,req.get('x-manhunt-admin-session')??null);if(req.method==='PATCH'&&['/badges/selected','/badges/visibility'].includes(req.path))await refreshProfile(await repo().getProfile(identity));res.json(value);return;}await accounts?.requireGame(identity);res.locals.profile=await repo().getProfile(identity);next();}catch(error){next(error);}
   };
   app.use('/api',auth);
   const identity=(res:express.Response)=>res.locals.identity as Identity;
@@ -269,14 +272,14 @@ export async function createBackend(options:BackendOptions={}){
     });
     event('lobby:join',async raw=>{
       limiter.take(`join:${id}`,12,60_000);requireReady();const{code}=z.object({code:codeSchema}).strict().parse(raw);
-      const existing=[...engine.lobbies.values()].find(l=>l.code===code);
+      const existing=engine.lobbyByCode(code);
       if(existing){for(const player of existing.players)if(await repo().hasBlock(id,player.id))throw new HttpError(403,'Der Beitritt zu dieser Lobby ist nicht möglich.');}
       const profile=await repo().getProfile(socket.data.identity);
       return commit(()=>{const lobby=engine.join(code,profile);return{lobby,data:engine.view(lobby.id,id)};});
     });
     event('lobby:sync',async raw=>{emptyBody.parse(raw??{});return sync();});
     event('lobby:command',async raw=>{
-      requireReady();const{command}=commandEnvelope.parse(raw);const lobby=engine.lobbyFor(id)??(['leave','close'].includes(command.type)?latestLobby():undefined);if(!lobby)throw new HttpError(404,'Du bist in keiner Lobby.');
+      requireReady();const{command}=commandEnvelope.parse(raw);const lobby=engine.lobbyForCommand(id,command as Command);if(!lobby)throw new HttpError(404,'Du bist in keiner Lobby.');
       if(command.type==='location'||command.type==='location_check')limiter.take(`gps:${id}`,30,60_000);
       if(command.type==='capture'||command.type==='confirm_capture')limiter.take(`capture:${id}`,20,60_000);
       if(['start','xp_regenerate'].includes(command.type)&&lobby.hostId===id&&lobby.zone&&rules(lobby.settings).xpHunt){limiter.take(`xp-paths:${id}`,3,60000);engine.prepareXp(lobby.id,await loadXpPaths(lobby.zone).catch(()=>[]));}

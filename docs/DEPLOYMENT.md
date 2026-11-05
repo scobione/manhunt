@@ -1,3 +1,7 @@
+# Erweiterung 0.B2.1
+
+[Releasebericht](RELEASE-0.B2.1.md). Vor dem Backend-/Frontend-Update in dieser Reihenfolge die additiven Migrationen `rematch_and_achievement_metrics`, `community_library_reports` und `profile_customization_and_badge_order` anwenden. Die Änderungen erhalten dieselben Benutzer und bisherigen Ergebnisse. Anschließend `npm run build:edge` und die Funktion `manhunt-api` aktualisieren; beide Git-verknüpften Vercel-Projekte aus demselben Commit bauen. Keine neuen Umgebungsvariablen erforderlich. Profilbanner und Berichtsbilder liegen in privaten Storage-Buckets; bei Kontolöschung werden diese Objekte wie Avatare entfernt.
+
 # Erweiterung 0.B2
 
 Neue Spielerprofile und Badge-Sichtbarkeit: [Releasebericht](RELEASE-0.B2.md). Vor dem Backend-/Frontend-Update die additive Migration `profile_badge_visibility` anwenden. Sie erweitert dieselbe Supabase-Datenbank um eine RLS-geschützte Präferenztabelle und zwei servergebundene Profilfunktionen. Keine neuen Variablen oder Dienste. Die gespeicherten Benutzer und Erfolge bleiben erhalten. Die CLI-generierte lokale Migration ist im Repository enthalten; für dieses bestehende Projekt werden Migrationen über die verbundene Supabase-Integration angewendet.

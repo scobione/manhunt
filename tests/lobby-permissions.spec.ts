@@ -43,10 +43,12 @@ test('LOBBY-PERM-01: both players opt in, required GPS gates readiness, optional
   // the shared five-second server deadline (desktop host + mobile player).
   await host.page.evaluate(()=>{
    const seen:{number:string;at:number}[]=[];(window as any).__startSequence=seen;
-   const observer=new MutationObserver(()=>{const number=document.querySelector('[data-testid="start-countdown"]')?.textContent;if(number&&seen.at(-1)?.number!==number)seen.push({number,at:performance.now()});if(document.querySelector('[data-testid="role-label"]')){(window as any).__revealedAt=performance.now();observer.disconnect();}});
+   const observer=new MutationObserver(()=>{const number=document.querySelector('[data-testid="start-countdown"]')?.textContent;if(number&&seen.at(-1)?.number!==number)seen.push({number,at:performance.now()});if(document.querySelector('[data-testid="role-label"]')){(window as any).__revealedAt=performance.now();(window as any).__revealedWallAt=Date.now();observer.disconnect();}});
    observer.observe(document.body,{subtree:true,childList:true,characterData:true});
   });
+  const startResponse=host.page.waitForResponse(r=>r.url().endsWith('/api/events')&&r.request().postDataJSON()?.data?.command?.type==='start');
   await host.page.getByRole('button',{name:'Match starten',exact:true}).click();
+  const started=(await(await startResponse).json()).lobby;
   await expect(host.page.getByTestId('start-countdown')).toHaveText('5');
   for(const a of [host,guest]){
    const dialog=a.page.getByRole('dialog',{name:'Spielstart',exact:true});await expect(dialog).toBeVisible();
@@ -55,9 +57,11 @@ test('LOBBY-PERM-01: both players opt in, required GPS gates readiness, optional
   }
   await guest.page.screenshot({path:'test-results-edge/start-countdown-mobile.png'});
   for(const a of [host,guest]){await expect(a.page).toHaveURL(/\/game$/);await expect(a.page.getByRole('button',{name:'GPS aktivieren',exact:true})).toHaveCount(0);await expect(a.page.getByRole('button',{name:'Standortfreigabe beenden',exact:true})).toBeVisible();}
-  const sequence=await host.page.evaluate(()=>({seen:(window as any).__startSequence,revealed:(window as any).__revealedAt}));
+  const sequence=await host.page.evaluate(()=>({seen:(window as any).__startSequence,revealed:(window as any).__revealedAt,revealedWall:(window as any).__revealedWallAt}));
   expect(sequence.seen.map((x:any)=>x.number)).toEqual(['5','4','3','2','1']);
-  expect(sequence.revealed-sequence.seen[0].at).toBeGreaterThanOrEqual(4600);
+  // The first '5' paint may arrive late on a busy GPU. The deadline is
+  // anchored to the authoritative server start event, not that first paint.
+  expect(sequence.revealedWall-started.events.find((e:any)=>e.type==='match_started').at).toBeGreaterThanOrEqual(5000);
   await expect(host.page.getByTestId('role-label')).toHaveText('HUNTER');await expect(guest.page.getByTestId('role-label')).toHaveText('HIDER');
   await expect.poll(async()=>!!(await event(guest,'lobby:sync')).lobby.self.location).toBe(true);
   await expect.poll(async()=>(await event(host,'lobby:sync')).lobby.pins.length).toBeGreaterThan(0);
