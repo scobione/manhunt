@@ -1,5 +1,5 @@
 MANHUNT – FRAGEBOGEN NACH DEM SPIEL
-Stand: 3. November 2026
+Stand: 6. November 2026
 
 Nach jedem abgeschlossenen, gewerteten Spiel wird der Fragebogen allen
 Teilnehmern angeboten – auch Gästen. Die Teilnahme ist freiwillig.
@@ -24,12 +24,14 @@ FRAGEN FÜR ALLE SPIELMODI
 
 5. Was sollten wir verbessern?
    Freiwillige Mehrfachauswahl:
+   [ ] GPS / Standort
    [ ] Karte
+   [ ] Fangen
    [ ] Spielmodi
    [ ] Rollen
-   [ ] Standort
    [ ] Bedienung
    [ ] Stabilität
+   [ ] Verbindung
 
 6. Würdest du das Spiel weiterempfehlen?
    Genau eine Antwort:

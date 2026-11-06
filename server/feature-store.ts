@@ -4,9 +4,12 @@ import type {FeedbackOffer,FeedbackSettings,FeedbackAnswer} from '../shared/feed
 import type {FriendProfile} from '../shared/profiles';
 import {resolveProfileAvatar} from './repository';
 import {HttpError} from './auth';
+import {matchReview,type MatchReview,type ReviewLobby,type RecordedBadgeAward} from '../shared/results';
+import type {AccountProgress} from '../shared/types';
 export interface FeedbackFilters {from:string;until:string;mode:string|null;rating:number|null;page:number;}
 export interface FeatureStore {
  badges(user:string):Promise<BadgeOverview>;
+ matchReview(user:string,match:string):Promise<MatchReview>;
  visibility(user:string,badge:string,visible:boolean):Promise<BadgeOverview>;
  profile(viewer:string,target:string):Promise<FriendProfile>;
  equip(user:string,badge:string|null):Promise<BadgeOverview>;
@@ -35,6 +38,24 @@ export class SupabaseFeatureStore implements FeatureStore {
  constructor(private db:SupabaseClient){}
  private async rpc<T>(name:string,args:Record<string,unknown>):Promise<T>{const r=await this.db.rpc(name,args);checked(r.error);return r.data as T;}
  badges(user:string){return this.rpc<BadgeOverview>('read_player_badges',{p_user:user});}
+ async matchReview(user:string,match:string):Promise<MatchReview>{
+  // Only the participant identity from the verified session selects this row.
+  // Private checkpoints are never returned by this endpoint.
+  const member=await this.db.from('game_participants').select('user_id').eq('session_id',match).eq('user_id',user).maybeSingle();checked(member.error);
+  if(!member.data)throw new HttpError(404,'Dieses Match ist nicht verfügbar.');
+  const state=await this.db.from('game_checkpoints').select('state').eq('id',match).maybeSingle();checked(state.error);
+  if(!state.data)throw new HttpError(404,'Der gespeicherte Spielverlauf ist nicht mehr verfügbar.');
+  const lobby=state.data.state as ReviewLobby;
+  if(lobby.status!=='finished'||!lobby.result)throw new HttpError(409,'Das Ergebnis wird noch gespeichert. Bitte versuche es gleich erneut.');
+  if(!lobby.players.some(p=>p.id===user))throw new HttpError(404,'Dieses Match ist nicht verfügbar.');
+  const [badges,xp,progress,award]=await Promise.all([
+   this.badges(user),
+   this.db.from('xp_rewards').select('amount').eq('session_id',match).eq('user_id',user).maybeSingle(),
+   this.db.from('account_progress').select('total_xp,games,wins,losses,draws,captures,survivals,hunt_points').eq('user_id',user).maybeSingle(),
+   this.db.from('badge_match_awards').select('captures,hider_win,hunt_points,win,survival').eq('match_id',match).eq('user_id',user).maybeSingle(),
+  ]);checked(xp.error);checked(progress.error);checked(award.error);
+  return matchReview(lobby,user,{badges,xp:xp.data?Number(xp.data.amount):null,progress:progress.data as AccountProgress|null,badgeAward:award.data as RecordedBadgeAward|null});
+ }
  visibility(user:string,badge:string,visible:boolean){return this.rpc<BadgeOverview>('set_badge_visibility',{p_user:user,p_badge:badge,p_visible:visible});}
  async profile(viewer:string,target:string){const value=await this.rpc<FriendProfile>('read_friend_profile',{p_viewer:viewer,p_target:target});return resolveProfileAvatar(this.db,value);}
  equip(user:string,badge:string|null){return this.rpc<BadgeOverview>('choose_profile_badge',{p_user:user,p_badge:badge});}

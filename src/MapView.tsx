@@ -1,4 +1,6 @@
 import {groupMapPins} from './map-clusters';
+import {readMapPreferences,saveMapPreferences,type MapPreferences} from './map-preferences';
+import {gpsQuality} from './gps-quality';
 import {activeExclusions} from '../shared/rules';
 import type {XpPoint} from '../shared/types';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -6,10 +8,12 @@ import * as maplibregl from 'maplibre-gl';
 import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 // Explicitly bundle the matching worker; MapLibre 6's default sibling URL is not valid after Vite chunking.
 maplibregl.setWorkerUrl(mapWorkerUrl);
+// Raster maps need few workers. Avoid multiplying memory use on small phones.
+maplibregl.setWorkerCount(typeof navigator!=='undefined'&&navigator.hardwareConcurrency<=2?1:2);
 import type { GeoJSONSource, StyleSpecification } from 'maplibre-gl';
 import { bbox, circle, distance, featureCollection } from '@turf/turf';
 import type { Feature, Polygon } from 'geojson';
-import { Crosshair, Expand, LocateFixed, Radio, WifiOff } from 'lucide-react';
+import { CircleDot, Crosshair, Expand, LocateFixed, Radio, Sun, WifiOff } from 'lucide-react';
 import {endZone} from '../shared/zones';
 import type { LocationSample, Pin, Role, Zone } from '../shared/types';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -23,13 +27,14 @@ export interface MapViewProps {
   pins?: Pin[];
   xpPoint?:XpPoint;
   location?: LocationSample | null;
+  maxAccuracyMeters?:number;
   className?: string;
   role?: Role;
   onLocationRequest?: () => void;
 }
 
 /** Visible viewport tiles only; the browser honours the tile server's cache headers. */
-export function tacticalStyle(): StyleSpecification {
+export function tacticalStyle(sunlight=false): StyleSpecification {
   return {
     version: 8,
     sources: {
@@ -41,7 +46,7 @@ export function tacticalStyle(): StyleSpecification {
         attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
       },
     },
-    layers: [{ id: 'osm', type: 'raster', source: 'osm', paint: { 'raster-saturation': -0.75, 'raster-brightness-max': 0.65 } }],
+    layers: [{ id: 'osm', type: 'raster', source: 'osm', paint: { 'raster-saturation': sunlight?0:-0.75, 'raster-brightness-max': sunlight?1:0.65,'raster-contrast':sunlight?.15:0,'raster-fade-duration':0 } }],
   };
 }
 
@@ -49,11 +54,12 @@ function formatDistance(meters: number) {
   return meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(1)} km`;
 }
 
-export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=true, pins = [], xpPoint, location, role = 'hider', className = '', onLocationRequest }: MapViewProps) {
+export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=true, pins = [], xpPoint, location, maxAccuracyMeters=50, role = 'hider', className = '', onLocationRequest }: MapViewProps) {
   const finalZone=useMemo(()=>{if(!showEndZone||!zone||!zone.shrinkTarget&&!zone.randomCorners)return null;try{return endZone(zone,finalScale);}catch{return null;}},[zone,finalScale,showEndZone]);
   const hostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef(new Map<string,maplibregl.Marker>());
+  const sourceRevisions=useRef(new Map<string,string>());
   const clusterPopups=useRef(new Map<string,HTMLDivElement>());
   const [viewportRevision,setViewportRevision]=useState(0);
   const initiallyFitted = useRef(false);
@@ -63,19 +69,39 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
   const [mapError, setMapError] = useState('');
   const [online, setOnline] = useState(() => navigator.onLine);
   const [following, setFollowing] = useState(false);
+  const [movedAway,setMovedAway]=useState(false);
+  const [openCluster,setOpenCluster]=useState<string|null>(null);
+  const [preferences,setPreferences]=useState(readMapPreferences);
+  const [visible,setVisible]=useState(()=>!document.hidden);
+  const [reducedMotion,setReducedMotion]=useState(()=>matchMedia('(prefers-reduced-motion: reduce)').matches||document.documentElement.dataset.reducedMotion==='true');
+  const lowPower=!!(navigator as Navigator&{connection?:{saveData?:boolean};deviceMemory?:number}).connection?.saveData||((navigator as Navigator&{deviceMemory?:number}).deviceMemory??8)<=4;
+  const minimalMotion=reducedMotion||lowPower;
+  const pinRevision=JSON.stringify(pins);
+  // Parent clocks can render every second. Stable data avoids rebuilding all
+  // marker popups and GeoJSON worker messages when no position actually changed.
+  const stablePins=useMemo(()=>pins,[pinRevision]);
+  const stablePoint=useMemo(()=>xpPoint,[xpPoint?.id,xpPoint?.longitude,xpPoint?.latitude,xpPoint?.radiusMeters,xpPoint?.label,xpPoint?.confirmed]);
+  const markerLocation=useMemo(()=>location,[location?.longitude,location?.latitude,location?.accuracy]);
   const [now, setNow] = useState(Date.now());
+  function changePreference(change:Partial<MapPreferences>){setPreferences(current=>{const next={...current,...change};saveMapPreferences(next);return next;});}
 
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
     window.addEventListener('online', update);
     window.addEventListener('offline', update);
-    const clock = window.setInterval(() => setNow(Date.now()), 1000);
+    const visibility=()=>{setVisible(!document.hidden);setNow(Date.now());};
+    document.addEventListener('visibilitychange',visibility);
+    const media=matchMedia('(prefers-reduced-motion: reduce)'),motion=()=>setReducedMotion(media.matches||document.documentElement.dataset.reducedMotion==='true');
+    media.addEventListener('change',motion);
+    const observer=new MutationObserver(motion);observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-reduced-motion']});
     return () => {
       window.removeEventListener('online', update);
       window.removeEventListener('offline', update);
-      window.clearInterval(clock);
+      document.removeEventListener('visibilitychange',visibility);media.removeEventListener('change',motion);observer.disconnect();
     };
   }, []);
+
+  useEffect(()=>{if(!visible)return;const clock=window.setInterval(()=>setNow(Date.now()),5000);return()=>clearInterval(clock);},[visible]);
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -84,17 +110,19 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
     try {
       map = new maplibregl.Map({
         container: hostRef.current,
-        style: tacticalStyle(),
+        style: tacticalStyle(preferences.sunlight),
         center: [10.45, 51.16],
         zoom: 5,
         attributionControl: { compact: false },
         maxZoom: 19,
         renderWorldCopies: false,
+        maxTileCacheSize:96,
+        canvasContextAttributes:{antialias:false,powerPreference:'low-power'},
       });
       mapRef.current = map;
       map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
       map.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 100 }), 'bottom-left');
-      map.on('dragstart', () => setFollowing(false));
+      map.on('dragstart', () => {setFollowing(false);setMovedAway(true);});
       const regroup=()=>setViewportRevision(value=>value+1);
       map.on('moveend',regroup);map.on('resize',regroup);
       map.on('error', (event) => {
@@ -135,20 +163,40 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
     return () => {
       resize?.disconnect();
       markersRef.current.forEach(marker => marker.remove());
-      markersRef.current.clear();clusterPopups.current.clear();
+      markersRef.current.clear();clusterPopups.current.clear();sourceRevisions.current.clear();
       mapRef.current?.remove();
       mapRef.current = null;
       initiallyFitted.current = false;
     };
   }, []);
 
+  const updateSource=(name:string,data:Parameters<GeoJSONSource['setData']>[0])=>{
+    const map=mapRef.current,revision=JSON.stringify(data);
+    if(!map||sourceRevisions.current.get(name)===revision)return;
+    const source=map.getSource(name) as GeoJSONSource|undefined;
+    if(source){source.setData(data);sourceRevisions.current.set(name,revision);}
+  };
+
+  useEffect(()=>{
+    const map=mapRef.current;if(!loaded||!map)return;
+    const daylight=preferences.sunlight;
+    map.setPaintProperty('osm','raster-saturation',daylight?0:-.75);
+    map.setPaintProperty('osm','raster-brightness-max',daylight?1:.65);
+    map.setPaintProperty('osm','raster-contrast',daylight?.15:0);
+    for(const id of ['safe-zone-line','active-zone-line'])map.setPaintProperty(id,'line-color',daylight?'#006b40':'#00ff9c');
+    map.setPaintProperty('active-zone-line','line-width',daylight?4:3);
+    map.setPaintProperty('xp-radius-line','line-color',daylight?'#004fbe':'#00b8ff');
+    map.setPaintProperty('accuracy-line','line-color',daylight?'#0058bf':'#00b8ff');
+    for(const id of ['accuracy-fill','accuracy-line'])map.setLayoutProperty(id,'visibility',preferences.accuracyCircle?'visible':'none');
+  },[loaded,preferences]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!loaded || !map) return;
-    (map.getSource('safe-zone') as GeoJSONSource)?.setData(zone?.feature ?? featureCollection([]));
-    (map.getSource('active-zone') as GeoJSONSource)?.setData(activeZone ?? featureCollection([]));
-    (map.getSource('end-zone') as GeoJSONSource)?.setData(finalZone??featureCollection([]));
-    (map.getSource('excluded') as GeoJSONSource)?.setData(featureCollection(activeExclusions(zone)));
+    updateSource('safe-zone',zone?.feature??featureCollection([]));
+    updateSource('active-zone',activeZone??featureCollection([]));
+    updateSource('end-zone',finalZone??featureCollection([]));
+    updateSource('excluded',featureCollection(activeExclusions(zone)));
     const currentZone = activeZone ?? zone?.feature;
     if (currentZone && !initiallyFitted.current) {
       const bounds = bbox(currentZone);
@@ -159,13 +207,13 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!loaded || !map || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!loaded || !map || minimalMotion || !visible) return;
     const animation = window.setInterval(() => {
       if (!map.getLayer('active-zone-line') || document.hidden) return;
       map.setPaintProperty('active-zone-line', 'line-opacity', 0.65 + Math.sin(Date.now() / 900) * 0.3);
-    }, 200);
+    }, 1000);
     return () => window.clearInterval(animation);
-  }, [loaded]);
+  }, [loaded,minimalMotion,visible]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -173,10 +221,22 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
     // Preserve marker identity and an open popup across live synchronization.
     // MapLibre alone owns each marker's transform, including during zoom.
     const retained=new Set<string>();
+    const fitPopup=(popup:maplibregl.Popup)=>{
+      requestAnimationFrame(()=>{
+        if(mapRef.current!==map||!popup.isOpen())return;
+        const element=popup.getElement();if(!element)return;
+        const outer=map.getContainer().getBoundingClientRect(),box=element.getBoundingClientRect();
+        const minX=outer.left+8,maxX=outer.right-8,minY=outer.top+8,maxY=outer.bottom-24;
+        const dx=box.left<minX?minX-box.left:box.right>maxX?maxX-box.right:0;
+        const dy=box.top<minY?minY-box.top:box.bottom>maxY?maxY-box.bottom:0;
+        if(Math.abs(dx)>1||Math.abs(dy)>1)map.panBy([-dx,-dy],{duration:0});
+      });
+    };
     const markerFor=(key:string,tag:'div'|'button')=>{retained.add(key);let marker=markersRef.current.get(key);if(!marker){const element=document.createElement(tag);if(element instanceof HTMLButtonElement)element.type='button';marker=new maplibregl.Marker({element}).setLngLat([0,0]).addTo(map);markersRef.current.set(key,marker);}return marker;};
     const classes=(element:HTMLElement,value:string)=>{element.className=[...element.classList].filter(c=>c.startsWith('maplibregl-')).join(' ')+' '+value;};
-    (map.getSource('xp-radius') as GeoJSONSource)?.setData(xpPoint?circle([xpPoint.longitude,xpPoint.latitude],xpPoint.radiusMeters/1000):featureCollection([]));
-    if(xpPoint){const marker=markerFor(`xp:${xpPoint.id}`,'div'),el=marker.getElement();classes(el,'mh-xp-pin');el.textContent=xpPoint.confirmed?'XP':'?';el.setAttribute('aria-label',`XP-Punkt ${xpPoint.id}`);marker.setLngLat([xpPoint.longitude,xpPoint.latitude]);}
+    const xpPoint=stablePoint,location=markerLocation;
+    updateSource('xp-radius',xpPoint?circle([xpPoint.longitude,xpPoint.latitude],xpPoint.radiusMeters/1000,{steps:32}):featureCollection([]));
+    if(xpPoint){const marker=markerFor(`xp:${xpPoint.id}`,'div'),el=marker.getElement();classes(el,'mh-xp-pin');el.textContent=xpPoint.confirmed?'XP':'?';el.setAttribute('role','img');el.setAttribute('aria-label',`${xpPoint.label}, XP-Ziel mit ${xpPoint.radiusMeters} Metern Sammelradius`);el.title=`${xpPoint.label} · ${xpPoint.radiusMeters} m Sammelradius`;marker.setLngLat([xpPoint.longitude,xpPoint.latitude]);}
     if (location) {
       const marker=markerFor('own','div'),element=marker.getElement();
       classes(element,`mh-pin mh-pin-own mh-pin-${role}`);
@@ -184,13 +244,13 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
       element.setAttribute('aria-label', `Dein Standort, Genauigkeit ${Math.round(location.accuracy)} Meter`);
       marker.setLngLat([location.longitude, location.latitude]);
       const accuracy = Number.isFinite(location.accuracy) && location.accuracy > 0 && location.accuracy <= 10000
-        ? circle([location.longitude, location.latitude], location.accuracy / 1000, { steps: 48 })
+        ? circle([location.longitude, location.latitude], location.accuracy / 1000, { steps: 32 })
         : featureCollection([]);
-      (map.getSource('accuracy') as GeoJSONSource)?.setData(accuracy);
+      updateSource('accuracy',accuracy);
     } else {
-      (map.getSource('accuracy') as GeoJSONSource)?.setData(featureCollection([]));
+      updateSource('accuracy',featureCollection([]));
     }
-    const grouping=groupMapPins(pins.filter(pin=>pin.expiresAt>now),pin=>map.project([pin.longitude,pin.latitude]));
+    const grouping=groupMapPins(stablePins.filter(pin=>pin.expiresAt>now),pin=>map.project([pin.longitude,pin.latitude]));
     for(const group of grouping.groups){
       const key=`cluster:${group.id}`,marker=markerFor(key,'button'),element=marker.getElement();
       const players=new Set(group.pins.map(pin=>pin.playerId)).size;
@@ -205,14 +265,20 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
       marker.setLngLat([group.longitude,group.latitude]);
       let popup=clusterPopups.current.get(key);
       if(!popup){popup=document.createElement('div');popup.className='mh-map-popup mh-cluster-popup';popup.append(document.createElement('strong'),document.createElement('ul'),document.createElement('button'));const zoom=popup.querySelector('button')!;zoom.type='button';zoom.className='mh-cluster-zoom';zoom.textContent='Gruppe auf der Karte vergrößern';clusterPopups.current.set(key,popup);}
-      // At any marker position at least half of the map is available above or
-      // below it. Keep the controls inside that space; only the player list scrolls.
-      popup.style.setProperty('--cluster-popup-height',`${Math.max(112,Math.floor(map.getContainer().clientHeight/2)-90)}px`);
+      // The camera fits an open detail inside even a short map. Keep the outer
+      // card below map height; its player list scrolls while actions stay visible.
+      popup.style.setProperty('--cluster-popup-height',`${Math.max(112,map.getContainer().clientHeight-100)}px`);
       popup.querySelector('strong')!.textContent=`${players} ${players===1?'Spieler':'Spieler'} · ${group.pins.length} Pins`;
       const rows=group.pins.map(pin=>{const row=document.createElement('li'),name=document.createElement('span'),detail=document.createElement('small');const observedAt=pin.observedAt??pin.createdAt,stale=!!pin.stale||now-observedAt>15000;name.textContent=`${pin.username} · ${pin.role==='hunter'?'Hunter':pin.role==='zombie'?'Zombie':'Hider'}`;detail.textContent=`${new Date(observedAt).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit',second:'2-digit'})} · ± ${Math.round(pin.accuracy)} m${stale?' · letzter bekannter Standort':''}`;row.append(name,detail);return row;});
       popup.querySelector('ul')!.replaceChildren(...rows);
-      popup.querySelector('button')!.onclick=()=>{const bounds=new maplibregl.LngLatBounds();group.pins.forEach(pin=>bounds.extend([pin.longitude,pin.latitude]));map.fitBounds(bounds,{padding:80,maxZoom:19,duration:matchMedia('(prefers-reduced-motion: reduce)').matches?0:300});};
-      if(!marker.getPopup())marker.setPopup(new maplibregl.Popup({offset:24,closeButton:true}).setDOMContent(popup));
+      popup.querySelector('button')!.onclick=()=>{marker.getPopup()?.remove();const bounds=new maplibregl.LngLatBounds();group.pins.forEach(pin=>bounds.extend([pin.longitude,pin.latitude]));map.fitBounds(bounds,{padding:Math.min(80,map.getContainer().clientHeight/4),maxZoom:19,duration:minimalMotion?0:300});};
+      if(!marker.getPopup()){
+        const detail=new maplibregl.Popup({offset:24,anchor:'bottom',closeButton:true}).setDOMContent(popup);
+        detail.on('open',()=>{setOpenCluster(key);for(const [otherKey,other]of markersRef.current)if(otherKey!==key)other.getPopup()?.remove();fitPopup(detail);});
+        detail.on('close',()=>setOpenCluster(current=>current===key?null:current));
+        marker.setPopup(detail);
+      }
+      if(marker.getPopup()?.isOpen())fitPopup(marker.getPopup());
     }
     for (const pin of grouping.singles) {
       const marker=markerFor(`pin:${pin.id}`,'button'),element=marker.getElement();
@@ -244,30 +310,35 @@ export default function MapView({ zone, activeZone, finalScale=.1, showEndZone=t
     }
     for(const [key,marker] of markersRef.current)if(!retained.has(key)){marker.remove();markersRef.current.delete(key);clusterPopups.current.delete(key);}
   // Update data in place; remove pins immediately when permission or membership changes.
-  }, [loaded, pins, xpPoint, location, role, viewportRevision, Math.floor(now / 30_000)]);
+  }, [loaded, stablePins, stablePoint, markerLocation, role, viewportRevision, minimalMotion,Math.floor(now / 15_000)]);
 
   useEffect(() => {
     if (following && location && mapRef.current) {
-      mapRef.current.easeTo({ center: [location.longitude, location.latitude], zoom: Math.max(15, mapRef.current.getZoom()), duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 400 });
+      mapRef.current.easeTo({ center: [location.longitude, location.latitude], zoom: Math.max(15, mapRef.current.getZoom()), duration: minimalMotion?0:250 });
     }
-  }, [following, location]);
+  }, [following, location,minimalMotion]);
 
   const fitZone = () => {
     const feature = activeZone ?? zone?.feature;
     if (!feature || !mapRef.current) return;
     const bounds = bbox(feature);
     setFollowing(false);
+    setMovedAway(false);
     mapRef.current.fitBounds([[bounds[0], bounds[1]], [bounds[2], bounds[3]]], { padding: 48, maxZoom: 17, duration: 0 });
   };
-  const freshLocation = location && now - location.timestamp < 30_000;
+  const quality=gpsQuality(location,maxAccuracyMeters,Date.now());
+  const gpsLabel=quality.level==='good'?`GPS ± ${quality.accuracyMeters} M`:quality.level==='weak'?`GPS UNGENAU${quality.accuracyMeters===null?'':` ± ${quality.accuracyMeters} M`}`:quality.level==='stale'?'GPS VERALTET':'GPS INAKTIV';
 
-  return <section className={`mh-map-wrap ${className}`} aria-label="Taktische Spielkarte">
+  return <section className={`mh-map-wrap ${preferences.sunlight?'mh-map-sunlight':''} ${minimalMotion?'mh-map-quiet':''} ${openCluster?'mh-cluster-open':''} ${className}`} data-map-active={visible} aria-label="Taktische Spielkarte">
     <div ref={hostRef} className="mh-map-canvas" data-testid="game-map" />
-    <div className="mh-map-status"><Radio size={13} /><span>{!online ? 'OFFLINE' : freshLocation ? `GPS ± ${Math.round(location.accuracy)} M` : location ? 'GPS VERALTET' : 'GPS INAKTIV'}</span></div>
+    <div className={`mh-map-status mh-map-status-${online?quality.level:'offline'}`} data-testid="map-gps-status" title={quality.detail}><Radio size={13} /><span>{online?gpsLabel:'OFFLINE'}</span></div>
     <div className="mh-map-tools">
       <button type="button" title="Spielzone anzeigen" aria-label="Spielzone anzeigen" disabled={!zone && !activeZone} onClick={fitZone}><Expand size={18} /></button>
-      <button type="button" title={following ? 'Automatische Zentrierung beenden' : 'Eigenen Standort zentrieren'} aria-label={following ? 'Automatische Zentrierung beenden' : 'Eigenen Standort zentrieren'} aria-pressed={following} onClick={() => location ? setFollowing(value => !value) : onLocationRequest?.()} disabled={!location && !onLocationRequest}>{following ? <LocateFixed size={18} /> : <Crosshair size={18} />}</button>
+      <button type="button" title={following ? 'Automatische Zentrierung beenden' : 'Eigenen Standort zentrieren'} aria-label={following ? 'Automatische Zentrierung beenden' : 'Eigenen Standort zentrieren'} aria-pressed={following} onClick={() => {if(location){setFollowing(value => !value);setMovedAway(false);}else onLocationRequest?.();}} disabled={!location && !onLocationRequest}>{following ? <LocateFixed size={18} /> : <Crosshair size={18} />}</button>
+      <button type="button" title="Sonnenlichtmodus" aria-label="Sonnenlichtmodus" aria-pressed={preferences.sunlight} onClick={()=>changePreference({sunlight:!preferences.sunlight})}><Sun size={19}/></button>
+      <button type="button" title="GPS-Genauigkeitskreis" aria-label="GPS-Genauigkeitskreis" aria-pressed={preferences.accuracyCircle} onClick={()=>changePreference({accuracyCircle:!preferences.accuracyCircle})}><CircleDot size={19}/></button>
     </div>
+    {movedAway&&location&&<button type="button" className="mh-recenter" onClick={()=>{setFollowing(true);setMovedAway(false);}}><LocateFixed size={17}/> Zu meinem Standort</button>}
     <div className="mh-map-legend" title="Nahe beieinanderliegende Pins werden gebündelt. Tippe die Zahl für Details an."><span><i className="mh-legend-dot own" />DU</span><span><i className="mh-legend-dot hider" />HIDER</span><span><i className="mh-legend-dot hunter" />HUNTER</span><span><i className="mh-legend-dot zombie" />ZOMBIE</span>{finalZone&&<span><i className="mh-legend-dot end"/>ENDZONE</span>}</div>
     {(!online || mapError) && <div className="mh-map-error" role="status"><WifiOff size={16} />{!online ? 'Offline. Karten, Standortmeldungen und Spielstand werden erst nach Wiederverbindung aktualisiert.' : mapError}</div>}
   </section>;

@@ -2,11 +2,15 @@
 
 **Deine Stadt. Dein Spielfeld.** Ein quelloffenes GPS-Verfolgungsspiel für private Gruppen — React, TypeScript, Socket.IO, Supabase und MapLibre. MIT-lizenziert.
 
-> **Stand 0.B2.1:** Die PWA ist auf Vercel veröffentlicht. Die Spiellogik läuft weiterhin in Supabase Edge Functions mit atomaren PostgreSQL-Checkpoints und authentifizierter Synchronisierung etwa alle zwei Sekunden. Accounts und Daten bleiben im bestehenden Supabase-Projekt. Google ist abgeschaltet; E-Mail und Gastzugang bleiben erhalten. Den nachgewiesenen Veröffentlichungsstand dokumentiert [DEPLOYMENT.md](docs/DEPLOYMENT.md).
+> **Stand 0.B2.2:** Die PWA ist auf Vercel veröffentlicht. Die Spiellogik läuft weiterhin in Supabase Edge Functions mit atomaren PostgreSQL-Checkpoints und authentifizierter Synchronisierung etwa alle zwei Sekunden. Accounts und Daten bleiben im bestehenden Supabase-Projekt. Google ist abgeschaltet; E-Mail und Gastzugang bleiben erhalten. Den nachgewiesenen Veröffentlichungsstand dokumentiert [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 **Vercel-Adresse:** [MANHUNT](https://manhunt-pwa.vercel.app). **Quellcode und CI:** [scobione/manhunt](https://github.com/scobione/manhunt). Die bisherige Sites-Adresse leitet nach zehn Sekunden zur getesteten Vercel-Seite weiter.
 
 **Eigenständiges Admin-Portal:** [Manhunt Admin](https://manhunt-admin-scobione.vercel.app). Kontoerstellung und manueller Passwort-Reset ohne Mailversand, verpflichtender Passwortwechsel, Statusverwaltung und optionaler zusätzlicher Zugangscode. [Betrieb und Sicherheitsmodell](docs/ADMIN-PORTAL.md).
+
+## Erweiterungen 0.B2.2
+
+Kompakte Live-Karte mit Restzeit, nächstem Pin, GPS-Qualität und Schnellaktionen; Sonnenlichtmodus, optionaler Genauigkeitskreis und auffällige Rückzentrierung. GPS-Beobachtung, Kartenarbeit und Scanner reduzieren unnötige Aktivität. Ton/Vibration sind freiwillig. Vor dem Start gelten sichtbar zusammengefasste Regeln; Hunter-Freigabe, XP-Ablehnungen und verbleibende Ersatzpunkte sind klarer. Ergebnisverlauf, persönliche Highlights, tatsächlich gebuchte Account-XP und Badge-Beiträge stehen zusammen. Unterstützte Kameras können beim QR-Scan ihre Taschenlampe einschalten. [Release](docs/RELEASE-0.B2.2.md) · [Prüfbericht](docs/TEST-REPORT-0.B2.2.md).
 
 ## Erweiterungen 0.B2.1
 

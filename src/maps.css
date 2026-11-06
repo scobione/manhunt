@@ -97,3 +97,37 @@
 .mh-cluster-popup{display:flex;flex-direction:column;max-height:var(--cluster-popup-height,180px)}
 .mh-cluster-popup>strong,.mh-cluster-popup>.mh-cluster-zoom{flex-shrink:0}
 .mh-cluster-popup ul{flex:1 1 auto;min-height:0;overscroll-behavior:contain}
+
+/* Reachable map controls with room for marker details above them. */
+.mh-map-tools{top:auto;bottom:66px;right:10px;display:flex;gap:6px;z-index:6}
+.mh-map-tools button{width:44px;height:44px;min-width:44px;min-height:44px;border-radius:10px;background:#0c171df5;box-shadow:0 3px 12px #0005}
+.mh-map-tools button:focus-visible,.mh-recenter:focus-visible{outline:3px solid #00b8ff;outline-offset:3px}
+.mh-map-canvas .maplibregl-ctrl-group button{width:44px!important;height:44px!important}
+.mh-map-status{max-width:calc(100% - 84px);letter-spacing:.06em;line-height:1.5}
+.mh-recenter{position:absolute;bottom:120px;left:12px;display:flex;align-items:center;justify-content:center;gap:8px;max-width:calc(100% - 24px);min-height:44px;padding:10px 14px;background:#e8fff5;color:#073b2b;border:1px solid #00bc7b;border-radius:12px;font-size:12px;font-weight:750;box-shadow:0 4px 16px #0006;z-index:6;cursor:pointer}
+.mh-recenter svg{flex:none}
+.mh-xp-pin{position:absolute;top:0;left:0;width:44px;height:44px;border-radius:14px;background:linear-gradient(145deg,#0876b4,#063a61);border:3px solid #f0fcff;color:#fff;font:800 15px ui-monospace,monospace;box-shadow:0 0 0 3px #007bc0,0 4px 12px #0008;z-index:2}
+.mh-xp-pin:after{content:'ZIEL';position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);padding:3px 6px;background:#063c60;border:1px solid #83ddff;border-radius:5px;color:#fff;font:700 9px/1.2 ui-monospace,monospace;letter-spacing:.08em;pointer-events:none}
+.mh-map-quiet .mh-pin:after,.mh-map-wrap[data-map-active=false] .mh-pin:after{animation:none;opacity:.25}
+.mh-map-sunlight{background:#e6eeea;border-color:#698077}
+.mh-map-sunlight .mh-map-status{background:#fffffff5;border-color:#315448;color:#104b36;font-weight:800}
+.mh-map-sunlight .mh-map-tools button{background:#fff;color:#163c2e;border:2px solid #395d4f;box-shadow:0 3px 10px #17342c44}
+.mh-map-sunlight .mh-map-tools button[aria-pressed=true]{background:#135f43;color:#fff;border-color:#063822}
+.mh-map-sunlight .maplibregl-ctrl-group{background:#fff!important;border:2px solid #395d4f!important}
+.mh-map-sunlight .maplibregl-ctrl-icon{filter:none}
+.mh-map-sunlight .maplibregl-ctrl-scale,.mh-map-sunlight .maplibregl-ctrl-attrib{background:#fffffff2!important;color:#172e26!important;border-color:#172e26!important;font-weight:700}
+.mh-map-sunlight .maplibregl-ctrl-attrib a{color:#172e26!important}
+.mh-map-sunlight .mh-map-legend{background:#fffffff2;color:#12392c;border-color:#315448;font-weight:800}
+.mh-map-sunlight .mh-map-error{background:#fff5c9;color:#4c3100;border-color:#997423}
+.mh-map-sunlight .mh-pin-hider{--pin-color:#007b40}.mh-map-sunlight .mh-pin-hunter{--pin-color:#b80026}.mh-map-sunlight .mh-pin-zombie{--pin-color:#647400}.mh-map-sunlight .mh-pin-own{--pin-color:#005fc9}
+.mh-map-sunlight .mh-pin{border-color:#fff;box-shadow:0 0 0 2px var(--pin-color),0 3px 8px #122a2980}
+.mh-map-sunlight .mh-pin-own:before{border-bottom-color:#005fc9}
+/* A cluster detail uses the short map's available space; close or zoom restores
+   the map tools. No actual player's geographic coordinate is adjusted. */
+.mh-cluster-open .mh-map-tools,.mh-cluster-open .mh-recenter,.mh-cluster-open .mh-map-status,.mh-cluster-open .mh-map-legend,.mh-cluster-open .maplibregl-ctrl-top-right{visibility:hidden}
+.mh-cluster-open .maplibregl-popup-close-button{min-width:44px;min-height:44px}
+.mh-cluster-popup>strong{padding-right:20px}
+.mh-map-status-weak,.mh-map-status-stale,.mh-map-status-offline{color:#ffd38a;border-color:#8b6637;background:#2b2114f2}
+.mh-map-status-inactive{color:#bac9cd;border-color:#53636b}
+.mh-map-sunlight .mh-map-status-weak,.mh-map-sunlight .mh-map-status-stale,.mh-map-sunlight .mh-map-status-offline{color:#743c00;border-color:#936420;background:#fff1cf}
+.mh-map-sunlight .mh-map-status-inactive{color:#394e49;border-color:#637a70}

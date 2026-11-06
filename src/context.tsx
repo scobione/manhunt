@@ -9,6 +9,7 @@ import type { Command, LobbyView, Profile } from '../shared/types';
 import publicConfig from './public-config.json';
 import { readAuthReturn, authInitializationMessage, clearAuthReturn } from './auth-return';
 import { httpSession } from './http-session';
+import {reconnectState} from './reconnect-state';
 // Capture only safe metadata before the SDK consumes the callback URL.
 const authReturn=readAuthReturn(window.location.href);
 const defaults = import.meta.env.MODE === 'production' ? publicConfig : null;
@@ -113,7 +114,7 @@ export function AppProvider({children}:{children:ReactNode}) {
   refreshProfile().catch(e=>!cancelled&&notify(e.message));
   if(config.transport==='http'){
    let refreshing=false;
-   const session=httpSession({request:api,onConnection:setConnected,onSocial:()=>setSocialRevision(v=>v+1),onState:state=>{
+   const session=httpSession({request:api,onConnection:setConnected,onResynced:()=>notify('Wieder verbunden. Spielstand synchronisiert.'),onSocial:()=>setSocialRevision(v=>v+1),onState:state=>{
     setLobby(state?.status==='closed'?null:state);
     const latest=state?.events.at(-1);if(latest&&latest.id!==lastEvent.current){if(lastEvent.current&&state?.settings.notifications&&['capture','infection','match_finished'].includes(latest.type))notify(latest.message);lastEvent.current=latest.id;}
    },onExpired:()=>{if(refreshing||!supabase)return;refreshing=true;void supabase.auth.refreshSession().then(({data,error})=>{if(cancelled)return;if(error||!data.session){setToken(null);notify('Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.');}else setToken(data.session.access_token);}).finally(()=>{refreshing=false;});}});
@@ -121,18 +122,28 @@ export function AppProvider({children}:{children:ReactNode}) {
    return()=>{cancelled=true;session.close();httpRef.current=null;};
   }
   const socket=io(API_BASE||window.location.origin,{auth:{token},reconnection:true,reconnectionDelay:1000,reconnectionDelayMax:10000,timeout:20000});socketRef.current=socket;
+  const syncState=reconnectState(setConnected,()=>notify('Wieder verbunden. Spielstand synchronisiert.'));
+  let syncTimer:ReturnType<typeof setTimeout>|undefined;
   socket.onAny((event,...args)=>socketTraffic({event,args},'down'));
   socket.onAnyOutgoing((event,...args)=>socketTraffic({event,args},'up'));
-  socket.on('connect',()=>{setConnected(true);socket.emit('lobby:sync',{},(response:any)=>{if(response?.ok)setLobby(response.data??null);});});
-  socket.on('disconnect',()=>setConnected(false));
-  socket.on('connect_error',(error)=>{setConnected(false);notify(`Verbindung unterbrochen: ${error.message}`);});
-  socket.on('auth:expired',()=>{setConnected(false);if(supabase)void supabase.auth.refreshSession().then(({data,error})=>{if(error||!data.session){setToken(null);notify('Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.');}else setToken(data.session.access_token);});else setToken(null);});
-  socket.on('account:deleted',()=>{sessionStorage.removeItem('manhunt:test-token');setToken(null);setProfile(null);setLobby(null);});
+  const synchronize=()=>{
+   clearTimeout(syncTimer);const version=syncState.begin();
+   socket.timeout(15000).emit('lobby:sync',{},(error:Error|null,response:any)=>{
+    if(cancelled||!socket.connected||!syncState.current(version))return;
+    if(error||!response?.ok){setConnected(false);syncTimer=setTimeout(synchronize,2000);return;}
+    syncState.accept(version,()=>setLobby(response.data?.status==='closed'?null:response.data??null));
+   });
+  };
+  socket.on('connect',synchronize);
+  socket.on('disconnect',()=>{clearTimeout(syncTimer);syncState.disconnected();});
+  socket.on('connect_error',(error)=>{syncState.disconnected();notify(`Verbindung unterbrochen: ${error.message}`);});
+  socket.on('auth:expired',()=>{clearTimeout(syncTimer);syncState.disconnected();if(supabase)void supabase.auth.refreshSession().then(({data,error})=>{if(error||!data.session){setToken(null);notify('Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.');}else setToken(data.session.access_token);});else setToken(null);});
+  socket.on('account:deleted',()=>{clearTimeout(syncTimer);syncState.disconnected();sessionStorage.removeItem('manhunt:test-token');setToken(null);setProfile(null);setLobby(null);});
   socket.on('lobby:state',(state:LobbyView|null)=>{setLobby(state?.status==='closed'?null:state);const latest=state?.events.at(-1);if(latest&&latest.id!==lastEvent.current){if(lastEvent.current&&state?.settings.notifications&&['capture','infection','match_finished'].includes(latest.type))notify(latest.message);lastEvent.current=latest.id;}});
   socket.on('lobby:left',()=>setLobby(null));
   socket.on('social:changed',()=>setSocialRevision(v=>v+1));
   socket.on('notice',(data:{message:string})=>notify(data.message));
-  return()=>{cancelled=true;socket.disconnect();socketRef.current=null;};
+  return()=>{cancelled=true;clearTimeout(syncTimer);socket.disconnect();socketRef.current=null;};
  },[token,refreshProfile,notify,api,config?.configured,config?.transport,config?.accountControls,account?.setupStage,account?.disabled,!!account]);
  const emit=useCallback(<T,>(event:string,data:unknown={}):Promise<T>=>new Promise((resolve,reject)=>{
   if(httpRef.current){httpRef.current.send<T>(event,data).then(resolve,reject);return;}

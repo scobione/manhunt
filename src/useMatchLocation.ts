@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import type { Command, LobbyView, LocationSample } from '../shared/types';
+import {observeGps} from './gps-observer';
+import {gpsObservationInterval} from './gps-quality';
 
 /** One explicit location grant per open lobby. It survives lobby → game navigation,
  * never a reload, account/lobby switch, elimination or leaving the playing screens. */
@@ -9,9 +11,10 @@ export function useMatchLocation(lobby: LobbyView | null, connected: boolean,
   const { pathname } = useLocation();
   const [sharing, setSharing] = useState(false), [consented, setConsented] = useState(false);
   const [location, setLocation] = useState<LocationSample | null>(null), [gpsError, setGpsError] = useState('');
-  const watch = useRef<number | null>(null), generation = useRef(0), sharingRef = useRef(false);
+  const observer = useRef<ReturnType<typeof observeGps>|null>(null), generation = useRef(0), sharingRef = useRef(false);
   const grantOwner=useRef('');
   const inFlight = useRef(false), pending = useRef<Promise<unknown> | null>(null), lastSent = useRef(0);
+  const lastSample=useRef({owner:'',timestamp:0});
   const current = useRef({ lobby, connected, command, pathname });
   current.current = { lobby, connected, command, pathname };
   const allowed = !!lobby && !lobby.self.eliminated && lobby.self.role !== 'spectator'
@@ -20,8 +23,9 @@ export function useMatchLocation(lobby: LobbyView | null, connected: boolean,
   const allowedRef = useRef(allowed); allowedRef.current = allowed;
   const stopWatch = useCallback(() => {
     sharingRef.current = false; grantOwner.current=''; generation.current++;
-    if (watch.current !== null) navigator.geolocation?.clearWatch(watch.current);
-    watch.current = null; setSharing(false); setLocation(null); setConsented(false);
+    observer.current?.stop();observer.current=null;
+    lastSample.current={owner:'',timestamp:0};
+    setSharing(false); setLocation(null); setConsented(false);
   }, []);
   const revoke = useCallback(() => {
     const previous = current.current;
@@ -47,54 +51,39 @@ export function useMatchLocation(lobby: LobbyView | null, connected: boolean,
     // Lobby positions are used only to check readiness, not displayed or retained.
     setLocation(match.status === 'waiting' ? null : sample);
     setGpsError(sample.accuracy > match.settings.maxAccuracyMeters ? `GPS ± ${Math.round(sample.accuracy)} m: zu ungenau. Warte auf eine genauere Ortung.` : '');
-    const interval = match.status !== 'waiting' && match.self.role === 'hunter' ? match.settings.hunterUpdateSeconds * 1000 : 3000;
-    if (!state.connected || inFlight.current || (!force && Date.now() - lastSent.current < interval)) return;
+    const interval = match.status === 'waiting' ? 10000 : match.self.role === 'hunter' ? match.settings.hunterUpdateSeconds * 1000 : 3000;
+    const owner=`${match.id}:${match.status==='waiting'?'lobby':'game'}`;
+    if (!state.connected || inFlight.current || lastSample.current.owner===owner&&sample.timestamp<=lastSample.current.timestamp || (!force && Date.now() - lastSent.current < interval)) return;
     lastSent.current = Date.now(); inFlight.current = true;
+    lastSample.current={owner,timestamp:sample.timestamp};
     const request = state.command(match.status === 'waiting' ? { type: 'location_check', location: sample }
       : { type: 'location', location: sample, publish: force });
     pending.current = request.catch(error => { if (validCallback(version)) setGpsError(error instanceof Error ? error.message : 'Der Standort konnte nicht übertragen werden.'); })
       .finally(() => { inFlight.current = false; pending.current = null; });
   }, []);
-  const locate = useCallback((force = false) => {
-    const version = generation.current;
-    navigator.geolocation?.getCurrentPosition(position => onFix(position, force, version), error => {
+  const gpsFailed=useCallback((error:GeolocationPositionError,version:number)=>{
       if (!validCallback(version)) return;
       setGpsError(error.code === 1 ? 'Standortzugriff verweigert. Erlaube den Standort in den Browser-Einstellungen, um aktiv mitzuspielen.'
-        : 'Keine aktuelle Ortung. Halte die App geöffnet und prüfe deinen Empfang.');
+        : 'Keine aktuelle Ortung. Lass MANHUNT geöffnet und warte an einem sicheren Ort unter freiem Himmel auf besseren Empfang.');
       if (error.code === 1) revoke();
-    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
-  }, [onFix, revoke]);
+  },[revoke]);
+  const locate = useCallback((force = false) => observer.current?.refresh(force),[]);
   function startSharing() {
     if (!consented) { setGpsError('Bitte bestätige zuerst die Standortfreigabe.'); return; }
     if (!allowedRef.current) return;
     if (!navigator.geolocation) { setGpsError('Dein Browser unterstützt keine Standortabfrage. Nutze einen aktuellen Browser.'); return; }
     if (!window.isSecureContext) { setGpsError('Standortfreigabe benötigt eine sichere HTTPS-Verbindung.'); return; }
-    if (watch.current !== null) return;
+    if (observer.current !== null) return;
     sharingRef.current = true; grantOwner.current=`${current.current.lobby?.id}:${current.current.lobby?.self.id}`; const version = ++generation.current;
     setSharing(true); setGpsError(''); lastSent.current = 0;
-    watch.current = navigator.geolocation.watchPosition(position => onFix(position, false, version), error => {
-      if (!validCallback(version)) return;
-      setGpsError(error.code === 1 ? 'Standortzugriff verweigert. Erlaube den Standort in den Browser-Einstellungen, um aktiv mitzuspielen.'
-        : 'Keine zuverlässige Ortung. Bleib an einem sicheren Ort und versuche es erneut.');
-      if (error.code === 1) revoke();
-    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+    observer.current=observeGps({position:(position,force)=>onFix(position,force,version),error:error=>gpsFailed(error,version),cadence:()=>{
+      const match=current.current.lobby;
+      return match?gpsObservationInterval(match.status,match.self.role==='hunter'?match.settings.hunterUpdateSeconds:3):0;
+    }});
+    if(!validCallback(version)){observer.current.stop();observer.current=null;}
   }
   function refreshLocation() { if (!sharingRef.current) startSharing(); else locate(true); }
   function endSharing() { revoke(); notify('Standortfreigabe beendet. Für die aktive Teilnahme musst du sie wieder aktivieren.'); }
-  useEffect(() => {
-    if (!sharing) return;
-    let locating = false;
-    const timer = window.setInterval(() => {
-      if (document.hidden || locating || !current.current.connected) return;
-      locating = true; const version = generation.current;
-      navigator.geolocation.getCurrentPosition(position => { locating = false; onFix(position, false, version); }, error => {
-        locating = false; if (!validCallback(version)) return;
-        setGpsError('Die GPS-Ortung ist unterbrochen. Öffne die App im Vordergrund und prüfe die Standortberechtigung.');
-        if (error.code === 1) revoke();
-      }, { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [sharing, onFix, revoke]);
   useEffect(() => {
     if (!allowed) revoke();
   }, [allowed, revoke]);
@@ -103,7 +92,7 @@ export function useMatchLocation(lobby: LobbyView | null, connected: boolean,
     return stopWatch;
   }, [lobby?.id, lobby?.self.id, stopWatch]);
   useEffect(() => {
-    if (sharingRef.current) { lastSent.current = 0; locate(); }
+    if (sharingRef.current) { observer.current?.reconfigure();lastSent.current = 0; locate(); }
   }, [lobby?.status, connected, locate]);
   useEffect(() => {
     let active = true, permission: PermissionStatus | undefined;

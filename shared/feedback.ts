@@ -13,7 +13,7 @@ export const DEFAULT_QUESTIONS:FeedbackQuestion[]=[
  {id:'apocalypse',label:'Wie gut haben Schrumpfzonen und Zonenwarnungen funktioniert?',type:'rating',required:false,feature:'apocalypse'},
  {id:'xpHunt',label:'Wie gut haben XP-Punkte und das Einsammeln funktioniert?',type:'rating',required:false,feature:'xpHunt'},
  {id:'design',label:'Wie findest du Bedienung und Design?',type:'rating',required:false,feature:'all'},
- {id:'improve',label:'Was sollten wir verbessern?',type:'choices',required:false,feature:'all',options:['Karte','Spielmodi','Rollen','Standort','Bedienung','Stabilität']},
+ {id:'improve',label:'Was sollten wir verbessern?',type:'choices',required:false,feature:'all',options:['GPS / Standort','Karte','Fangen','Spielmodi','Rollen','Bedienung','Stabilität','Verbindung']},
  {id:'recommend',label:'Würdest du das Spiel weiterempfehlen?',type:'recommendation',required:false,feature:'all',options:['Ja','Vielleicht','Nein']},
  {id:'notes',label:'Möchtest du uns noch etwas mitteilen?',type:'text',required:false,feature:'all'},
 ];

@@ -19,6 +19,7 @@ for(const width of [320,390,1440])test(`MAP-CROWD-01-${width}: authorized teamma
   for(const p of [hunter,...mates])await command(request,p.token,{type:'location',location:{longitude:13.405,latitude:52.52,accuracy:3,timestamp:Date.now()}});
   await context.addInitScript(token=>sessionStorage.setItem('manhunt:test-token',token),self.token);const page=await context.newPage();await page.goto('/game');
   await page.getByRole('checkbox',{name:/Ich erlaube die Standortverarbeitung für dieses Match:/}).check();await page.getByRole('button',{name:'GPS aktivieren',exact:true}).click();
+  if(width===320)await page.locator('.mh-map-wrap').evaluate(element=>{element.style.height='240px';element.style.minHeight='240px';});
   await expect(page.locator('.mh-pin-own')).toBeVisible();const cluster=page.getByTestId('map-pin-cluster');await expect(cluster).toHaveCount(1);await cluster.click();
   const popup=page.locator('.mh-cluster-popup');await expect(popup).toBeVisible();for(const mate of mates)await expect(popup).toContainText(mate.name);await expect(popup).not.toContainText(hunter.name);
   const zoom=popup.getByRole('button',{name:'Gruppe auf der Karte vergrößern'});
@@ -26,7 +27,7 @@ for(const width of [320,390,1440])test(`MAP-CROWD-01-${width}: authorized teamma
   // A visible but clipped button can otherwise retry until the whole test times out.
   await expect.poll(async()=>{const box=await popup.boundingBox(),map=await page.locator('.mh-map-canvas').boundingBox();return !!box&&!!map&&box.y>=map.y&&box.y+box.height<=map.y+map.height;}).toBe(true);
   await page.screenshot({path:`test-results-edge/crowd-popup-${width}.png`});
-  await zoom.click({timeout:5000});await expect(page.locator('.mh-pin-own')).toBeVisible();
+  await zoom.click({timeout:5000});await expect(page.locator('.mh-pin-own')).toBeVisible();await expect(page.getByRole('button',{name:'Sonnenlichtmodus'})).toBeVisible();
   for(const mate of mates.slice(0,2))await command(request,mate.token,{type:'stop_location'});
   await expect(cluster).toHaveCount(0);await expect(page.locator(`[data-player-id="${mates[2].id}"]`)).toHaveCount(1);for(const mate of mates.slice(0,2))await expect(page.locator(`[data-player-id="${mate.id}"]`)).toHaveCount(0);
   await expect(page.locator('.mh-pin-own')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

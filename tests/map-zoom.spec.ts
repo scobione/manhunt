@@ -53,12 +53,33 @@ for(const mobile of [true,false])test(`MAP-ZOOM-${mobile?'MOBILE':'DESKTOP'}: fi
   await page.getByRole('checkbox',{name:/Ich erlaube die Standortverarbeitung für dieses Match:/}).check();await page.getByRole('button',{name:'GPS aktivieren',exact:true}).click();
   await expect(page.locator('.mh-pin-own')).toBeVisible();await aligned(page);
   const map=page.getByTestId('game-map');await map.scrollIntoViewIfNeeded();
+  await test.step('MAP-DISPLAY: sunlight, real accuracy layer and prominent recenter work without moving coordinates',async()=>{
+   const sunlight=page.getByRole('button',{name:'Sonnenlichtmodus',exact:true}),accuracy=page.getByRole('button',{name:'GPS-Genauigkeitskreis',exact:true});
+   for(const button of [sunlight,accuracy]){const bounds=(await button.boundingBox())!;expect(bounds.width).toBeGreaterThanOrEqual(44);expect(bounds.height).toBeGreaterThanOrEqual(44);}
+   await expect(sunlight).toHaveAttribute('aria-pressed','false');await sunlight.click();await expect(page.locator('.mh-map-wrap')).toHaveClass(/mh-map-sunlight/);await aligned(page);
+   await context.setGeolocation({longitude:target.longitude,latitude:target.latitude,accuracy:40});await expect(page.locator('.mh-pin-own')).toHaveAttribute('aria-label',/40 Meter/);
+   await page.getByRole('button',{name:'Eigenen Standort zentrieren',exact:true}).click();
+   for(let i=0;i<2;i++)await map.getByRole('button',{name:'Zoom in',exact:true}).click();
+   await aligned(page);
+   const own=(await page.locator('.mh-pin-own').boundingBox())!;
+   const clip={x:own.x+own.width/2-72,y:own.y+own.height/2-72,width:144,height:144};
+   await expect(accuracy).toHaveAttribute('aria-pressed','true');
+   const withCircle=await page.screenshot({clip,animations:'disabled'});
+   await accuracy.click();await expect(accuracy).toHaveAttribute('aria-pressed','false');
+   // The control changes the actual rendered circle, not merely its icon/state.
+   await expect.poll(async()=>!(await page.screenshot({clip,animations:'disabled'})).equals(withCircle),{timeout:5000}).toBe(true);
+   await accuracy.click();await expect(accuracy).toHaveAttribute('aria-pressed','true');
+   const xp=(await page.locator('.mh-xp-pin').boundingBox())!;expect(xp.width).toBeLessThanOrEqual(52);expect(xp.height).toBeLessThanOrEqual(52);
+   await expect(page.locator('.mh-xp-pin')).toHaveAttribute('aria-label',/XP-Ziel mit .* Sammelradius/);
+  });
   for(const name of ['Zoom in','Zoom in','Zoom out','Zoom out']){await map.getByRole('button',{name,exact:true}).click();await aligned(page);}
   const box=(await map.boundingBox())!;const x=box.x+box.width*.48,y=box.y+box.height*.55;
   await page.mouse.move(x,y);await page.mouse.wheel(0,-160);await aligned(page);
   const before=await targetPosition(page);
   await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+65,y+30,{steps:12});await page.mouse.up();await aligned(page);
   const moved=await targetPosition(page);expect(Math.hypot(moved.x-before.x,moved.y-before.y)).toBeGreaterThan(20);
+  const recenter=page.getByRole('button',{name:'Zu meinem Standort',exact:true});await expect(recenter).toBeVisible();await recenter.click();await expect(recenter).toHaveCount(0);await aligned(page);
+  await expect.poll(()=>page.evaluate(()=>{const pin=document.querySelector('.mh-pin-own')!.getBoundingClientRect(),map=document.querySelector('[data-testid="game-map"]')!.getBoundingClientRect();return Math.hypot(pin.x+pin.width/2-map.x-map.width/2,pin.y+pin.height/2-map.y-map.height/2);})).toBeLessThan(2);
   await page.mouse.move(x,y);await page.mouse.down({button:'right'});await page.mouse.move(x+55,y+15,{steps:12});await page.mouse.up({button:'right'});await aligned(page);
   if(mobile){
    const cdp=await context.newCDPSession(page);
@@ -81,5 +102,8 @@ for(const mobile of [true,false])test(`MAP-ZOOM-${mobile?'MOBILE':'DESKTOP'}: fi
   });
   await expect(page.locator('.mh-pin-own')).toBeInViewport();
   await page.screenshot({path:`test-results-edge/map-zoom-${mobile?'mobile':'desktop'}.png`,fullPage:true});
+  await page.getByRole('button',{name:'GPS-Genauigkeitskreis',exact:true}).click();await page.reload();
+  await expect(page.getByRole('button',{name:'Sonnenlichtmodus',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(page.getByRole('button',{name:'GPS-Genauigkeitskreis',exact:true})).toHaveAttribute('aria-pressed','false');
  }finally{await context.close();}
 });

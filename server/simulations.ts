@@ -13,6 +13,7 @@ import {DEFAULT_QUESTIONS,questionsFor,validateFeedback,type FeedbackOffer} from
 import type {FeatureStore} from './feature-store';
 import type {SimulationEvent,SimulationLog,SimulationView} from '../shared/simulation';
 import {safeXpPosition,type PathCandidate} from './xp-paths';
+import {matchReview,personalResult,type ReviewLobby,type RecordedBadgeAward} from '../shared/results';
 export interface SimulationState {awardedMatches?:string[];catalog?:{definitions:Awaited<ReturnType<FeatureStore['definitions']>>;feedback:Awaited<ReturnType<FeatureStore['settings']>>};lobby:Lobby;clock:number;wall:number;generation:number;positions:Record<string,LocationSample>;log:SimulationLog[];counters:Record<string,AchievementCounters>;badges:Record<string,BadgeOverview>;offers:Record<string,FeedbackOffer>;presets:{id:string;name:string;settings:unknown}[];}
 export interface SimulationRecord {id:string;owner:string;revision:number;state:SimulationState;}
 export interface SimulationStore {get(owner:string,id?:string):Promise<SimulationRecord|null>;create(owner:string,state:SimulationState):Promise<SimulationRecord>;save(record:SimulationRecord):Promise<boolean>;remove(owner:string,id:string):Promise<void>;}
@@ -114,6 +115,14 @@ export class SimulationService{
    }else if(action==='features'){
     sync();const path=input.path??'',data=input.body as any;
     if(path==='/badges')result=overview(s,player);
+    else if(path.startsWith('/badges/match?')){
+     if(uuid.parse(new URLSearchParams(path.split('?')[1]).get('matchId'))!==lobby.id)throw new HttpError(404,'Dieses Testmatch ist nicht verfügbar.');
+     if(lobby.status!=='finished'||!lobby.result)throw new HttpError(409,'Das Testmatch ist noch nicht abgeschlossen.');
+     const participant=lobby.players.find(p=>p.id===player)!,stats=(lobby as ReviewLobby)._engine?.stats?.[player],survived=participant.role==='hider'&&lobby.result.survivors.includes(player);
+     const won=personalResult(engine.view(lobby.id,player))==='won';
+     const badgeAward:RecordedBadgeAward|null=s.awardedMatches?.includes(lobby.id)?{captures:Math.min(40,stats?.captures??0),hunt_points:Math.min(100,stats?.points??0),hider_win:survived&&won,win:won,survival:survived}:null;
+     result=matchReview(lobby,player,{badges:overview(s,player),xp:null,progress:null,badgeAward,simulation:true});
+    }
     else if(path==='/badges/seen'){const ids=z.array(uuid).max(100).parse(data?.ids);overview(s,player).notices=overview(s,player).notices.filter(n=>!ids.includes(n.id));result={ok:true};}
     else if(path==='/badges/selected'){const id=z.string().nullable().parse(data?.badgeId),b=overview(s,player).badges.find(b=>b.id===id&&b.level>0);if(id&&!b)throw new HttpError(400,'Badge noch gesperrt.');overview(s,player).selected=b?equippedBadge(b):null;lobby.players.find(p=>p.id===player)!.badge=overview(s,player).selected;result=overview(s,player);}
     else if(path.startsWith('/feedback?'))result={offer:s.offers[player]??null};

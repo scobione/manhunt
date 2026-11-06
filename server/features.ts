@@ -19,6 +19,7 @@ export const feedbackSettingsSchema=z.object({version:z.string().regex(/^[1-9][0
 export class FeatureService {
  constructor(readonly store:FeatureStore,private customization?:Pick<ProfileCustomizationService,'decorateFriend'>){}
  async player(identity:Identity,path:string,method:string,body:unknown,query:URLSearchParams){
+  if(path==='/badges/match'&&method==='GET')return this.store.matchReview(identity.id,id.parse(query.get('matchId')));
   if(path==='/badges'&&method==='GET')return this.store.badges(identity.id);
   if(path==='/badges/visibility'&&method==='PATCH'){
    if(identity.isGuest)throw new HttpError(403,'Dauerhafte Badges benötigen ein registriertes Konto.');
